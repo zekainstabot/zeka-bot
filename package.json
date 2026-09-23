@@ -1,1 +1,15 @@
-
+{
+  "name": "zeka-bot",
+  "version": "1.0.0",
+  "description": "Modular Telegram downloader bot, starting with Instagram and designed for scalable multi-platform support.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "node app.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "private": true
+}
