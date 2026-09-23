@@ -1,0 +1,16 @@
+core/.gitkeep
+database/.gitkeep
+repositories/.gitkeep
+services/.gitkeep
+queue/.gitkeep
+workers/.gitkeep
+platforms/.gitkeep
+handlers/.gitkeep
+navigation/.gitkeep
+localization/.gitkeep
+security/.gitkeep
+monitoring/.gitkeep
+scheduler/.gitkeep
+admin/.gitkeep
+tests/.gitkeep
+scripts/.gitkeep
