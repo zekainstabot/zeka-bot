@@ -144,6 +144,7 @@ async function update(id, updates) {
   const allowedFields = [
     "status",
     "priority",
+    "content_id",
     "estimated_cost",
     "reserved_cost",
     "final_cost",
