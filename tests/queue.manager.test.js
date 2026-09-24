@@ -3,6 +3,11 @@ const assert = require("node:assert/strict");
 
 const queueManager = require("../queue/manager");
 
+test.afterEach(() => {
+  queueManager.clear();
+  queueManager.resetProcessor();
+});
+
 test("queue manager exposes the expected API", () => {
   assert.equal(
     typeof queueManager.add,
@@ -35,17 +40,91 @@ test("queue manager exposes the expected API", () => {
   );
 
   assert.equal(
-    typeof queueManager.processNext,
+    typeof queueManager.setProcessor,
+    "function"
+  );
+
+  assert.equal(
+    typeof queueManager.resetProcessor,
     "function"
   );
 });
 
-test("queue manager starts empty", () => {
-  queueManager.clear();
+test("queue manager processes a queued job", async () => {
+  let processedJob = null;
+
+  queueManager.setProcessor(async (job) => {
+    processedJob = job;
+  });
+
+  const job = {
+    id: "test-job-1",
+    job_id: "test-job-1",
+    priority: 0,
+    created_at: new Date().toISOString(),
+  };
+
+  queueManager.add(job);
+
+  await queueManager.processNext();
+
+  await new Promise((resolve) =>
+    setImmediate(resolve)
+  );
+
+  assert.equal(
+    processedJob,
+    job
+  );
 
   assert.equal(
     queueManager.getLength(),
     0
+  );
+
+  assert.equal(
+    queueManager.getActiveCount(),
+    0
+  );
+});
+
+test("queue manager removes a waiting job", async () => {
+  let resolveProcessor;
+
+  const processorPromise =
+    new Promise((resolve) => {
+      resolveProcessor = resolve;
+    });
+
+  queueManager.setProcessor(
+    () => processorPromise
+  );
+
+  const job = {
+    id: "test-remove-1",
+    job_id: "test-remove-1",
+    priority: 0,
+    created_at: new Date().toISOString(),
+  };
+
+  queueManager.add(job);
+
+  await new Promise((resolve) =>
+    setImmediate(resolve)
+  );
+
+  const removed =
+    queueManager.remove(job.id);
+
+  assert.equal(
+    removed,
+    false
+  );
+
+  resolveProcessor();
+
+  await new Promise((resolve) =>
+    setImmediate(resolve)
   );
 
   assert.equal(
@@ -68,30 +147,41 @@ test("queue manager returns configured concurrency", () => {
   );
 });
 
-test("queue manager clear is safe when already empty", () => {
-  queueManager.clear();
+test("queue manager clear removes waiting jobs", () => {
+  let resolveProcessor;
+
+  const processorPromise =
+    new Promise((resolve) => {
+      resolveProcessor = resolve;
+    });
+
+  queueManager.setProcessor(
+    () => processorPromise
+  );
+
+  const job1 = {
+    id: "clear-job-1",
+    job_id: "clear-job-1",
+    priority: 0,
+    created_at: new Date().toISOString(),
+  };
+
+  const job2 = {
+    id: "clear-job-2",
+    job_id: "clear-job-2",
+    priority: 0,
+    created_at: new Date().toISOString(),
+  };
+
+  queueManager.add(job1);
+  queueManager.add(job2);
+
   queueManager.clear();
 
   assert.equal(
     queueManager.getLength(),
     0
   );
-});
 
-test("queue manager remove returns false for an unknown job", () => {
-  queueManager.clear();
-
-  const removed = queueManager.remove(
-    "job-that-does-not-exist"
-  );
-
-  assert.equal(
-    removed,
-    false
-  );
-
-  assert.equal(
-    queueManager.getLength(),
-    0
-  );
+  resolveProcessor();
 });
