@@ -3,28 +3,38 @@ const { getClient } = require("../database/client");
 async function create(data) {
   const db = getClient();
 
+  if (!data.userId) {
+    throw new Error("User ID is required");
+  }
+
+  if (!data.creditAccountId) {
+    throw new Error("Credit account ID is required");
+  }
+
+  if (data.amount === undefined) {
+    throw new Error("Reservation amount is required");
+  }
+
   const result = await db.query(
     `
       INSERT INTO credit_reservations (
         user_id,
+        credit_account_id,
         request_id,
         job_id,
         amount,
-        status,
-        expires_at,
-        metadata
+        status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `,
     [
       data.userId,
+      data.creditAccountId,
       data.requestId || null,
       data.jobId || null,
       data.amount,
       data.status || "RESERVED",
-      data.expiresAt || null,
-      data.metadata || null,
     ]
   );
 
@@ -56,8 +66,7 @@ async function findActiveByUserId(userId) {
       FROM credit_reservations
       WHERE user_id = $1
         AND status = 'RESERVED'
-        AND (expires_at IS NULL OR expires_at > NOW())
-      ORDER BY created_at ASC
+      ORDER BY reserved_at ASC, created_at ASC
     `,
     [userId]
   );
@@ -68,15 +77,31 @@ async function findActiveByUserId(userId) {
 async function updateStatus(id, status) {
   const db = getClient();
 
+  let timestampColumn = null;
+
+  if (status === "CONSUMED") {
+    timestampColumn = "consumed_at";
+  } else if (status === "RELEASED") {
+    timestampColumn = "released_at";
+  }
+
+  const values = [id, status];
+
+  let timestampSql = "";
+
+  if (timestampColumn) {
+    timestampSql = `, ${timestampColumn} = NOW()`;
+  }
+
   const result = await db.query(
     `
       UPDATE credit_reservations
-      SET status = $2,
-          updated_at = NOW()
+      SET status = $2
+          ${timestampSql}
       WHERE id = $1
       RETURNING *
     `,
-    [id, status]
+    values
   );
 
   return result.rows[0] || null;
