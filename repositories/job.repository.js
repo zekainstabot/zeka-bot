@@ -1,34 +1,50 @@
 const { getClient } = require("../database/client");
 
+function generateJobId() {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 10);
+
+  return `${timestamp}${random}`.slice(0, 32);
+}
+
 async function create(data) {
   const db = getClient();
+
+  const jobId = data.jobId || generateJobId();
 
   const result = await db.query(
     `
       INSERT INTO jobs (
         request_id,
         user_id,
-        job_type,
-        status,
-        priority,
+        job_id,
         platform,
-        source_url,
+        content_type,
+        status,
+        original_url,
+        normalized_url,
         estimated_cost,
-        metadata
+        priority,
+        is_heavy
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11
+      )
       RETURNING *
     `,
     [
       data.requestId,
       data.userId,
-      data.jobType || "DOWNLOAD",
+      jobId,
+      data.platform || null,
+      data.contentType || "DOWNLOAD",
       data.status || "WAITING",
-      data.priority || "NORMAL",
-      data.platform,
-      data.sourceUrl,
+      data.originalUrl,
+      data.normalizedUrl || data.originalUrl,
       data.estimatedCost ?? null,
-      data.metadata || null,
+      Number(data.priority) || 0,
+      data.isHeavy ?? false,
     ]
   );
 
@@ -46,6 +62,22 @@ async function findById(id) {
       LIMIT 1
     `,
     [id]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findByJobId(jobId) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM jobs
+      WHERE job_id = $1
+      LIMIT 1
+    `,
+    [jobId]
   );
 
   return result.rows[0] || null;
@@ -70,16 +102,17 @@ async function findByRequestId(requestId) {
 async function findPending(limit = 100) {
   const db = getClient();
 
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 100, 500)
+  );
 
   const result = await db.query(
     `
       SELECT *
       FROM jobs
       WHERE status = 'WAITING'
-      ORDER BY
-        CASE WHEN priority = 'PRO' THEN 0 ELSE 1 END,
-        created_at ASC
+      ORDER BY priority DESC, created_at ASC
       LIMIT $1
     `,
     [safeLimit]
@@ -112,14 +145,17 @@ async function update(id, updates) {
     "status",
     "priority",
     "estimated_cost",
+    "reserved_cost",
     "final_cost",
+    "retry_count",
     "started_at",
+    "processing_at",
+    "sending_at",
     "completed_at",
+    "failed_at",
     "cancelled_at",
     "error_code",
     "error_message",
-    "attempts",
-    "metadata",
   ];
 
   const entries = Object.entries(updates).filter(([field]) =>
@@ -153,6 +189,7 @@ async function update(id, updates) {
 module.exports = {
   create,
   findById,
+  findByJobId,
   findByRequestId,
   findPending,
   updateStatus,
