@@ -5,19 +5,23 @@ async function getOrCreateUser(from) {
     throw new Error("Telegram user information is required");
   }
 
-  const telegramId = String(from.id);
+  const telegramUserId = String(from.id);
 
-  let user = await userRepository.findByTelegramId(telegramId);
+  let user = await userRepository.findByTelegramUserId(telegramUserId);
 
   if (user) {
     return user;
   }
 
+  const displayName = [from.first_name, from.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
   user = await userRepository.create({
-    telegramId,
+    telegramUserId,
     username: from.username || null,
-    firstName: from.first_name || null,
-    lastName: from.last_name || null,
+    displayName: displayName || null,
   });
 
   return user;
