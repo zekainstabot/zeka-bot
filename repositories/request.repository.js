@@ -1,32 +1,43 @@
 const { getClient } = require("../database/client");
 
+function generateRequestId() {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).slice(2, 10);
+
+  return `${timestamp}${random}`.slice(0, 32);
+}
+
 async function create(data) {
   const db = getClient();
+
+  const requestId = data.requestId || generateRequestId();
 
   const result = await db.query(
     `
       INSERT INTO requests (
         user_id,
+        request_id,
         platform,
         request_type,
+        status,
         original_url,
         normalized_url,
-        status,
         estimated_cost,
-        metadata
+        is_heavy
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `,
     [
       data.userId,
-      data.platform,
+      requestId,
+      data.platform || null,
       data.requestType || "DOWNLOAD",
-      data.originalUrl,
-      data.normalizedUrl || data.originalUrl,
       data.status || "WAITING",
+      data.originalUrl || null,
+      data.normalizedUrl || data.originalUrl || null,
       data.estimatedCost ?? null,
-      data.metadata || null,
+      data.isHeavy ?? false,
     ]
   );
 
@@ -49,10 +60,29 @@ async function findById(id) {
   return result.rows[0] || null;
 }
 
+async function findByRequestId(requestId) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM requests
+      WHERE request_id = $1
+      LIMIT 1
+    `,
+    [requestId]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function findByUserId(userId, limit = 50) {
   const db = getClient();
 
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 50, 200));
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 50, 200)
+  );
 
   const result = await db.query(
     `
@@ -74,8 +104,7 @@ async function updateStatus(id, status) {
   const result = await db.query(
     `
       UPDATE requests
-      SET status = $2,
-          updated_at = NOW()
+      SET status = $2
       WHERE id = $1
       RETURNING *
     `,
@@ -89,14 +118,19 @@ async function update(id, updates) {
   const db = getClient();
 
   const allowedFields = [
+    "platform",
+    "request_type",
     "status",
+    "original_url",
     "normalized_url",
     "estimated_cost",
     "final_cost",
-    "metadata",
+    "is_heavy",
     "started_at",
     "completed_at",
     "cancelled_at",
+    "error_code",
+    "error_message",
   ];
 
   const entries = Object.entries(updates).filter(([field]) =>
@@ -116,8 +150,7 @@ async function update(id, updates) {
   const result = await db.query(
     `
       UPDATE requests
-      SET ${setClause},
-          updated_at = NOW()
+      SET ${setClause}
       WHERE id = $1
       RETURNING *
     `,
@@ -130,6 +163,7 @@ async function update(id, updates) {
 module.exports = {
   create,
   findById,
+  findByRequestId,
   findByUserId,
   updateStatus,
   update,
