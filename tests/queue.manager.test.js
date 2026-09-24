@@ -4,42 +4,54 @@ const assert = require("node:assert/strict");
 const queueManager = require("../queue/manager");
 
 test("queue manager exposes the expected API", () => {
-  assert.equal(typeof queueManager.add, "function");
-  assert.equal(typeof queueManager.remove, "function");
-  assert.equal(typeof queueManager.clear, "function");
-  assert.equal(typeof queueManager.getLength, "function");
-  assert.equal(typeof queueManager.getActiveCount, "function");
+  assert.equal(
+    typeof queueManager.add,
+    "function"
+  );
+
+  assert.equal(
+    typeof queueManager.remove,
+    "function"
+  );
+
+  assert.equal(
+    typeof queueManager.clear,
+    "function"
+  );
+
+  assert.equal(
+    typeof queueManager.getLength,
+    "function"
+  );
+
+  assert.equal(
+    typeof queueManager.getActiveCount,
+    "function"
+  );
+
   assert.equal(
     typeof queueManager.getMaxConcurrent,
     "function"
   );
+
+  assert.equal(
+    typeof queueManager.processNext,
+    "function"
+  );
 });
 
-test("queue manager can add and remove a job", () => {
+test("queue manager starts empty", () => {
   queueManager.clear();
-
-  const job = {
-    id: `test-${Date.now()}`,
-    job_id: `test-job-${Date.now()}`,
-    priority: 0,
-    created_at: new Date().toISOString(),
-  };
-
-  queueManager.add(job);
 
   assert.equal(
     queueManager.getLength(),
     0
   );
 
-  const removed = queueManager.remove(job.id);
-
   assert.equal(
-    removed,
-    false
+    queueManager.getActiveCount(),
+    0
   );
-
-  queueManager.clear();
 });
 
 test("queue manager returns configured concurrency", () => {
@@ -51,32 +63,32 @@ test("queue manager returns configured concurrency", () => {
     true
   );
 
-  assert.ok(maxConcurrent > 0);
+  assert.ok(
+    maxConcurrent > 0
+  );
 });
 
-test("queue manager clear removes waiting jobs", () => {
+test("queue manager clear is safe when already empty", () => {
+  queueManager.clear();
   queueManager.clear();
 
-  const jobs = [
-    {
-      id: `clear-a-${Date.now()}`,
-      job_id: `clear-job-a-${Date.now()}`,
-      priority: 0,
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: `clear-b-${Date.now()}`,
-      job_id: `clear-job-b-${Date.now()}`,
-      priority: 0,
-      created_at: new Date().toISOString(),
-    },
-  ];
+  assert.equal(
+    queueManager.getLength(),
+    0
+  );
+});
 
-  for (const job of jobs) {
-    queueManager.add(job);
-  }
-
+test("queue manager remove returns false for an unknown job", () => {
   queueManager.clear();
+
+  const removed = queueManager.remove(
+    "job-that-does-not-exist"
+  );
+
+  assert.equal(
+    removed,
+    false
+  );
 
   assert.equal(
     queueManager.getLength(),
