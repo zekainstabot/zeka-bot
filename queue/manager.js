@@ -1,10 +1,11 @@
 const queueConfig = require("../config/queue");
-const { processJob } = require("../workers/job.worker");
+const { processJob: defaultProcessJob } = require("../workers/job.worker");
 
 const jobs = [];
 
 let processing = false;
 let activeJobs = 0;
+let processJob = defaultProcessJob;
 
 function add(job) {
   if (!job || !job.id) {
@@ -46,6 +47,20 @@ function getActiveCount() {
 
 function getMaxConcurrent() {
   return queueConfig.normal.maxConcurrent;
+}
+
+function setProcessor(processor) {
+  if (typeof processor !== "function") {
+    throw new TypeError(
+      "Queue processor must be a function"
+    );
+  }
+
+  processJob = processor;
+}
+
+function resetProcessor() {
+  processJob = defaultProcessJob;
 }
 
 async function processNext() {
@@ -108,5 +123,7 @@ module.exports = {
   getLength,
   getActiveCount,
   getMaxConcurrent,
+  setProcessor,
+  resetProcessor,
   processNext,
 };
