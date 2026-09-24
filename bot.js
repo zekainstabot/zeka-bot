@@ -4,6 +4,7 @@ const config = require("./config/app");
 const { close } = require("./database/client");
 const { register, shutdown } = require("./core/shutdown");
 const { getOrCreateUser } = require("./services/user.service");
+const { parseUrl } = require("./services/url.service");
 
 let bot = null;
 
@@ -47,6 +48,38 @@ function createBot() {
       "📖 راهنما\n\n" +
         "🔗 لینک محتوای موردنظر را برای ربات ارسال کن.\n\n" +
         "ربات در حال آماده‌سازی سیستم دانلود است."
+    );
+  });
+
+  bot.on("text", async (ctx) => {
+    const text = ctx.message.text.trim();
+
+    if (!text || text.startsWith("/")) {
+      return;
+    }
+
+    const parsed = parseUrl(text);
+
+    if (!parsed.valid) {
+      await ctx.reply(
+        "❌ لینک معتبر نیست.\n\n" +
+          "یک لینک کامل مثل این ارسال کن:\n" +
+          "https://www.instagram.com/..."
+      );
+      return;
+    }
+
+    if (!parsed.platform) {
+      await ctx.reply(
+        "⚠️ این لینک متعلق به پلتفرم‌های پشتیبانی‌شده نیست."
+      );
+      return;
+    }
+
+    await ctx.reply(
+      `🔗 لینک دریافت شد.\n\n` +
+        `📱 پلتفرم: ${parsed.platform}\n\n` +
+        `⏳ سیستم دانلود این پلتفرم در حال آماده‌سازی است.`
     );
   });
 
