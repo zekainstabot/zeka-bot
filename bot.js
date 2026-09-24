@@ -80,18 +80,22 @@ function createBot() {
         return;
       }
 
-      const request = await createDownloadRequest({
+      const result = await createDownloadRequest({
         userId: user.id,
         platform: parsed.platform,
         originalUrl: text,
         normalizedUrl: parsed.url,
       });
 
+      const request = result.request;
+      const job = result.job;
+
       await ctx.reply(
         `✅ درخواست شما ثبت شد.\n\n` +
           `🆔 درخواست: ${request.request_id}\n` +
+          `⚙️ وظیفه: ${job.job_id}\n` +
           `📱 پلتفرم: ${request.platform}\n` +
-          `⏳ وضعیت: در انتظار پردازش`
+          `⏳ وضعیت: در صف پردازش`
       );
     } catch (error) {
       console.error("Download request failed:", error);
