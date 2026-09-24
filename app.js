@@ -1,4 +1,5 @@
 const { initializeDatabase } = require("./database/bootstrap");
+const { startBot } = require("./bot");
 
 async function start() {
   console.log("Zeka Bot starting...");
@@ -7,8 +8,10 @@ async function start() {
     await initializeDatabase();
 
     console.log("Zeka Bot database initialized.");
+
+    await startBot();
   } catch (error) {
-    console.error("Failed to initialize database.");
+    console.error("Failed to start Zeka Bot.");
     console.error(error);
 
     process.exitCode = 1;
