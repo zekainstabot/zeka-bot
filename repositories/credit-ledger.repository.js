@@ -7,28 +7,28 @@ async function create(data) {
     `
       INSERT INTO credit_ledger (
         user_id,
-        credit_id,
-        transaction_type,
+        credit_account_id,
+        entry_type,
         amount,
+        balance_before,
         balance_after,
         reference_type,
         reference_id,
-        description,
-        metadata
+        description
       )
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *
     `,
     [
       data.userId,
-      data.creditId || null,
-      data.transactionType,
+      data.creditAccountId || null,
+      data.entryType,
       data.amount,
+      data.balanceBefore ?? null,
       data.balanceAfter ?? null,
       data.referenceType || null,
       data.referenceId || null,
       data.description || null,
-      data.metadata || null,
     ]
   );
 
@@ -38,7 +38,10 @@ async function create(data) {
 async function findByUserId(userId, limit = 100) {
   const db = getClient();
 
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 100, 500)
+  );
 
   const result = await db.query(
     `
@@ -54,26 +57,35 @@ async function findByUserId(userId, limit = 100) {
   return result.rows;
 }
 
-async function findByCreditId(creditId, limit = 100) {
+async function findByCreditAccountId(
+  creditAccountId,
+  limit = 100
+) {
   const db = getClient();
 
-  const safeLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 100, 500)
+  );
 
   const result = await db.query(
     `
       SELECT *
       FROM credit_ledger
-      WHERE credit_id = $1
+      WHERE credit_account_id = $1
       ORDER BY created_at DESC
       LIMIT $2
     `,
-    [creditId, safeLimit]
+    [creditAccountId, safeLimit]
   );
 
   return result.rows;
 }
 
-async function findByReference(referenceType, referenceId) {
+async function findByReference(
+  referenceType,
+  referenceId
+) {
   const db = getClient();
 
   const result = await db.query(
@@ -93,6 +105,6 @@ async function findByReference(referenceType, referenceId) {
 module.exports = {
   create,
   findByUserId,
-  findByCreditId,
+  findByCreditAccountId,
   findByReference,
 };
