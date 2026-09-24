@@ -1,4 +1,5 @@
 const requestRepository = require("../repositories/request.repository");
+const { createAndQueueJob } = require("../queue/service");
 
 async function createDownloadRequest({
   userId,
@@ -8,6 +9,7 @@ async function createDownloadRequest({
   requestType = "DOWNLOAD",
   estimatedCost = null,
   isHeavy = false,
+  priority = 0,
 }) {
   if (!userId) {
     throw new Error("User ID is required");
@@ -32,7 +34,17 @@ async function createDownloadRequest({
     status: "WAITING",
   });
 
-  return request;
+  const job = await createAndQueueJob({
+    request,
+    contentType: requestType,
+    priority,
+    isHeavy,
+  });
+
+  return {
+    request,
+    job,
+  };
 }
 
 async function getRequestById(id) {
