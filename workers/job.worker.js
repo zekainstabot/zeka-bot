@@ -9,15 +9,27 @@ async function processJob(job) {
     `Worker started job: ${job.job_id || job.id}`
   );
 
+  const startedAt = new Date();
+
   await jobRepository.update(job.id, {
     status: "PROCESSING",
-    started_at: new Date(),
-    processing_at: new Date(),
+    started_at: startedAt,
+    processing_at: startedAt,
   });
 
   try {
     if (job.platform === "instagram") {
-      return await processInstagramJob(job);
+      const result = await processInstagramJob(job);
+
+      if (result?.success) {
+        await jobRepository.update(job.id, {
+          status: "COMPLETED",
+          completed_at: new Date(),
+          final_cost: result.finalCost ?? null,
+        });
+      }
+
+      return result;
     }
 
     throw new Error(
