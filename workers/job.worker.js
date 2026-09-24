@@ -1,4 +1,5 @@
 const jobRepository = require("../repositories/job.repository");
+const { downloadInstagram } = require("../services/instagram.service");
 
 async function processJob(job) {
   if (!job || !job.id) {
@@ -18,23 +19,25 @@ async function processJob(job) {
   });
 
   try {
+    let result;
+
     if (job.platform === "instagram") {
-      const result = await processInstagramJob(job);
-
-      if (result?.success) {
-        await jobRepository.update(job.id, {
-          status: "COMPLETED",
-          completed_at: new Date(),
-          final_cost: result.finalCost ?? null,
-        });
-      }
-
-      return result;
+      result = await downloadInstagram(job);
+    } else {
+      throw new Error(
+        `Unsupported platform: ${job.platform}`
+      );
     }
 
-    throw new Error(
-      `Unsupported platform: ${job.platform}`
-    );
+    if (result?.success) {
+      await jobRepository.update(job.id, {
+        status: "COMPLETED",
+        completed_at: new Date(),
+        final_cost: result.finalCost ?? null,
+      });
+    }
+
+    return result;
   } catch (error) {
     await jobRepository.update(job.id, {
       status: "FAILED",
@@ -47,29 +50,6 @@ async function processJob(job) {
   }
 }
 
-async function processInstagramJob(job) {
-  console.log(
-    `Instagram job received: ${job.job_id || job.id}`
-  );
-
-  /*
-   * Downloader واقعی اینستاگرام
-   * در مرحله بعد به این بخش متصل می‌شود.
-   */
-
-  await jobRepository.update(job.id, {
-    status: "WAITING_DOWNLOADER",
-  });
-
-  return {
-    success: false,
-    pending: true,
-    reason: "INSTAGRAM_DOWNLOADER_NOT_CONNECTED",
-    jobId: job.job_id || job.id,
-  };
-}
-
 module.exports = {
   processJob,
-  processInstagramJob,
 };
