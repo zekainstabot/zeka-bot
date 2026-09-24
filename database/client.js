@@ -1,13 +1,12 @@
 const databaseConfig = require("../config/database");
-
-let client = null;
+const {
+  getPool,
+  testConnection,
+  closePool,
+} = require("./pool");
 
 function getClient() {
-  if (!client) {
-    throw new Error("Database client has not been initialized");
-  }
-
-  return client;
+  return getPool();
 }
 
 function setClient(databaseClient) {
@@ -15,24 +14,25 @@ function setClient(databaseClient) {
     throw new Error("Database client is required");
   }
 
-  client = databaseClient;
+  if (typeof databaseClient.query !== "function") {
+    throw new TypeError("Database client must provide a query() method");
+  }
+
+  return databaseClient;
+}
+
+async function checkConnection() {
+  return testConnection();
 }
 
 async function close() {
-  if (!client) {
-    return;
-  }
-
-  if (typeof client.end === "function") {
-    await client.end();
-  }
-
-  client = null;
+  await closePool();
 }
 
 module.exports = {
   config: databaseConfig,
   getClient,
   setClient,
+  checkConnection,
   close,
 };
