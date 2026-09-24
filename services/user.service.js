@@ -7,7 +7,7 @@ async function getOrCreateUser(from) {
 
   const telegramUserId = String(from.id);
 
-  let user = await userRepository.findByTelegramUserId(telegramUserId);
+  let user = await userRepository.findByTelegramId(telegramUserId);
 
   if (user) {
     return user;
