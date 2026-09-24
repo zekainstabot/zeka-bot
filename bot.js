@@ -5,6 +5,9 @@ const { close } = require("./database/client");
 const { register, shutdown } = require("./core/shutdown");
 const { getOrCreateUser } = require("./services/user.service");
 const { parseUrl } = require("./services/url.service");
+const {
+  createDownloadRequest,
+} = require("./services/request.service");
 
 let bot = null;
 
@@ -46,8 +49,7 @@ function createBot() {
   bot.help(async (ctx) => {
     await ctx.reply(
       "📖 راهنما\n\n" +
-        "🔗 لینک محتوای موردنظر را برای ربات ارسال کن.\n\n" +
-        "ربات در حال آماده‌سازی سیستم دانلود است."
+        "🔗 لینک محتوای موردنظر را برای ربات ارسال کن."
     );
   });
 
@@ -58,29 +60,46 @@ function createBot() {
       return;
     }
 
-    const parsed = parseUrl(text);
+    try {
+      const user = await getOrCreateUser(ctx.from);
+      const parsed = parseUrl(text);
 
-    if (!parsed.valid) {
+      if (!parsed.valid) {
+        await ctx.reply(
+          "❌ لینک معتبر نیست.\n\n" +
+            "یک لینک کامل مثل این ارسال کن:\n" +
+            "https://www.instagram.com/..."
+        );
+        return;
+      }
+
+      if (!parsed.platform) {
+        await ctx.reply(
+          "⚠️ این لینک متعلق به پلتفرم‌های پشتیبانی‌شده نیست."
+        );
+        return;
+      }
+
+      const request = await createDownloadRequest({
+        userId: user.id,
+        platform: parsed.platform,
+        originalUrl: text,
+        normalizedUrl: parsed.url,
+      });
+
       await ctx.reply(
-        "❌ لینک معتبر نیست.\n\n" +
-          "یک لینک کامل مثل این ارسال کن:\n" +
-          "https://www.instagram.com/..."
+        `✅ درخواست شما ثبت شد.\n\n` +
+          `🆔 درخواست: ${request.request_id}\n` +
+          `📱 پلتفرم: ${request.platform}\n` +
+          `⏳ وضعیت: در انتظار پردازش`
       );
-      return;
-    }
+    } catch (error) {
+      console.error("Download request failed:", error);
 
-    if (!parsed.platform) {
       await ctx.reply(
-        "⚠️ این لینک متعلق به پلتفرم‌های پشتیبانی‌شده نیست."
+        "❌ ثبت درخواست انجام نشد.\nلطفاً دوباره تلاش کنید."
       );
-      return;
     }
-
-    await ctx.reply(
-      `🔗 لینک دریافت شد.\n\n` +
-        `📱 پلتفرم: ${parsed.platform}\n\n` +
-        `⏳ سیستم دانلود این پلتفرم در حال آماده‌سازی است.`
-    );
   });
 
   register(async () => {
