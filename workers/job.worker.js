@@ -9,6 +9,10 @@ const {
   sendFileToUser,
 } = require("../services/delivery.service");
 
+const {
+  deleteFile,
+} = require("../services/file.service");
+
 async function processJob(job) {
   if (!job || !job.id) {
     throw new Error("Valid job is required");
@@ -26,6 +30,8 @@ async function processJob(job) {
     processing_at: startedAt,
   });
 
+  let downloadedFilePath = null;
+
   try {
     let result;
 
@@ -38,8 +44,12 @@ async function processJob(job) {
     }
 
     if (!result?.success) {
-      return result;
+      throw new Error(
+        result?.reason || "Download failed"
+      );
     }
+
+    downloadedFilePath = result.filePath;
 
     const user = await userRepository.findById(
       job.user_id
@@ -74,7 +84,6 @@ async function processJob(job) {
       success: true,
       delivered: true,
       jobId: job.job_id || job.id,
-      filePath: result.filePath,
     };
   } catch (error) {
     await jobRepository.update(job.id, {
@@ -90,6 +99,10 @@ async function processJob(job) {
     );
 
     throw error;
+  } finally {
+    if (downloadedFilePath) {
+      await deleteFile(downloadedFilePath);
+    }
   }
 }
 
