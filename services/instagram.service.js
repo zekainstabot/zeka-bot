@@ -1,7 +1,11 @@
-const jobRepository = require("../repositories/job.repository");
 const {
   downloadInstagramMedia,
 } = require("./instagram.downloader");
+
+const {
+  markDownloading,
+  markDownloaded,
+} = require("./download.service");
 
 async function downloadInstagram(job) {
   if (!job || !job.id) {
@@ -18,23 +22,21 @@ async function downloadInstagram(job) {
     `Instagram download started: ${job.job_id || job.id}`
   );
 
-  await jobRepository.update(job.id, {
-    status: "DOWNLOADING",
-  });
+  await markDownloading(job.id);
 
   const result = await downloadInstagramMedia({
     url,
     jobId: job.job_id || job.id,
   });
 
-  if (!result.success) {
+  if (!result?.success) {
     throw new Error(
-      result.reason || "Instagram download failed"
+      result?.reason || "Instagram download failed"
     );
   }
 
-  await jobRepository.update(job.id, {
-    status: "DOWNLOADED",
+  await markDownloaded(job.id, {
+    contentId: result.contentId || null,
   });
 
   return {
@@ -43,6 +45,7 @@ async function downloadInstagram(job) {
     fileSize: result.fileSize,
     contentType: result.contentType,
     sourceUrl: result.sourceUrl,
+    contentId: result.contentId || null,
     jobId: job.job_id || job.id,
   };
 }
