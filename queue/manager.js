@@ -1,6 +1,8 @@
 const queueConfig = require("../config/queue");
+const { processJob } = require("../workers/job.worker");
 
 const jobs = [];
+
 let processing = false;
 let activeJobs = 0;
 
@@ -11,6 +13,14 @@ function add(job) {
 
   jobs.push(job);
 
+  sortQueue();
+
+  processNext();
+
+  return job;
+}
+
+function sortQueue() {
   jobs.sort((a, b) => {
     const priorityA = Number(a.priority) || 0;
     const priorityB = Number(b.priority) || 0;
@@ -24,10 +34,6 @@ function add(job) {
       new Date(b.created_at || 0).getTime()
     );
   });
-
-  processNext();
-
-  return job;
 }
 
 function getLength() {
@@ -58,9 +64,12 @@ async function processNext() {
 
       activeJobs += 1;
 
-      executeJob(job)
+      processJob(job)
         .catch((error) => {
-          console.error("Queue job failed:", error);
+          console.error(
+            `Queue job failed: ${job.job_id || job.id}`,
+            error
+          );
         })
         .finally(() => {
           activeJobs -= 1;
@@ -72,25 +81,11 @@ async function processNext() {
   }
 }
 
-async function executeJob(job) {
-  console.log(
-    `Queue processing started: ${job.job_id || job.id}`
-  );
-
-  if (typeof job.handler === "function") {
-    return job.handler(job);
-  }
-
-  console.log(
-    `Queue job has no handler yet: ${job.job_id || job.id}`
-  );
-
-  return job;
-}
-
 function remove(jobId) {
   const index = jobs.findIndex(
-    (job) => job.id === jobId || job.job_id === jobId
+    (job) =>
+      job.id === jobId ||
+      job.job_id === jobId
   );
 
   if (index === -1) {
