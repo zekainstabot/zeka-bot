@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node app.js",
     "dev": "node app.js",
-    "test": "node --test"
+    "test": "node --test",
+    "health": "node scripts/health-check.js"
   },
   "engines": {
     "node": ">=22"
