@@ -1,5 +1,21 @@
 const { getClient } = require("../database/client");
 
+async function findById(id) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function findByTelegramId(telegramUserId) {
   const db = getClient();
 
@@ -85,6 +101,7 @@ async function updateByTelegramId(telegramUserId, updates) {
 }
 
 module.exports = {
+  findById,
   findByTelegramId,
   create,
   updateByTelegramId,
