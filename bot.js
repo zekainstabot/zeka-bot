@@ -8,6 +8,9 @@ const { parseUrl } = require("./services/url.service");
 const {
   createDownloadRequest,
 } = require("./services/request.service");
+const {
+  setBot: setDeliveryBot,
+} = require("./services/delivery.service");
 
 let bot = null;
 
@@ -21,6 +24,8 @@ function createBot() {
   }
 
   bot = new Telegraf(config.bot.token);
+
+  setDeliveryBot(bot);
 
   bot.start(async (ctx) => {
     try {
