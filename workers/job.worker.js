@@ -1,4 +1,3 @@
-const jobRepository = require("../repositories/job.repository");
 const userRepository = require("../repositories/user.repository");
 
 const {
@@ -8,6 +7,12 @@ const {
 const {
   sendFileToUser,
 } = require("../services/delivery.service");
+
+const {
+  markSending,
+  markCompleted,
+  markFailed,
+} = require("../services/download.service");
 
 const {
   deleteFile,
@@ -21,14 +26,6 @@ async function processJob(job) {
   console.log(
     `Worker started job: ${job.job_id || job.id}`
   );
-
-  const startedAt = new Date();
-
-  await jobRepository.update(job.id, {
-    status: "PROCESSING",
-    started_at: startedAt,
-    processing_at: startedAt,
-  });
 
   let downloadedFilePath = null;
 
@@ -61,10 +58,7 @@ async function processJob(job) {
       );
     }
 
-    await jobRepository.update(job.id, {
-      status: "SENDING",
-      sending_at: new Date(),
-    });
+    await markSending(job.id);
 
     await sendFileToUser({
       telegramUserId: user.telegram_user_id,
@@ -74,10 +68,8 @@ async function processJob(job) {
         "🤖 Zeka",
     });
 
-    await jobRepository.update(job.id, {
-      status: "COMPLETED",
-      completed_at: new Date(),
-      final_cost: result.finalCost ?? null,
+    await markCompleted(job.id, {
+      finalCost: result.finalCost ?? null,
     });
 
     return {
@@ -86,12 +78,11 @@ async function processJob(job) {
       jobId: job.job_id || job.id,
     };
   } catch (error) {
-    await jobRepository.update(job.id, {
-      status: "FAILED",
-      failed_at: new Date(),
-      error_code: "WORKER_ERROR",
-      error_message: error.message,
-    });
+    await markFailed(
+      job.id,
+      error,
+      "WORKER_ERROR"
+    );
 
     console.error(
       `Worker failed job: ${job.job_id || job.id}`,
