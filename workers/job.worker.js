@@ -1,5 +1,13 @@
 const jobRepository = require("../repositories/job.repository");
-const { downloadInstagram } = require("../services/instagram.service");
+const userRepository = require("../repositories/user.repository");
+
+const {
+  downloadInstagram,
+} = require("../services/instagram.service");
+
+const {
+  sendFileToUser,
+} = require("../services/delivery.service");
 
 async function processJob(job) {
   if (!job || !job.id) {
@@ -29,15 +37,45 @@ async function processJob(job) {
       );
     }
 
-    if (result?.success) {
-      await jobRepository.update(job.id, {
-        status: "COMPLETED",
-        completed_at: new Date(),
-        final_cost: result.finalCost ?? null,
-      });
+    if (!result?.success) {
+      return result;
     }
 
-    return result;
+    const user = await userRepository.findById(
+      job.user_id
+    );
+
+    if (!user) {
+      throw new Error(
+        `User not found: ${job.user_id}`
+      );
+    }
+
+    await jobRepository.update(job.id, {
+      status: "SENDING",
+      sending_at: new Date(),
+    });
+
+    await sendFileToUser({
+      telegramUserId: user.telegram_user_id,
+      filePath: result.filePath,
+      caption:
+        "✅ دانلود با موفقیت انجام شد.\n\n" +
+        "🤖 Zeka",
+    });
+
+    await jobRepository.update(job.id, {
+      status: "COMPLETED",
+      completed_at: new Date(),
+      final_cost: result.finalCost ?? null,
+    });
+
+    return {
+      success: true,
+      delivered: true,
+      jobId: job.job_id || job.id,
+      filePath: result.filePath,
+    };
   } catch (error) {
     await jobRepository.update(job.id, {
       status: "FAILED",
@@ -45,6 +83,11 @@ async function processJob(job) {
       error_code: "WORKER_ERROR",
       error_message: error.message,
     });
+
+    console.error(
+      `Worker failed job: ${job.job_id || job.id}`,
+      error
+    );
 
     throw error;
   }
