@@ -1,4 +1,7 @@
 const jobRepository = require("../repositories/job.repository");
+const {
+  downloadInstagramMedia,
+} = require("./instagram.downloader");
 
 async function downloadInstagram(job) {
   if (!job || !job.id) {
@@ -12,34 +15,35 @@ async function downloadInstagram(job) {
   const url = job.normalized_url || job.original_url;
 
   console.log(
-    `Instagram downloader started: ${job.job_id || job.id}`
+    `Instagram download started: ${job.job_id || job.id}`
   );
 
   await jobRepository.update(job.id, {
     status: "DOWNLOADING",
   });
 
-  /*
-   * موتور واقعی دانلود Instagram در مرحله بعد
-   * به این بخش متصل می‌شود.
-   *
-   * خروجی استاندارد Downloader:
-   *
-   * {
-   *   success: true,
-   *   filePath: "...",
-   *   contentType: "video",
-   *   title: "...",
-   *   sourceUrl: url
-   * }
-   */
+  const result = await downloadInstagramMedia({
+    url,
+    jobId: job.job_id || job.id,
+  });
+
+  if (!result.success) {
+    throw new Error(
+      result.reason || "Instagram download failed"
+    );
+  }
+
+  await jobRepository.update(job.id, {
+    status: "DOWNLOADED",
+  });
 
   return {
-    success: false,
-    pending: true,
-    reason: "INSTAGRAM_DOWNLOADER_ENGINE_NOT_CONNECTED",
+    success: true,
+    filePath: result.filePath,
+    fileSize: result.fileSize,
+    contentType: result.contentType,
+    sourceUrl: result.sourceUrl,
     jobId: job.job_id || job.id,
-    sourceUrl: url,
   };
 }
 
