@@ -1,4 +1,5 @@
 const userRepository = require("../repositories/user.repository");
+const creditRepository = require("../repositories/credit.repository");
 
 async function getOrCreateUser(from) {
   if (!from || !from.id) {
@@ -7,13 +8,19 @@ async function getOrCreateUser(from) {
 
   const telegramUserId = String(from.id);
 
-  let user = await userRepository.findByTelegramId(telegramUserId);
+  let user =
+    await userRepository.findByTelegramId(
+      telegramUserId
+    );
 
   if (user) {
     return user;
   }
 
-  const displayName = [from.first_name, from.last_name]
+  const displayName = [
+    from.first_name,
+    from.last_name,
+  ]
     .filter(Boolean)
     .join(" ")
     .trim();
@@ -22,6 +29,14 @@ async function getOrCreateUser(from) {
     telegramUserId,
     username: from.username || null,
     displayName: displayName || null,
+  });
+
+  await creditRepository.create({
+    userId: user.id,
+    creditType: "DOWNLOAD",
+    amount: 12,
+    remainingAmount: 12,
+    source: "WELCOME",
   });
 
   return user;
