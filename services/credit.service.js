@@ -1,4 +1,3 @@
-```js
 const creditRepository = require("../repositories/credit.repository");
 const creditReservationRepository = require("../repositories/credit.reservation.repository");
 const { getPool } = require("../database/pool");
@@ -23,11 +22,10 @@ async function reserveCredit({
   try {
     await client.query("BEGIN");
 
-    const accounts =
-      await creditRepository.findAvailablePackages(
-        userId,
-        client
-      );
+    const accounts = await creditRepository.findAvailablePackages(
+      userId,
+      client
+    );
 
     let remainingToReserve = Number(amount);
     const reservations = [];
@@ -37,8 +35,7 @@ async function reserveCredit({
         break;
       }
 
-      const available =
-        Number(account.remaining_amount);
+      const available = Number(account.remaining_amount);
 
       if (available <= 0) {
         continue;
@@ -178,8 +175,7 @@ async function releaseCredit(jobId) {
       }
 
       const newRemaining =
-        Number(targetAccount.remaining_amount) +
-        amount;
+        Number(targetAccount.remaining_amount) + amount;
 
       await creditRepository.updateRemaining(
         targetAccount.id,
@@ -223,4 +219,3 @@ module.exports = {
   releaseCredit,
   getBalance,
 };
-```
