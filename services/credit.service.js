@@ -1,3 +1,4 @@
+```js
 const creditRepository = require("../repositories/credit.repository");
 const creditReservationRepository = require("../repositories/credit.reservation.repository");
 const { getPool } = require("../database/pool");
@@ -164,17 +165,11 @@ async function releaseCredit(jobId) {
     for (const reservation of reservations) {
       const amount = Number(reservation.amount);
 
-      const account =
-        await creditRepository.findByUserId(
-          reservation.user_id,
+      const targetAccount =
+        await creditRepository.findByIdForUpdate(
+          reservation.credit_account_id,
           client
         );
-
-      const targetAccount = account.find(
-        (item) =>
-          Number(item.id) ===
-          Number(reservation.credit_account_id)
-      );
 
       if (!targetAccount) {
         throw new Error(
@@ -228,3 +223,4 @@ module.exports = {
   releaseCredit,
   getBalance,
 };
+```
