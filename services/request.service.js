@@ -1,5 +1,6 @@
 const requestRepository = require("../repositories/request.repository");
 const { createAndQueueJob } = require("../queue/service");
+const { isPlatformEnabled } = require("./settings.service");
 
 async function createDownloadRequest({
   userId,
@@ -17,6 +18,19 @@ async function createDownloadRequest({
 
   if (!platform) {
     throw new Error("Platform is required");
+  }
+
+  const platformEnabled = await isPlatformEnabled(platform);
+
+  if (!platformEnabled) {
+    const error = new Error(
+      `Platform is currently disabled: ${platform}`
+    );
+
+    error.code = "PLATFORM_DISABLED";
+    error.platform = platform;
+
+    throw error;
   }
 
   if (!originalUrl) {
