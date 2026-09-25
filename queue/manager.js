@@ -3,7 +3,6 @@ const { processJob: defaultProcessJob } = require("../workers/job.worker");
 
 const jobs = [];
 
-let processing = false;
 let activeJobs = 0;
 let processJob = defaultProcessJob;
 
@@ -64,35 +63,35 @@ function resetProcessor() {
 }
 
 async function processNext() {
-  if (processing) {
-    return;
-  }
+  const maxConcurrent =
+    queueConfig.normal.maxConcurrent;
 
-  processing = true;
+  while (
+    jobs.length > 0 &&
+    activeJobs < maxConcurrent
+  ) {
+    const job = jobs.shift();
 
-  try {
-    while (
-      jobs.length > 0 &&
-      activeJobs < queueConfig.normal.maxConcurrent
-    ) {
-      const job = jobs.shift();
+    activeJobs += 1;
 
-      activeJobs += 1;
+    Promise.resolve()
+      .then(() => processJob(job))
+      .catch((error) => {
+        console.error(
+          `Queue job failed: ${job.job_id || job.id}`,
+          error
+        );
+      })
+      .finally(() => {
+        activeJobs -= 1;
 
-      processJob(job)
-        .catch((error) => {
+        processNext().catch((error) => {
           console.error(
-            `Queue job failed: ${job.job_id || job.id}`,
+            "Queue processing failed:",
             error
           );
-        })
-        .finally(() => {
-          activeJobs -= 1;
-          processNext();
         });
-    }
-  } finally {
-    processing = false;
+      });
   }
 }
 
