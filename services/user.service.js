@@ -1,5 +1,6 @@
 const userRepository = require("../repositories/user.repository");
 const creditRepository = require("../repositories/credit.repository");
+const creditLedgerRepository = require("../repositories/credit.ledger.repository");
 
 async function getOrCreateUser(from) {
   if (!from || !from.id) {
@@ -31,12 +32,25 @@ async function getOrCreateUser(from) {
     displayName: displayName || null,
   });
 
-  await creditRepository.create({
+  const creditAccount =
+    await creditRepository.create({
+      userId: user.id,
+      creditType: "DOWNLOAD",
+      amount: 12,
+      remainingAmount: 12,
+      source: "WELCOME",
+    });
+
+  await creditLedgerRepository.create({
     userId: user.id,
-    creditType: "DOWNLOAD",
+    creditAccountId: creditAccount.id,
+    entryType: "CREDIT",
     amount: 12,
-    remainingAmount: 12,
-    source: "WELCOME",
+    balanceBefore: 0,
+    balanceAfter: 12,
+    referenceType: "WELCOME",
+    referenceId: creditAccount.id,
+    description: "Welcome download credits",
   });
 
   return user;
