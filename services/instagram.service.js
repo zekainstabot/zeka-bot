@@ -45,6 +45,7 @@ async function downloadInstagram(job) {
     fileSize: result.fileSize,
     contentType: result.contentType,
     sourceUrl: result.sourceUrl,
+    caption: result.caption || "",
     contentId: result.contentId || null,
     jobId: job.job_id || job.id,
   };
