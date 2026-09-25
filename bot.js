@@ -113,6 +113,14 @@ function createBot() {
         return;
       }
 
+      if (error && error.code === "PLATFORM_DISABLED") {
+        await ctx.reply(
+          `⚠️ دانلود از ${error.platform} در حال حاضر غیرفعال است.\n\n` +
+            "لطفاً بعداً دوباره تلاش کن."
+        );
+        return;
+      }
+
       await ctx.reply(
         "❌ ثبت درخواست انجام نشد.\nلطفاً دوباره تلاش کنید."
       );
