@@ -88,7 +88,7 @@ async function downloadInstagramMedia({
     `Instagram yt-dlp download started: ${cleanUrl}`
   );
 
-  await ytDlp(cleanUrl, {
+  const result = await ytDlp(cleanUrl, {
     output: outputTemplate,
 
     noPlaylist: true,
@@ -109,6 +109,10 @@ async function downloadInstagramMedia({
     socketTimeout: 30,
 
     noCheckCertificates: true,
+
+    dumpSingleJson: true,
+
+    skipDownload: false,
   });
 
   const safeJobId = String(jobId).replace(
@@ -152,8 +156,22 @@ async function downloadInstagramMedia({
     );
   }
 
+  let caption = "";
+
+  if (result && typeof result.description === "string") {
+    caption = result.description.trim();
+  }
+
+  if (!caption && result && typeof result.title === "string") {
+    caption = result.title.trim();
+  }
+
   console.log(
     `Instagram download completed: ${filePath}`
+  );
+
+  console.log(
+    `Instagram caption length: ${caption.length}`
   );
 
   return {
@@ -162,6 +180,7 @@ async function downloadInstagramMedia({
     fileSize: stats.size,
     contentType: "video",
     sourceUrl: cleanUrl,
+    caption,
   };
 }
 
