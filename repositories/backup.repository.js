@@ -174,6 +174,7 @@ async function deleteById(id) {
     `
       DELETE FROM backups
       WHERE id = $1
+      RETURNING *
     `,
     [id]
   );
