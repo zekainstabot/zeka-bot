@@ -1,16 +1,16 @@
 const jobRepository = require("../repositories/job.repository");
 const requestRepository = require("../repositories/request.repository");
 
-async function updateRequestStatus(jobId, status) {
+async function updateRequest(jobId, updates) {
   const job = await jobRepository.findById(jobId);
 
   if (!job || !job.request_id) {
     return null;
   }
 
-  return requestRepository.updateStatus(
+  return requestRepository.update(
     job.request_id,
-    status
+    updates
   );
 }
 
@@ -27,7 +27,10 @@ async function markDownloading(jobId) {
     processing_at: now,
   });
 
-  await updateRequestStatus(jobId, "PROCESSING");
+  await updateRequest(jobId, {
+    status: "PROCESSING",
+    started_at: now,
+  });
 
   return job;
 }
@@ -42,7 +45,9 @@ async function markDownloaded(jobId, data = {}) {
     content_id: data.contentId ?? null,
   });
 
-  await updateRequestStatus(jobId, "PROCESSING");
+  await updateRequest(jobId, {
+    status: "PROCESSING",
+  });
 
   return job;
 }
@@ -57,7 +62,9 @@ async function markSending(jobId) {
     sending_at: new Date(),
   });
 
-  await updateRequestStatus(jobId, "PROCESSING");
+  await updateRequest(jobId, {
+    status: "PROCESSING",
+  });
 
   return job;
 }
@@ -67,13 +74,19 @@ async function markCompleted(jobId, data = {}) {
     throw new Error("Job ID is required");
   }
 
+  const completedAt = new Date();
+
   const job = await jobRepository.update(jobId, {
     status: "COMPLETED",
-    completed_at: new Date(),
+    completed_at: completedAt,
     final_cost: data.finalCost ?? null,
   });
 
-  await updateRequestStatus(jobId, "COMPLETED");
+  await updateRequest(jobId, {
+    status: "COMPLETED",
+    final_cost: data.finalCost ?? null,
+    completed_at: completedAt,
+  });
 
   return job;
 }
@@ -92,14 +105,20 @@ async function markFailed(
       ? error.message
       : String(error || "Unknown error");
 
+  const failedAt = new Date();
+
   const job = await jobRepository.update(jobId, {
     status: "FAILED",
-    failed_at: new Date(),
+    failed_at: failedAt,
     error_code: errorCode,
     error_message: message,
   });
 
-  await updateRequestStatus(jobId, "FAILED");
+  await updateRequest(jobId, {
+    status: "FAILED",
+    error_code: errorCode,
+    error_message: message,
+  });
 
   return job;
 }
