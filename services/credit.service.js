@@ -89,6 +89,131 @@ async function reserveCredit({
   }
 }
 
+async function consumeCredit(jobId) {
+  if (!jobId) {
+    throw new Error("Job ID is required");
+  }
+
+  const pool = getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const reservations =
+      await creditReservationRepository.findActiveByJobId(
+        jobId,
+        client
+      );
+
+    if (!reservations.length) {
+      throw new Error(
+        `No active credit reservation found for job: ${jobId}`
+      );
+    }
+
+    const consumed = [];
+
+    for (const reservation of reservations) {
+      const result =
+        await creditReservationRepository.markConsumed(
+          reservation.id,
+          client
+        );
+
+      if (result) {
+        consumed.push(result);
+      }
+    }
+
+    await client.query("COMMIT");
+
+    return consumed;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function releaseCredit(jobId) {
+  if (!jobId) {
+    throw new Error("Job ID is required");
+  }
+
+  const pool = getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const reservations =
+      await creditReservationRepository.findActiveByJobId(
+        jobId,
+        client
+      );
+
+    if (!reservations.length) {
+      await client.query("COMMIT");
+      return [];
+    }
+
+    const released = [];
+
+    for (const reservation of reservations) {
+      const amount = Number(reservation.amount);
+
+      const account =
+        await creditRepository.findByUserId(
+          reservation.user_id,
+          client
+        );
+
+      const targetAccount = account.find(
+        (item) =>
+          Number(item.id) ===
+          Number(reservation.credit_account_id)
+      );
+
+      if (!targetAccount) {
+        throw new Error(
+          `Credit account not found: ${reservation.credit_account_id}`
+        );
+      }
+
+      const newRemaining =
+        Number(targetAccount.remaining_amount) +
+        amount;
+
+      await creditRepository.updateRemaining(
+        targetAccount.id,
+        newRemaining,
+        client
+      );
+
+      const result =
+        await creditReservationRepository.markReleased(
+          reservation.id,
+          client
+        );
+
+      if (result) {
+        released.push(result);
+      }
+    }
+
+    await client.query("COMMIT");
+
+    return released;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function getBalance(userId) {
   if (!userId) {
     throw new Error("User ID is required");
@@ -99,5 +224,7 @@ async function getBalance(userId) {
 
 module.exports = {
   reserveCredit,
+  consumeCredit,
+  releaseCredit,
   getBalance,
 };
