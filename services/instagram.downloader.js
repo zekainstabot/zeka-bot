@@ -111,6 +111,8 @@ async function downloadInstagramMedia({
     noCheckCertificates: true,
 
     dumpSingleJson: true,
+
+noSimulate: true,
   });
 
   const safeJobId = String(jobId).replace(
