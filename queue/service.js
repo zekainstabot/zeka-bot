@@ -1,5 +1,6 @@
 const jobRepository = require("../repositories/job.repository");
 const queueManager = require("./manager");
+const { reserveCredit, releaseCredit } = require("../services/credit.service");
 
 async function createAndQueueJob({
   request,
@@ -32,78 +33,54 @@ async function createAndQueueJob({
     status: "WAITING",
   });
 
+  let creditReserved = false;
+
   try {
+    await reserveCredit({
+      userId: request.user_id,
+      amount: 1,
+      requestId: request.id,
+      jobId: job.id,
+    });
+
+    creditReserved = true;
+
     queueManager.add(job);
+
+    return job;
   } catch (error) {
     console.error(
-      `Failed to add job to queue: ${job.job_id || job.id}`,
+      `Failed to queue job: ${job.job_id || job.id}`,
       error
     );
+
+    if (creditReserved) {
+      try {
+        await releaseCredit(job.id);
+      } catch (releaseError) {
+        console.error(
+          `Failed to release credit for job: ${job.job_id || job.id}`,
+          releaseError
+        );
+      }
+    }
 
     try {
       await jobRepository.updateStatus(
         job.id,
         "FAILED"
       );
-    } catch (updateError) {
+    } catch (statusError) {
       console.error(
         `Failed to mark job as FAILED: ${job.job_id || job.id}`,
-        updateError
+        statusError
       );
     }
 
     throw error;
   }
-
-  return job;
-}
-
-async function getJobById(id) {
-  if (!id) {
-    return null;
-  }
-
-  return jobRepository.findById(id);
-}
-
-async function getJobByJobId(jobId) {
-  if (!jobId) {
-    return null;
-  }
-
-  return jobRepository.findByJobId(jobId);
-}
-
-async function getJobsByRequestId(requestId) {
-  if (!requestId) {
-    return [];
-  }
-
-  return jobRepository.findByRequestId(requestId);
-}
-
-async function cancelJob(id) {
-  if (!id) {
-    throw new Error("Job ID is required");
-  }
-
-  const removed = queueManager.remove(id);
-
-  const job = await jobRepository.updateStatus(
-    id,
-    "CANCELLED"
-  );
-
-  return {
-    job,
-    removedFromQueue: removed,
-  };
 }
 
 module.exports = {
   createAndQueueJob,
-  getJobById,
-  getJobByJobId,
-  getJobsByRequestId,
-  cancelJob,
 };
