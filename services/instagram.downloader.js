@@ -62,6 +62,50 @@ function cleanInstagramUrl(value) {
   }
 }
 
+async function getInstagramMetadata(url) {
+  console.log(
+    "Instagram metadata extraction started"
+  );
+
+  const metadata = await ytDlp(url, {
+    noPlaylist: true,
+
+    noWarnings: true,
+
+    noCheckCertificates: true,
+
+    dumpSingleJson: true,
+
+    skipDownload: true,
+  });
+
+  let caption = "";
+
+  if (
+    metadata &&
+    typeof metadata.description === "string"
+  ) {
+    caption = metadata.description.trim();
+  }
+
+  if (
+    !caption &&
+    metadata &&
+    typeof metadata.title === "string"
+  ) {
+    caption = metadata.title.trim();
+  }
+
+  console.log(
+    `Instagram metadata caption length: ${caption.length}`
+  );
+
+  return {
+    caption,
+    metadata,
+  };
+}
+
 async function downloadInstagramMedia({
   url,
   jobId,
@@ -82,13 +126,28 @@ async function downloadInstagramMedia({
 
   ensureDownloadDirectory();
 
-  const outputTemplate = createOutputTemplate(jobId);
+  const outputTemplate =
+    createOutputTemplate(jobId);
+
+  let caption = "";
+
+  try {
+    const metadata =
+      await getInstagramMetadata(cleanUrl);
+
+    caption = metadata.caption || "";
+  } catch (metadataError) {
+    console.error(
+      "Instagram metadata extraction failed:",
+      metadataError?.message || metadataError
+    );
+  }
 
   console.log(
     `Instagram yt-dlp download started: ${cleanUrl}`
   );
 
-  const result = await ytDlp(cleanUrl, {
+  await ytDlp(cleanUrl, {
     output: outputTemplate,
 
     noPlaylist: true,
@@ -109,10 +168,6 @@ async function downloadInstagramMedia({
     socketTimeout: 30,
 
     noCheckCertificates: true,
-
-    dumpSingleJson: true,
-
-noSimulate: true,
   });
 
   const safeJobId = String(jobId).replace(
@@ -122,7 +177,9 @@ noSimulate: true,
 
   const files = fs
     .readdirSync(DOWNLOAD_ROOT)
-    .map((name) => path.join(DOWNLOAD_ROOT, name))
+    .map((name) =>
+      path.join(DOWNLOAD_ROOT, name)
+    )
     .filter((filePath) => {
       if (!fs.statSync(filePath).isFile()) {
         return false;
@@ -156,22 +213,12 @@ noSimulate: true,
     );
   }
 
-  let caption = "";
-
-  if (result && typeof result.description === "string") {
-    caption = result.description.trim();
-  }
-
-  if (!caption && result && typeof result.title === "string") {
-    caption = result.title.trim();
-  }
-
   console.log(
     `Instagram download completed: ${filePath}`
   );
 
   console.log(
-    `Instagram caption length: ${caption.length}`
+    `Instagram final caption length: ${caption.length}`
   );
 
   return {
