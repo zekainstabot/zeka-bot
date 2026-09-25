@@ -28,6 +28,40 @@ function createOutputTemplate(jobId) {
   );
 }
 
+function cleanInstagramUrl(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  let cleaned = value.trim();
+
+  if (!cleaned) {
+    return null;
+  }
+
+  const markdownMatch = cleaned.match(
+    /^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/
+  );
+
+  if (markdownMatch) {
+    cleaned = markdownMatch[2];
+  }
+
+  cleaned = cleaned
+    .replace(/^["']+|["']+$/g, "")
+    .trim();
+
+  try {
+    const parsed = new URL(cleaned);
+
+    parsed.hash = "";
+
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
 async function downloadInstagramMedia({
   url,
   jobId,
@@ -40,15 +74,21 @@ async function downloadInstagramMedia({
     throw new Error("Job ID is required");
   }
 
+  const cleanUrl = cleanInstagramUrl(url);
+
+  if (!cleanUrl) {
+    throw new Error("Invalid Instagram URL");
+  }
+
   ensureDownloadDirectory();
 
   const outputTemplate = createOutputTemplate(jobId);
 
   console.log(
-    `Instagram yt-dlp download started: ${url}`
+    `Instagram yt-dlp download started: ${cleanUrl}`
   );
 
-  await ytDlp(url, {
+  await ytDlp(cleanUrl, {
     output: outputTemplate,
 
     noPlaylist: true,
@@ -71,6 +111,11 @@ async function downloadInstagramMedia({
     noCheckCertificates: true,
   });
 
+  const safeJobId = String(jobId).replace(
+    /[^a-zA-Z0-9_-]/g,
+    "_"
+  );
+
   const files = fs
     .readdirSync(DOWNLOAD_ROOT)
     .map((name) => path.join(DOWNLOAD_ROOT, name))
@@ -82,10 +127,7 @@ async function downloadInstagramMedia({
       return filePath.startsWith(
         path.join(
           DOWNLOAD_ROOT,
-          `${String(jobId).replace(
-            /[^a-zA-Z0-9_-]/g,
-            "_"
-          )}_`
+          `${safeJobId}_`
         )
       );
     });
@@ -119,7 +161,7 @@ async function downloadInstagramMedia({
     filePath,
     fileSize: stats.size,
     contentType: "video",
-    sourceUrl: url,
+    sourceUrl: cleanUrl,
   };
 }
 
