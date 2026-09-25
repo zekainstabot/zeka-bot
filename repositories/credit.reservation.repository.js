@@ -16,7 +16,9 @@ async function create(data, client = null) {
   }
 
   if (!data.amount || data.amount <= 0) {
-    throw new Error("Reservation amount must be greater than zero");
+    throw new Error(
+      "Reservation amount must be greater than zero"
+    );
   }
 
   const result = await db.query(
@@ -60,7 +62,10 @@ async function findByJobId(jobId, client = null) {
   return result.rows;
 }
 
-async function findActiveByJobId(jobId, client = null) {
+async function findActiveByJobId(
+  jobId,
+  client = null
+) {
   const db = getDb(client);
 
   const result = await db.query(
@@ -70,6 +75,7 @@ async function findActiveByJobId(jobId, client = null) {
       WHERE job_id = $1
         AND status = 'RESERVED'
       ORDER BY id ASC
+      FOR UPDATE
     `,
     [jobId]
   );
