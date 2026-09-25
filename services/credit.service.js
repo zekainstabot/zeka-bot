@@ -13,7 +13,9 @@ async function reserveCredit({
   }
 
   if (amount <= 0) {
-    throw new Error("Credit amount must be greater than zero");
+    throw new Error(
+      "Credit amount must be greater than zero"
+    );
   }
 
   const pool = getPool();
@@ -22,10 +24,11 @@ async function reserveCredit({
   try {
     await client.query("BEGIN");
 
-    const accounts = await creditRepository.findAvailablePackages(
-      userId,
-      client
-    );
+    const accounts =
+      await creditRepository.findAvailablePackages(
+        userId,
+        client
+      );
 
     let remainingToReserve = Number(amount);
     const reservations = [];
@@ -35,7 +38,8 @@ async function reserveCredit({
         break;
       }
 
-      const available = Number(account.remaining_amount);
+      const available =
+        Number(account.remaining_amount);
 
       if (available <= 0) {
         continue;
@@ -98,35 +102,73 @@ async function consumeCredit(jobId) {
   try {
     await client.query("BEGIN");
 
-    const reservations =
+    const activeReservations =
       await creditReservationRepository.findActiveByJobId(
         jobId,
         client
       );
 
-    if (!reservations.length) {
+    if (activeReservations.length > 0) {
+      const consumed = [];
+
+      for (const reservation of activeReservations) {
+        const result =
+          await creditReservationRepository.markConsumed(
+            reservation.id,
+            client
+          );
+
+        if (result) {
+          consumed.push(result);
+        }
+      }
+
+      await client.query("COMMIT");
+
+      return consumed;
+    }
+
+    const allReservations =
+      await creditReservationRepository.findByJobId(
+        jobId,
+        client
+      );
+
+    if (!allReservations.length) {
       throw new Error(
-        `No active credit reservation found for job: ${jobId}`
+        `No credit reservation found for job: ${jobId}`
       );
     }
 
-    const consumed = [];
+    const hasConsumed =
+      allReservations.some(
+        (reservation) =>
+          reservation.status === "CONSUMED"
+      );
 
-    for (const reservation of reservations) {
-      const result =
-        await creditReservationRepository.markConsumed(
-          reservation.id,
-          client
-        );
+    if (hasConsumed) {
+      await client.query("COMMIT");
+      return allReservations.filter(
+        (reservation) =>
+          reservation.status === "CONSUMED"
+      );
+    }
 
-      if (result) {
-        consumed.push(result);
-      }
+    const hasReleased =
+      allReservations.some(
+        (reservation) =>
+          reservation.status === "RELEASED"
+      );
+
+    if (hasReleased) {
+      throw new Error(
+        `Credit reservation already released for job: ${jobId}`
+      );
     }
 
     await client.query("COMMIT");
 
-    return consumed;
+    return [];
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -146,21 +188,60 @@ async function releaseCredit(jobId) {
   try {
     await client.query("BEGIN");
 
-    const reservations =
+    const activeReservations =
       await creditReservationRepository.findActiveByJobId(
         jobId,
         client
       );
 
-    if (!reservations.length) {
+    if (!activeReservations.length) {
+      const allReservations =
+        await creditReservationRepository.findByJobId(
+          jobId,
+          client
+        );
+
+      if (!allReservations.length) {
+        await client.query("COMMIT");
+        return [];
+      }
+
+      const hasReleased =
+        allReservations.some(
+          (reservation) =>
+            reservation.status === "RELEASED"
+        );
+
+      if (hasReleased) {
+        await client.query("COMMIT");
+
+        return allReservations.filter(
+          (reservation) =>
+            reservation.status === "RELEASED"
+        );
+      }
+
+      const hasConsumed =
+        allReservations.some(
+          (reservation) =>
+            reservation.status === "CONSUMED"
+        );
+
+      if (hasConsumed) {
+        throw new Error(
+          `Credit reservation already consumed for job: ${jobId}`
+        );
+      }
+
       await client.query("COMMIT");
       return [];
     }
 
     const released = [];
 
-    for (const reservation of reservations) {
-      const amount = Number(reservation.amount);
+    for (const reservation of activeReservations) {
+      const amount =
+        Number(reservation.amount);
 
       const targetAccount =
         await creditRepository.findByIdForUpdate(
@@ -175,7 +256,8 @@ async function releaseCredit(jobId) {
       }
 
       const newRemaining =
-        Number(targetAccount.remaining_amount) + amount;
+        Number(targetAccount.remaining_amount) +
+        amount;
 
       await creditRepository.updateRemaining(
         targetAccount.id,
