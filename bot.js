@@ -143,23 +143,6 @@ process.once("SIGTERM", async () => {
 async function startBot() {
   const telegramBot = createBot();
 
-  console.log("Testing Telegram API connection...");
-
-  const botInfo = await telegramBot.telegram.getMe();
-
-  console.log(
-    `Telegram API connection OK: @${botInfo.username} (ID: ${botInfo.id})`
-  );
-
-  console.log("Testing Telegram sendMessage...");
-
-  await telegramBot.telegram.sendMessage(
-    "7570149422",
-    "✅ Telegram POST test successful"
-  );
-
-  console.log("Telegram sendMessage test OK.");
-
   await telegramBot.launch();
 
   console.log("Telegram bot started.");
