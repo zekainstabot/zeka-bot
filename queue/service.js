@@ -32,7 +32,28 @@ async function createAndQueueJob({
     status: "WAITING",
   });
 
-  queueManager.add(job);
+  try {
+    queueManager.add(job);
+  } catch (error) {
+    console.error(
+      `Failed to add job to queue: ${job.job_id || job.id}`,
+      error
+    );
+
+    try {
+      await jobRepository.updateStatus(
+        job.id,
+        "FAILED"
+      );
+    } catch (updateError) {
+      console.error(
+        `Failed to mark job as FAILED: ${job.job_id || job.id}`,
+        updateError
+      );
+    }
+
+    throw error;
+  }
 
   return job;
 }
