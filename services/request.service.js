@@ -23,11 +23,31 @@ async function createDownloadRequest({
     throw new Error("Original URL is required");
   }
 
+  const finalNormalizedUrl =
+    normalizedUrl || originalUrl;
+
+  const activeRequest =
+    await requestRepository.findActiveByUserAndUrl(
+      userId,
+      finalNormalizedUrl
+    );
+
+  if (activeRequest) {
+    const error = new Error(
+      "An active request already exists for this URL"
+    );
+
+    error.code = "DUPLICATE_ACTIVE_REQUEST";
+    error.request = activeRequest;
+
+    throw error;
+  }
+
   const request = await requestRepository.create({
     userId,
     platform,
     originalUrl,
-    normalizedUrl: normalizedUrl || originalUrl,
+    normalizedUrl: finalNormalizedUrl,
     requestType,
     estimatedCost,
     isHeavy,
@@ -63,7 +83,9 @@ async function createDownloadRequest({
           error_message:
             error instanceof Error
               ? error.message
-              : String(error || "Failed to create job"),
+              : String(
+                  error || "Failed to create job"
+                ),
         }
       );
     } catch (requestError) {
@@ -80,19 +102,17 @@ async function createDownloadRequest({
 }
 
 async function getRequestById(id) {
-  if (!id) {
-    return null;
-  }
+  if (!id) return null;
 
   return requestRepository.findById(id);
 }
 
 async function getRequestByRequestId(requestId) {
-  if (!requestId) {
-    return null;
-  }
+  if (!requestId) return null;
 
-  return requestRepository.findByRequestId(requestId);
+  return requestRepository.findByRequestId(
+    requestId
+  );
 }
 
 async function updateRequestStatus(id, status) {
@@ -104,7 +124,10 @@ async function updateRequestStatus(id, status) {
     throw new Error("Request status is required");
   }
 
-  return requestRepository.updateStatus(id, status);
+  return requestRepository.updateStatus(
+    id,
+    status
+  );
 }
 
 module.exports = {
