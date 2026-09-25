@@ -31,7 +31,6 @@ bot.start(async (ctx) => {
 try {
 const user = await getOrCreateUser(ctx.from);
 
-```
   const name =
     user.display_name ||
     user.username ||
@@ -50,7 +49,6 @@ const user = await getOrCreateUser(ctx.from);
     "❌ در ثبت اطلاعات شما مشکلی پیش آمد.\nلطفاً دوباره تلاش کنید."
   );
 }
-```
 
 });
 
@@ -64,7 +62,6 @@ await ctx.reply(
 bot.on("text", async (ctx) => {
 const text = ctx.message.text.trim();
 
-```
 if (!text || text.startsWith("/")) {
   return;
 }
@@ -103,58 +100,3 @@ try {
     `✅ درخواست شما ثبت شد.\n\n` +
       `🆔 درخواست: ${request.request_id}\n` +
       `⚙️ وظیفه: ${job.job_id}\n` +
-      `📱 پلتفرم: ${request.platform}\n` +
-      `⏳ وضعیت: در صف پردازش`
-  );
-} catch (error) {
-  console.error("Download request failed:", error);
-
-  if (error?.code === "DUPLICATE_ACTIVE_REQUEST") {
-    await ctx.reply(
-      "⏳ این لینک در حال حاضر در صف پردازش است.\n\n" +
-        "لطفاً صبر کن تا دانلود قبلی تمام شود."
-    );
-    return;
-  }
-
-  await ctx.reply(
-    "❌ ثبت درخواست انجام نشد.\nلطفاً دوباره تلاش کنید."
-  );
-}
-```
-
-});
-
-register(async () => {
-if (bot) {
-await bot.stop("shutdown");
-}
-});
-
-register(async () => {
-await close();
-});
-
-return bot;
-}
-
-process.once("SIGINT", async () => {
-await shutdown("SIGINT");
-});
-
-process.once("SIGTERM", async () => {
-await shutdown("SIGTERM");
-});
-
-async function startBot() {
-const telegramBot = createBot();
-
-await telegramBot.launch();
-
-console.log("Telegram bot started.");
-}
-
-module.exports = {
-createBot,
-startBot,
-};
