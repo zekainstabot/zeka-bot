@@ -5,8 +5,12 @@ async function markDownloading(jobId) {
     throw new Error("Job ID is required");
   }
 
+  const now = new Date();
+
   return jobRepository.update(jobId, {
     status: "DOWNLOADING",
+    started_at: now,
+    processing_at: now,
   });
 }
 
@@ -44,7 +48,11 @@ async function markCompleted(jobId, data = {}) {
   });
 }
 
-async function markFailed(jobId, error, errorCode = "DOWNLOAD_ERROR") {
+async function markFailed(
+  jobId,
+  error,
+  errorCode = "DOWNLOAD_ERROR"
+) {
   if (!jobId) {
     throw new Error("Job ID is required");
   }
