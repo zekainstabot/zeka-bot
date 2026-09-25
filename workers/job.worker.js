@@ -57,12 +57,16 @@ async function processJob(job) {
 
     await markSending(job.id);
 
+    const caption =
+      result.caption && result.caption.trim()
+        ? result.caption.trim()
+        : "🤖 Zeka";
+
     await sendFileToUser({
       telegramUserId: user.telegram_user_id,
       filePath: result.filePath,
-      caption:
-        "✅ دانلود با موفقیت انجام شد.\n\n" +
-        "🤖 Zeka",
+      caption,
+      contentType: result.contentType,
     });
 
     fileDelivered = true;
