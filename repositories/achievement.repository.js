@@ -6,21 +6,42 @@ async function create(data) {
   const result = await db.query(
     `
       INSERT INTO achievements (
-        code,
-        name,
-        description,
+        achievement_key,
+        title_key,
+        description_key,
+        achievement_type,
+        condition_type,
+        condition_value,
+        credit_reward,
         xp_reward,
-        metadata
+        pro_days,
+        gift_code_id,
+        status,
+        is_hidden,
+        config,
+        created_by
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8,
+        $9, $10, $11, $12, $13, $14
+      )
       RETURNING *
     `,
     [
-      data.code,
-      data.name,
-      data.description || null,
+      data.achievementKey,
+      data.titleKey,
+      data.descriptionKey || null,
+      data.achievementType || "GENERAL",
+      data.conditionType,
+      data.conditionValue ?? 1,
+      data.creditReward ?? 0,
       data.xpReward ?? 0,
-      data.metadata || null,
+      data.proDays ?? 0,
+      data.giftCodeId || null,
+      data.status || "ACTIVE",
+      data.isHidden ?? false,
+      data.config || null,
+      data.createdBy || null,
     ]
   );
 
@@ -43,17 +64,17 @@ async function findById(id) {
   return result.rows[0] || null;
 }
 
-async function findByCode(code) {
+async function findByKey(achievementKey) {
   const db = getClient();
 
   const result = await db.query(
     `
       SELECT *
       FROM achievements
-      WHERE code = $1
+      WHERE achievement_key = $1
       LIMIT 1
     `,
-    [code]
+    [achievementKey]
   );
 
   return result.rows[0] || null;
@@ -84,11 +105,19 @@ async function updateById(id, updates) {
   const db = getClient();
 
   const allowedFields = [
-    "code",
-    "name",
-    "description",
+    "achievement_key",
+    "title_key",
+    "description_key",
+    "achievement_type",
+    "condition_type",
+    "condition_value",
+    "credit_reward",
     "xp_reward",
-    "metadata",
+    "pro_days",
+    "gift_code_id",
+    "status",
+    "is_hidden",
+    "config",
   ];
 
   const entries = Object.entries(updates).filter(([field]) =>
@@ -136,7 +165,7 @@ async function deleteById(id) {
 module.exports = {
   create,
   findById,
-  findByCode,
+  findByKey,
   findAll,
   updateById,
   deleteById,
