@@ -1,5 +1,6 @@
 const creditRepository = require("../repositories/credit.repository");
 const creditReservationRepository = require("../repositories/credit.reservation.repository");
+const creditLedgerRepository = require("../repositories/credit.ledger.repository");
 const { getPool } = require("../database/pool");
 
 async function reserveCredit({
@@ -70,6 +71,21 @@ async function reserveCredit({
           },
           client
         );
+
+      await creditLedgerRepository.create(
+        {
+          userId,
+          creditAccountId: account.id,
+          entryType: "RESERVE",
+          amount: -reservedFromAccount,
+          balanceBefore: available,
+          balanceAfter: newRemaining,
+          referenceType: "JOB",
+          referenceId: jobId,
+          description: "Credit reserved for download job",
+        },
+        client
+      );
 
       reservations.push(reservation);
 
@@ -148,6 +164,7 @@ async function consumeCredit(jobId) {
 
     if (hasConsumed) {
       await client.query("COMMIT");
+
       return allReservations.filter(
         (reservation) =>
           reservation.status === "CONSUMED"
@@ -255,9 +272,11 @@ async function releaseCredit(jobId) {
         );
       }
 
+      const balanceBefore =
+        Number(targetAccount.remaining_amount);
+
       const newRemaining =
-        Number(targetAccount.remaining_amount) +
-        amount;
+        balanceBefore + amount;
 
       await creditRepository.updateRemaining(
         targetAccount.id,
@@ -272,6 +291,23 @@ async function releaseCredit(jobId) {
         );
 
       if (result) {
+        await creditLedgerRepository.create(
+          {
+            userId: reservation.user_id,
+            creditAccountId:
+              reservation.credit_account_id,
+            entryType: "RELEASE",
+            amount,
+            balanceBefore,
+            balanceAfter: newRemaining,
+            referenceType: "JOB",
+            referenceId: jobId,
+            description:
+              "Reserved credit released after job failure",
+          },
+          client
+        );
+
         released.push(result);
       }
     }
