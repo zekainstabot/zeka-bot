@@ -1,7 +1,13 @@
 const creditRepository = require("../repositories/credit.repository");
+const creditReservationRepository = require("../repositories/credit.reservation.repository");
 const { getPool } = require("../database/pool");
 
-async function reserveCredit(userId, amount = 1) {
+async function reserveCredit({
+  userId,
+  amount = 1,
+  requestId = null,
+  jobId = null,
+}) {
   if (!userId) {
     throw new Error("User ID is required");
   }
@@ -51,10 +57,19 @@ async function reserveCredit(userId, amount = 1) {
         client
       );
 
-      reservations.push({
-        creditAccountId: account.id,
-        amount: reservedFromAccount,
-      });
+      const reservation =
+        await creditReservationRepository.create(
+          {
+            userId,
+            creditAccountId: account.id,
+            requestId,
+            jobId,
+            amount: reservedFromAccount,
+          },
+          client
+        );
+
+      reservations.push(reservation);
 
       remainingToReserve -= reservedFromAccount;
     }
