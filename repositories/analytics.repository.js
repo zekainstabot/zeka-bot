@@ -8,21 +8,36 @@ async function create(data) {
       INSERT INTO user_activity_daily (
         user_id,
         activity_date,
-        downloads_count,
-        requests_count,
+        request_count,
         successful_downloads,
-        failed_downloads
+        failed_requests,
+        duplicate_requests,
+        cancelled_requests,
+        abnormal_events,
+        restriction_events,
+        active_minutes,
+        recovery_percent,
+        last_activity_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6)
+      VALUES (
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, $11, $12
+      )
       RETURNING *
     `,
     [
       data.userId,
       data.activityDate,
-      data.downloadsCount ?? 0,
-      data.requestsCount ?? 0,
+      data.requestCount ?? 0,
       data.successfulDownloads ?? 0,
-      data.failedDownloads ?? 0,
+      data.failedRequests ?? 0,
+      data.duplicateRequests ?? 0,
+      data.cancelledRequests ?? 0,
+      data.abnormalEvents ?? 0,
+      data.restrictionEvents ?? 0,
+      data.activeMinutes ?? 0,
+      data.recoveryPercent ?? null,
+      data.lastActivityAt || null,
     ]
   );
 
@@ -72,10 +87,16 @@ async function updateByUserAndDate(userId, activityDate, updates) {
   const db = getClient();
 
   const allowedFields = [
-    "downloads_count",
-    "requests_count",
+    "request_count",
     "successful_downloads",
-    "failed_downloads",
+    "failed_requests",
+    "duplicate_requests",
+    "cancelled_requests",
+    "abnormal_events",
+    "restriction_events",
+    "active_minutes",
+    "recovery_percent",
+    "last_activity_at",
   ];
 
   const entries = Object.entries(updates).filter(([field]) =>
@@ -95,7 +116,8 @@ async function updateByUserAndDate(userId, activityDate, updates) {
   const result = await db.query(
     `
       UPDATE user_activity_daily
-      SET ${setClause}
+      SET ${setClause},
+          updated_at = NOW()
       WHERE user_id = $1
         AND activity_date = $2
       RETURNING *
@@ -106,24 +128,34 @@ async function updateByUserAndDate(userId, activityDate, updates) {
   return result.rows[0] || null;
 }
 
-async function increment(userId, activityDate, field, amount = 1) {
+async function increment(
+  userId,
+  activityDate,
+  field,
+  amount = 1
+) {
   const db = getClient();
 
   const allowedFields = [
-    "downloads_count",
-    "requests_count",
+    "request_count",
     "successful_downloads",
-    "failed_downloads",
+    "failed_requests",
+    "duplicate_requests",
+    "cancelled_requests",
+    "abnormal_events",
+    "restriction_events",
+    "active_minutes",
   ];
 
   if (!allowedFields.includes(field)) {
-    throw new Error(`Invalid analytics field: ${field}`);
+    throw new Error(`Invalid analytics increment field: ${field}`);
   }
 
   const result = await db.query(
     `
       UPDATE user_activity_daily
-      SET ${field} = COALESCE(${field}, 0) + $3
+      SET ${field} = COALESCE(${field}, 0) + $3,
+          updated_at = NOW()
       WHERE user_id = $1
         AND activity_date = $2
       RETURNING *
