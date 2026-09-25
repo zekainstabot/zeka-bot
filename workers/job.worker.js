@@ -23,8 +23,10 @@ async function processJob(job) {
     throw new Error("Valid job is required");
   }
 
+  const jobLabel = job.job_id || job.id;
+
   console.log(
-    `Worker started job: ${job.job_id || job.id}`
+    `Worker started job: ${jobLabel}`
   );
 
   let downloadedFilePath = null;
@@ -72,27 +74,45 @@ async function processJob(job) {
       finalCost: result.finalCost ?? null,
     });
 
+    console.log(
+      `Worker completed job: ${jobLabel}`
+    );
+
     return {
       success: true,
       delivered: true,
-      jobId: job.job_id || job.id,
+      jobId: jobLabel,
     };
   } catch (error) {
-    await markFailed(
-      job.id,
-      error,
-      "WORKER_ERROR"
-    );
-
     console.error(
-      `Worker failed job: ${job.job_id || job.id}`,
+      `Worker failed job: ${jobLabel}`,
       error
     );
+
+    try {
+      await markFailed(
+        job.id,
+        error,
+        "WORKER_ERROR"
+      );
+    } catch (markFailedError) {
+      console.error(
+        `Failed to mark job as FAILED: ${jobLabel}`,
+        markFailedError
+      );
+    }
 
     throw error;
   } finally {
     if (downloadedFilePath) {
-      await deleteFile(downloadedFilePath);
+      try {
+        await deleteFile(downloadedFilePath);
+      } catch (cleanupError) {
+        console.error(
+          `Failed to cleanup downloaded file for job: ${jobLabel}`,
+          cleanupError
+        );
+      }
     }
   }
 }
