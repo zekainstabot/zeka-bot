@@ -12,7 +12,8 @@ async function findByUserId(userId, client = null) {
       SELECT *
       FROM credit_accounts
       WHERE user_id = $1
-      ORDER BY expires_at ASC NULLS LAST, created_at ASC
+      ORDER BY expires_at ASC NULLS LAST,
+               created_at ASC
     `,
     [userId]
   );
@@ -56,6 +57,22 @@ async function findAvailablePackages(userId, client = null) {
   );
 
   return result.rows;
+}
+
+async function findByIdForUpdate(id, client = null) {
+  const db = getDb(client);
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM credit_accounts
+      WHERE id = $1
+      FOR UPDATE
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
 }
 
 async function create(data, client = null) {
@@ -125,6 +142,7 @@ module.exports = {
   findByUserId,
   getAvailableBalance,
   findAvailablePackages,
+  findByIdForUpdate,
   create,
   updateRemaining,
 };
