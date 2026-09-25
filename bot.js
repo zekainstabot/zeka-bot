@@ -11,6 +11,9 @@ const {
 const {
   setBot: setDeliveryBot,
 } = require("./services/delivery.service");
+const {
+  handleAdminCommand,
+} = require("./handlers/admin.handler");
 
 let bot = null;
 
@@ -57,6 +60,8 @@ function createBot() {
         "🔗 لینک محتوای موردنظر را برای ربات ارسال کن."
     );
   });
+
+  bot.command("admin", handleAdminCommand);
 
   bot.on("text", async (ctx) => {
     const text = ctx.message.text.trim();
