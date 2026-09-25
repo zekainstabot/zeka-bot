@@ -74,17 +74,22 @@ function createMultipartRequest({
 
     const fileName = path.basename(filePath);
 
-    const captionValue =
-      typeof caption === "string" ? caption : "";
+    let captionValue =
+      typeof caption === "string" ? caption.trim() : "";
+
+    if (captionValue.length > 1024) {
+      captionValue =
+        captionValue.slice(0, 1021) + "...";
+    }
 
     const chatIdPart =
       `--${boundary}\r\n` +
       `Content-Disposition: form-data; name="chat_id"\r\n\r\n` +
       `${chatId}\r\n`;
 
-    const documentPart =
+    const videoPart =
       `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="document"; filename="${fileName}"\r\n` +
+      `Content-Disposition: form-data; name="video"; filename="${fileName}"\r\n` +
       `Content-Type: video/mp4\r\n\r\n`;
 
     const captionPart = captionValue
@@ -96,14 +101,29 @@ function createMultipartRequest({
     const ending =
       `\r\n--${boundary}--\r\n`;
 
-    const chatIdBuffer = Buffer.from(chatIdPart, "utf8");
-    const documentBuffer = Buffer.from(documentPart, "utf8");
-    const captionBuffer = Buffer.from(captionPart, "utf8");
-    const endingBuffer = Buffer.from(ending, "utf8");
+    const chatIdBuffer = Buffer.from(
+      chatIdPart,
+      "utf8"
+    );
+
+    const videoBuffer = Buffer.from(
+      videoPart,
+      "utf8"
+    );
+
+    const captionBuffer = Buffer.from(
+      captionPart,
+      "utf8"
+    );
+
+    const endingBuffer = Buffer.from(
+      ending,
+      "utf8"
+    );
 
     const contentLength =
       chatIdBuffer.length +
-      documentBuffer.length +
+      videoBuffer.length +
       stats.size +
       captionBuffer.length +
       endingBuffer.length;
@@ -111,7 +131,7 @@ function createMultipartRequest({
     const options = {
       hostname: "api.telegram.org",
       port: 443,
-      path: `/bot${token}/sendDocument`,
+      path: `/bot${token}/sendVideo`,
       method: "POST",
       headers: {
         "Content-Type":
@@ -123,67 +143,72 @@ function createMultipartRequest({
     };
 
     console.log(
-      `Direct Telegram upload started: ${fileName} (${stats.size} bytes)`
+      `Direct Telegram video upload started: ${fileName} (${stats.size} bytes)`
     );
 
-    const request = https.request(options, (response) => {
-      let responseData = "";
+    const request = https.request(
+      options,
+      (response) => {
+        let responseData = "";
 
-      response.setEncoding("utf8");
+        response.setEncoding("utf8");
 
-      response.on("data", (chunk) => {
-        responseData += chunk;
-      });
+        response.on("data", (chunk) => {
+          responseData += chunk;
+        });
 
-      response.on("end", () => {
-        if (
-          response.statusCode >= 200 &&
-          response.statusCode < 300
-        ) {
-          let parsed;
+        response.on("end", () => {
+          if (
+            response.statusCode >= 200 &&
+            response.statusCode < 300
+          ) {
+            let parsed;
 
-          try {
-            parsed = JSON.parse(responseData);
-          } catch {
-            parsed = null;
-          }
+            try {
+              parsed = JSON.parse(responseData);
+            } catch {
+              parsed = null;
+            }
 
-          if (parsed && parsed.ok === false) {
-            reject(
-              new Error(
-                `Telegram API error: ${
-                  parsed.description || responseData
-                }`
-              )
+            if (parsed && parsed.ok === false) {
+              reject(
+                new Error(
+                  `Telegram API error: ${
+                    parsed.description || responseData
+                  }`
+                )
+              );
+              return;
+            }
+
+            console.log(
+              `Direct Telegram video upload successful: HTTP ${response.statusCode}`
             );
+
+            resolve({
+              success: true,
+              response: parsed,
+            });
+
             return;
           }
 
-          console.log(
-            `Direct Telegram upload successful: HTTP ${response.statusCode}`
+          reject(
+            new Error(
+              `Telegram sendVideo failed: HTTP ${
+                response.statusCode
+              } - ${responseData}`
+            )
           );
-
-          resolve({
-            success: true,
-            response: parsed,
-          });
-
-          return;
-        }
-
-        reject(
-          new Error(
-            `Telegram sendDocument failed: HTTP ${
-              response.statusCode
-            } - ${responseData}`
-          )
-        );
-      });
-    });
+        });
+      }
+    );
 
     request.on("timeout", () => {
       request.destroy(
-        new Error("Telegram upload request timed out")
+        new Error(
+          "Telegram video upload request timed out"
+        )
       );
     });
 
@@ -192,9 +217,10 @@ function createMultipartRequest({
     });
 
     request.write(chatIdBuffer);
-    request.write(documentBuffer);
+    request.write(videoBuffer);
 
-    const fileStream = fs.createReadStream(filePath);
+    const fileStream =
+      fs.createReadStream(filePath);
 
     fileStream.on("error", (error) => {
       request.destroy(error);
@@ -216,6 +242,7 @@ async function sendFileToUser({
   telegramUserId,
   filePath,
   caption = "",
+  contentType = "video",
 }) {
   if (!telegramUserId) {
     throw new Error("Telegram user ID is required");
@@ -258,6 +285,10 @@ async function sendFileToUser({
     `Telegram upload file: ${filePath} (${stats.size} bytes)`
   );
 
+  console.log(
+    `Telegram content type: ${contentType}`
+  );
+
   const maxAttempts = 3;
 
   let lastError = null;
@@ -269,18 +300,19 @@ async function sendFileToUser({
   ) {
     try {
       console.log(
-        `Direct Telegram upload attempt ${attempt}/${maxAttempts}`
+        `Direct Telegram video upload attempt ${attempt}/${maxAttempts}`
       );
 
-      const result = await createMultipartRequest({
-        token,
-        chatId,
-        filePath,
-        caption,
-      });
+      const result =
+        await createMultipartRequest({
+          token,
+          chatId,
+          filePath,
+          caption,
+        });
 
       console.log(
-        `Direct Telegram upload successful on attempt ${attempt}`
+        `Direct Telegram video upload successful on attempt ${attempt}`
       );
 
       return {
@@ -293,7 +325,7 @@ async function sendFileToUser({
       lastError = error;
 
       console.error(
-        `Direct Telegram upload failed on attempt ${attempt}/${maxAttempts}:`,
+        `Direct Telegram video upload failed on attempt ${attempt}/${maxAttempts}:`,
         error?.message || error
       );
 
@@ -301,7 +333,7 @@ async function sendFileToUser({
         const delay = attempt * 3000;
 
         console.log(
-          `Retrying direct Telegram upload in ${delay}ms...`
+          `Retrying direct Telegram video upload in ${delay}ms...`
         );
 
         await sleep(delay);
@@ -310,7 +342,7 @@ async function sendFileToUser({
   }
 
   console.error(
-    `Direct Telegram upload failed after ${maxAttempts} attempts.`
+    `Direct Telegram video upload failed after ${maxAttempts} attempts.`
   );
 
   throw lastError;
