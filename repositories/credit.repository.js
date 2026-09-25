@@ -1,7 +1,11 @@
 const { getClient } = require("../database/client");
 
-async function findByUserId(userId) {
-  const db = getClient();
+function getDb(client = null) {
+  return client || getClient();
+}
+
+async function findByUserId(userId, client = null) {
+  const db = getDb(client);
 
   const result = await db.query(
     `
@@ -16,33 +20,25 @@ async function findByUserId(userId) {
   return result.rows;
 }
 
-async function getAvailableBalance(userId) {
-  const db = getClient();
+async function getAvailableBalance(userId, client = null) {
+  const db = getDb(client);
 
   const result = await db.query(
     `
-      SELECT COALESCE(
-        SUM(remaining_amount),
-        0
-      ) AS balance
+      SELECT COALESCE(SUM(remaining_amount), 0) AS balance
       FROM credit_accounts
       WHERE user_id = $1
         AND remaining_amount > 0
-        AND (
-          expires_at IS NULL
-          OR expires_at > NOW()
-        )
+        AND (expires_at IS NULL OR expires_at > NOW())
     `,
     [userId]
   );
 
-  return Number(
-    result.rows[0]?.balance || 0
-  );
+  return Number(result.rows[0]?.balance || 0);
 }
 
-async function findAvailablePackages(userId) {
-  const db = getClient();
+async function findAvailablePackages(userId, client = null) {
+  const db = getDb(client);
 
   const result = await db.query(
     `
@@ -50,14 +46,11 @@ async function findAvailablePackages(userId) {
       FROM credit_accounts
       WHERE user_id = $1
         AND remaining_amount > 0
-        AND (
-          expires_at IS NULL
-          OR expires_at > NOW()
-        )
-      ORDER BY
-        expires_at ASC NULLS LAST,
-        amount DESC,
-        created_at ASC
+        AND (expires_at IS NULL OR expires_at > NOW())
+      ORDER BY expires_at ASC NULLS LAST,
+               amount DESC,
+               created_at ASC
+      FOR UPDATE
     `,
     [userId]
   );
@@ -65,8 +58,8 @@ async function findAvailablePackages(userId) {
   return result.rows;
 }
 
-async function create(data) {
-  const db = getClient();
+async function create(data, client = null) {
+  const db = getDb(client);
 
   if (!data.userId) {
     throw new Error("User ID is required");
@@ -108,15 +101,17 @@ async function create(data) {
 
 async function updateRemaining(
   id,
-  remainingAmount
+  remainingAmount,
+  client = null
 ) {
-  const db = getClient();
+  const db = getDb(client);
 
   const result = await db.query(
     `
       UPDATE credit_accounts
-      SET remaining_amount = $2,
-          updated_at = NOW()
+      SET
+        remaining_amount = $2,
+        updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
