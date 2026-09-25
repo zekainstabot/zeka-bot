@@ -1,22 +1,17 @@
 const userRepository = require("../repositories/user.repository");
 
-const {
-  downloadInstagram,
-} = require("../services/instagram.service");
-
-const {
-  sendFileToUser,
-} = require("../services/delivery.service");
-
+const { downloadInstagram } = require("../services/instagram.service");
+const { sendFileToUser } = require("../services/delivery.service");
 const {
   markSending,
   markCompleted,
   markFailed,
 } = require("../services/download.service");
-
+const { deleteFile } = require("../services/file.service");
 const {
-  deleteFile,
-} = require("../services/file.service");
+  consumeCredit,
+  releaseCredit,
+} = require("../services/credit.service");
 
 async function processJob(job) {
   if (!job || !job.id) {
@@ -25,11 +20,10 @@ async function processJob(job) {
 
   const jobLabel = job.job_id || job.id;
 
-  console.log(
-    `Worker started job: ${jobLabel}`
-  );
+  console.log(`Worker started job: ${jobLabel}`);
 
   let downloadedFilePath = null;
+  let creditConsumed = false;
 
   try {
     let result;
@@ -70,6 +64,9 @@ async function processJob(job) {
         "🤖 Zeka",
     });
 
+    await consumeCredit(job.id);
+    creditConsumed = true;
+
     await markCompleted(job.id, {
       finalCost: result.finalCost ?? null,
     });
@@ -88,6 +85,17 @@ async function processJob(job) {
       `Worker failed job: ${jobLabel}`,
       error
     );
+
+    if (!creditConsumed) {
+      try {
+        await releaseCredit(job.id);
+      } catch (releaseError) {
+        console.error(
+          `Failed to release credit for job: ${jobLabel}`,
+          releaseError
+        );
+      }
+    }
 
     try {
       await markFailed(
