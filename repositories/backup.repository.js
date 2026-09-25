@@ -1,4 +1,9 @@
+const crypto = require("crypto");
 const { getClient } = require("../database/client");
+
+function generateBackupId() {
+  return `backup_${crypto.randomUUID().replace(/-/g, "")}`;
+}
 
 async function create(data) {
   const db = getClient();
@@ -6,27 +11,42 @@ async function create(data) {
   const result = await db.query(
     `
       INSERT INTO backups (
+        backup_id,
         backup_type,
+        provider,
+        storage_path,
         status,
-        file_path,
-        file_size,
-        metadata,
         started_at,
         completed_at,
-        error_message
+        size_bytes,
+        checksum,
+        encrypted,
+        encryption_key_reference,
+        initiated_by,
+        error_message,
+        metadata
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES (
+        $1, $2, $3, $4, $5, $6, $7,
+        $8, $9, $10, $11, $12, $13, $14
+      )
       RETURNING *
     `,
     [
-      data.backupType || "manual",
-      data.status || "pending",
-      data.filePath || null,
-      data.fileSize ?? null,
-      data.metadata || null,
+      data.backupId || generateBackupId(),
+      data.backupType || "DATABASE",
+      data.provider || null,
+      data.storagePath || null,
+      data.status || "RUNNING",
       data.startedAt || new Date(),
       data.completedAt || null,
+      data.sizeBytes ?? null,
+      data.checksum || null,
+      data.encrypted ?? true,
+      data.encryptionKeyReference || null,
+      data.initiatedBy || null,
       data.errorMessage || null,
+      data.metadata || null,
     ]
   );
 
@@ -49,19 +69,35 @@ async function findById(id) {
   return result.rows[0] || null;
 }
 
-async function findLatest(limit = 20) {
+async function findByBackupId(backupId) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM backups
+      WHERE backup_id = $1
+      LIMIT 1
+    `,
+    [backupId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findLatest(limit = 10) {
   const db = getClient();
 
   const safeLimit = Math.max(
     1,
-    Math.min(Number(limit) || 20, 100)
+    Math.min(Number(limit) || 10, 100)
   );
 
   const result = await db.query(
     `
       SELECT *
       FROM backups
-      ORDER BY started_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT $1
     `,
     [safeLimit]
@@ -83,7 +119,7 @@ async function findByStatus(status, limit = 100) {
       SELECT *
       FROM backups
       WHERE status = $1
-      ORDER BY started_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT $2
     `,
     [status, safeLimit]
@@ -100,22 +136,31 @@ async function updateStatus(id, status, data = {}) {
       UPDATE backups
       SET
         status = $2,
-        file_path = COALESCE($3, file_path),
-        file_size = COALESCE($4, file_size),
-        completed_at = COALESCE($5, completed_at),
-        error_message = COALESCE($6, error_message),
-        metadata = COALESCE($7, metadata)
+        storage_path = COALESCE($3, storage_path),
+        size_bytes = COALESCE($4, size_bytes),
+        checksum = COALESCE($5, checksum),
+        encrypted = COALESCE($6, encrypted),
+        encryption_key_reference = COALESCE(
+          $7,
+          encryption_key_reference
+        ),
+        completed_at = COALESCE($8, completed_at),
+        error_message = COALESCE($9, error_message),
+        metadata = COALESCE($10, metadata)
       WHERE id = $1
       RETURNING *
     `,
     [
       id,
       status,
-      data.filePath || null,
-      data.fileSize ?? null,
-      data.completedAt || null,
-      data.errorMessage || null,
-      data.metadata || null,
+      data.storagePath ?? null,
+      data.sizeBytes ?? null,
+      data.checksum ?? null,
+      data.encrypted ?? null,
+      data.encryptionKeyReference ?? null,
+      data.completedAt ?? null,
+      data.errorMessage ?? null,
+      data.metadata ?? null,
     ]
   );
 
@@ -139,6 +184,7 @@ async function deleteById(id) {
 module.exports = {
   create,
   findById,
+  findByBackupId,
   findLatest,
   findByStatus,
   updateStatus,
