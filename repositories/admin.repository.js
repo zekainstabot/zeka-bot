@@ -1,4 +1,20 @@
+const config = require("../config/app");
 const { getClient } = require("../database/client");
+
+function normalizeTelegramId(value) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+function isConfiguredAdmin(telegramUserId) {
+  const id = normalizeTelegramId(telegramUserId);
+
+  if (id === null) {
+    return false;
+  }
+
+  return config.admin.telegramIds.includes(id);
+}
 
 async function findByUserId(userId) {
   const db = getClient();
@@ -8,30 +24,46 @@ async function findByUserId(userId) {
       SELECT *
       FROM users
       WHERE id = $1
-        AND is_admin = TRUE
       LIMIT 1
     `,
     [userId]
   );
 
-  return result.rows[0] || null;
+  const user = result.rows[0];
+
+  if (!user || !isConfiguredAdmin(user.telegram_user_id)) {
+    return null;
+  }
+
+  return user;
 }
 
 async function findByTelegramId(telegramUserId) {
   const db = getClient();
+
+  const normalizedId = normalizeTelegramId(telegramUserId);
+
+  if (normalizedId === null) {
+    return null;
+  }
 
   const result = await db.query(
     `
       SELECT *
       FROM users
       WHERE telegram_user_id = $1
-        AND is_admin = TRUE
       LIMIT 1
     `,
-    [telegramUserId]
+    [normalizedId]
   );
 
-  return result.rows[0] || null;
+  const user = result.rows[0];
+
+  if (!user || !isConfiguredAdmin(user.telegram_user_id)) {
+    return null;
+  }
+
+  return user;
 }
 
 async function isAdmin(userId) {
@@ -40,8 +72,7 @@ async function isAdmin(userId) {
 }
 
 async function isAdminByTelegramId(telegramUserId) {
-  const admin = await findByTelegramId(telegramUserId);
-  return Boolean(admin);
+  return isConfiguredAdmin(telegramUserId);
 }
 
 module.exports = {
