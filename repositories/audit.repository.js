@@ -7,24 +7,31 @@ async function create(data) {
     `
       INSERT INTO audit_logs (
         user_id,
+        admin_user_id,
         action,
-        entity_type,
-        entity_id,
-        metadata,
+        target_type,
+        target_id,
+        status,
         ip_address,
-        user_agent
+        user_agent,
+        metadata
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9
+      )
       RETURNING *
     `,
     [
       data.userId || null,
+      data.adminUserId || null,
       data.action,
-      data.entityType || null,
-      data.entityId || null,
-      data.metadata || null,
+      data.targetType || null,
+      data.targetId || null,
+      data.status || "SUCCESS",
       data.ipAddress || null,
       data.userAgent || null,
+      data.metadata || null,
     ]
   );
 
@@ -60,10 +67,32 @@ async function findByUserId(userId, limit = 100) {
       SELECT *
       FROM audit_logs
       WHERE user_id = $1
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT $2
     `,
     [userId, safeLimit]
+  );
+
+  return result.rows;
+}
+
+async function findByAdminUserId(adminUserId, limit = 100) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 100, 500)
+  );
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM audit_logs
+      WHERE admin_user_id = $1
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2
+    `,
+    [adminUserId, safeLimit]
   );
 
   return result.rows;
@@ -82,7 +111,7 @@ async function findByAction(action, limit = 100) {
       SELECT *
       FROM audit_logs
       WHERE action = $1
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT $2
     `,
     [action, safeLimit]
@@ -91,7 +120,7 @@ async function findByAction(action, limit = 100) {
   return result.rows;
 }
 
-async function findByEntity(entityType, entityId, limit = 100) {
+async function findByTarget(targetType, targetId, limit = 100) {
   const db = getClient();
 
   const safeLimit = Math.max(
@@ -103,12 +132,34 @@ async function findByEntity(entityType, entityId, limit = 100) {
     `
       SELECT *
       FROM audit_logs
-      WHERE entity_type = $1
-        AND entity_id = $2
-      ORDER BY created_at DESC
+      WHERE target_type = $1
+        AND target_id = $2
+      ORDER BY created_at DESC, id DESC
       LIMIT $3
     `,
-    [entityType, entityId, safeLimit]
+    [targetType, targetId, safeLimit]
+  );
+
+  return result.rows;
+}
+
+async function findByStatus(status, limit = 100) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 100, 500)
+  );
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM audit_logs
+      WHERE status = $1
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2
+    `,
+    [status, safeLimit]
   );
 
   return result.rows;
@@ -118,6 +169,8 @@ module.exports = {
   create,
   findById,
   findByUserId,
+  findByAdminUserId,
   findByAction,
-  findByEntity,
+  findByTarget,
+  findByStatus,
 };
