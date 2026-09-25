@@ -51,22 +51,48 @@ const PLATFORM_PATTERNS = [
   },
 ];
 
-function normalizeUrl(input) {
-  if (typeof input !== "string") {
+function cleanInput(value) {
+  if (typeof value !== "string") {
     return null;
   }
 
-  const value = input.trim();
+  let result = value.trim();
 
-  if (!value) {
+  if (!result) {
+    return null;
+  }
+
+  // Convert Markdown links:
+  // [https://example.com](https://example.com)
+  const markdownMatch = result.match(
+    /^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/
+  );
+
+  if (markdownMatch) {
+    result = markdownMatch[2];
+  }
+
+  // Remove accidental surrounding quotes
+  result = result.replace(/^["']+|["']+$/g, "");
+
+  // Remove whitespace/newlines around URL
+  result = result.trim();
+
+  return result || null;
+}
+
+function normalizeUrl(input) {
+  const cleaned = cleanInput(input);
+
+  if (!cleaned) {
     return null;
   }
 
   try {
     const url = new URL(
-      /^https?:\/\//i.test(value)
-        ? value
-        : `https://${value}`
+      /^https?:\/\//i.test(cleaned)
+        ? cleaned
+        : `https://${cleaned}`
     );
 
     url.hash = "";
@@ -85,7 +111,6 @@ function detectPlatform(input) {
   }
 
   const url = new URL(normalizedUrl);
-
   const hostname = url.hostname.toLowerCase();
 
   for (const item of PLATFORM_PATTERNS) {
