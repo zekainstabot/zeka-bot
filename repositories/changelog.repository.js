@@ -9,18 +9,20 @@ async function create(data) {
         version,
         title,
         description,
-        changes,
-        released_at
+        change_type,
+        is_public,
+        published_at
       )
-      VALUES ($1, $2, $3, $4, $5)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `,
     [
       data.version,
       data.title,
       data.description || null,
-      data.changes || null,
-      data.releasedAt || null,
+      data.changeType || "UPDATE",
+      data.isPublic ?? true,
+      data.publishedAt || null,
     ]
   );
 
@@ -51,6 +53,7 @@ async function findByVersion(version) {
       SELECT *
       FROM changelog
       WHERE version = $1
+      ORDER BY created_at DESC, id DESC
       LIMIT 1
     `,
     [version]
@@ -71,7 +74,35 @@ async function findAll(limit = 100) {
     `
       SELECT *
       FROM changelog
-      ORDER BY released_at DESC NULLS LAST, id DESC
+      ORDER BY
+        published_at DESC NULLS LAST,
+        created_at DESC,
+        id DESC
+      LIMIT $1
+    `,
+    [safeLimit]
+  );
+
+  return result.rows;
+}
+
+async function findPublic(limit = 100) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 100, 500)
+  );
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM changelog
+      WHERE is_public = TRUE
+      ORDER BY
+        published_at DESC NULLS LAST,
+        created_at DESC,
+        id DESC
       LIMIT $1
     `,
     [safeLimit]
@@ -87,8 +118,9 @@ async function updateById(id, updates) {
     "version",
     "title",
     "description",
-    "changes",
-    "released_at",
+    "change_type",
+    "is_public",
+    "published_at",
   ];
 
   const entries = Object.entries(updates).filter(([field]) =>
@@ -137,6 +169,7 @@ module.exports = {
   findById,
   findByVersion,
   findAll,
+  findPublic,
   updateById,
   deleteById,
 };
