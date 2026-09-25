@@ -34,17 +34,49 @@ async function createDownloadRequest({
     status: "WAITING",
   });
 
-  const job = await createAndQueueJob({
-    request,
-    contentType: requestType,
-    priority,
-    isHeavy,
-  });
+  try {
+    const job = await createAndQueueJob({
+      request,
+      contentType: requestType,
+      priority,
+      isHeavy,
+    });
 
-  return {
-    request,
-    job,
-  };
+    return {
+      request,
+      job,
+    };
+  } catch (error) {
+    console.error(
+      `Failed to create job for request: ${
+        request.request_id || request.id
+      }`,
+      error
+    );
+
+    try {
+      await requestRepository.update(
+        request.id,
+        {
+          status: "FAILED",
+          error_code: "JOB_CREATION_FAILED",
+          error_message:
+            error instanceof Error
+              ? error.message
+              : String(error || "Failed to create job"),
+        }
+      );
+    } catch (requestError) {
+      console.error(
+        `Failed to update request status: ${
+          request.request_id || request.id
+        }`,
+        requestError
+      );
+    }
+
+    throw error;
+  }
 }
 
 async function getRequestById(id) {
