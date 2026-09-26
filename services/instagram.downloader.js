@@ -189,9 +189,7 @@ function getDownloadFormat(
     };
   }
 
-  if (
-    mediaType === "PHOTO"
-  ) {
+  if (mediaType === "PHOTO") {
     return {
       format:
         "best[ext=jpg]/best[ext=jpeg]/best[ext=png]/best[ext=webp]/best",
@@ -199,9 +197,7 @@ function getDownloadFormat(
     };
   }
 
-  if (
-    mediaType === "VIDEO"
-  ) {
+  if (mediaType === "VIDEO") {
     return {
       format:
         "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
@@ -285,7 +281,7 @@ async function getInstagramMetadata(url) {
   );
 
   const metadata = await ytDlp(url, {
-    noPlaylist: false,
+    noPlaylist: true,
 
     noWarnings: true,
 
@@ -417,7 +413,7 @@ async function downloadInstagramMedia({
   const ytDlpOptions = {
     output: outputTemplate,
 
-    noPlaylist: false,
+    noPlaylist: true,
 
     restrictFilenames: true,
 
