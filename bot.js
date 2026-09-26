@@ -90,12 +90,13 @@ function createBot() {
         return;
       }
 
-      const result = await createDownloadRequest({
-        userId: user.id,
-        platform: parsed.platform,
-        originalUrl: text,
-        normalizedUrl: parsed.url,
-      });
+     const result = await createDownloadRequest({
+  userId: user.id,
+  platform: parsed.platform,
+  originalUrl: text,
+  normalizedUrl: parsed.url,
+  contentType: parsed.contentType,
+});
 
       const request = result.request;
       const job = result.job;
