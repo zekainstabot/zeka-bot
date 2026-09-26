@@ -51,6 +51,14 @@ const PLATFORM_PATTERNS = [
   },
 ];
 
+const INSTAGRAM_CONTENT_TYPES = {
+  REEL: "REEL",
+  STORY: "STORY",
+  POST: "POST",
+  PROFILE: "PROFILE",
+  OTHER: "OTHER",
+};
+
 function cleanInput(value) {
   if (typeof value !== "string") {
     return null;
@@ -62,8 +70,6 @@ function cleanInput(value) {
     return null;
   }
 
-  // Convert Markdown links:
-  // [https://example.com](https://example.com)
   const markdownMatch = result.match(
     /^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/
   );
@@ -72,10 +78,8 @@ function cleanInput(value) {
     result = markdownMatch[2];
   }
 
-  // Remove accidental surrounding quotes
-  result = result.replace(/^["']+|["']+$/g, "");
+  result = result.replace(/^[\"']+|[\"']+$/g, "");
 
-  // Remove whitespace/newlines around URL
   result = result.trim();
 
   return result || null;
@@ -122,6 +126,61 @@ function detectPlatform(input) {
   return null;
 }
 
+function detectInstagramContentType(input) {
+  const normalizedUrl = normalizeUrl(input);
+
+  if (!normalizedUrl) {
+    return null;
+  }
+
+  const url = new URL(normalizedUrl);
+  const hostname = url.hostname.toLowerCase();
+
+  const instagramHosts = [
+    "instagram.com",
+    "www.instagram.com",
+    "m.instagram.com",
+  ];
+
+  if (!instagramHosts.includes(hostname)) {
+    return null;
+  }
+
+  const parts = url.pathname
+    .split("/")
+    .filter(Boolean);
+
+  if (parts.length === 0) {
+    return INSTAGRAM_CONTENT_TYPES.OTHER;
+  }
+
+  const firstPart = parts[0].toLowerCase();
+
+  if (firstPart === "reel" || firstPart === "reels") {
+    return INSTAGRAM_CONTENT_TYPES.REEL;
+  }
+
+  if (firstPart === "stories" || firstPart === "story") {
+    return INSTAGRAM_CONTENT_TYPES.STORY;
+  }
+
+  if (firstPart === "p") {
+    return INSTAGRAM_CONTENT_TYPES.POST;
+  }
+
+  if (
+    firstPart === "accounts" ||
+    firstPart === "explore" ||
+    firstPart === "direct" ||
+    firstPart === "about" ||
+    firstPart === "developer"
+  ) {
+    return INSTAGRAM_CONTENT_TYPES.OTHER;
+  }
+
+  return INSTAGRAM_CONTENT_TYPES.PROFILE;
+}
+
 function parseUrl(input) {
   const normalizedUrl = normalizeUrl(input);
 
@@ -130,18 +189,32 @@ function parseUrl(input) {
       valid: false,
       url: null,
       platform: null,
+      contentType: null,
     };
+  }
+
+  const platform = detectPlatform(normalizedUrl);
+
+  let contentType = "OTHER";
+
+  if (platform === "instagram") {
+    contentType =
+      detectInstagramContentType(normalizedUrl) ||
+      INSTAGRAM_CONTENT_TYPES.OTHER;
   }
 
   return {
     valid: true,
     url: normalizedUrl,
-    platform: detectPlatform(normalizedUrl),
+    platform,
+    contentType,
   };
 }
 
 module.exports = {
   normalizeUrl,
   detectPlatform,
+  detectInstagramContentType,
   parseUrl,
+  INSTAGRAM_CONTENT_TYPES,
 };
