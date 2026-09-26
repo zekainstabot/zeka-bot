@@ -1,6 +1,7 @@
 const requestRepository = require("../repositories/request.repository");
 const { createAndQueueJob } = require("../queue/service");
 const { isPlatformEnabled } = require("./settings.service");
+const { getDownloadCost } = require("./cost.service");
 
 async function createDownloadRequest({
   userId,
@@ -58,13 +59,18 @@ async function createDownloadRequest({
     throw error;
   }
 
+  const calculatedCost = getDownloadCost(contentType);
+
+  const finalEstimatedCost =
+    estimatedCost ?? calculatedCost;
+
   const request = await requestRepository.create({
     userId,
     platform,
     originalUrl,
     normalizedUrl: finalNormalizedUrl,
     requestType,
-    estimatedCost,
+    estimatedCost: finalEstimatedCost,
     isHeavy,
     status: "WAITING",
   });
