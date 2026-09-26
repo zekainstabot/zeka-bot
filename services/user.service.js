@@ -9,10 +9,9 @@ async function getOrCreateUser(from) {
 
   const telegramUserId = String(from.id);
 
-  let user =
-    await userRepository.findByTelegramId(
-      telegramUserId
-    );
+  let user = await userRepository.findByTelegramId(
+    telegramUserId
+  );
 
   if (user) {
     return user;
@@ -32,14 +31,13 @@ async function getOrCreateUser(from) {
     displayName: displayName || null,
   });
 
-  const creditAccount =
-    await creditRepository.create({
-      userId: user.id,
-      creditType: "DOWNLOAD",
-      amount: 12,
-      remainingAmount: 12,
-      source: "WELCOME",
-    });
+  const creditAccount = await creditRepository.create({
+    userId: user.id,
+    creditType: "DOWNLOAD",
+    amount: 12,
+    remainingAmount: 12,
+    source: "DAILY",
+  });
 
   await creditLedgerRepository.create({
     userId: user.id,
@@ -48,9 +46,9 @@ async function getOrCreateUser(from) {
     amount: 12,
     balanceBefore: 0,
     balanceAfter: 12,
-    referenceType: "WELCOME",
+    referenceType: "DAILY",
     referenceId: creditAccount.id,
-    description: "Welcome download credits",
+    description: "Initial daily download credits",
   });
 
   return user;
