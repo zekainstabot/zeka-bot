@@ -23,9 +23,7 @@ function createOutputTemplate(jobId) {
 function cleanInstagramUrl(url) {
   try {
     const parsed = new URL(url);
-
     parsed.search = "";
-
     return parsed.toString();
   } catch {
     return url;
@@ -251,7 +249,10 @@ async function downloadInstagramPhotoWithGalleryDl(url, jobId) {
       throw new Error("gallery-dl completed but no media file was found");
     }
 
-    console.log("Instagram gallery-dl downloaded files:", files.length);
+    console.log(
+      "Instagram gallery-dl downloaded files:",
+      files.length
+    );
 
     return files[0];
   } catch (error) {
@@ -278,7 +279,8 @@ async function downloadInstagramMedia({
 
   console.log("Instagram download started:", jobId);
 
-  const { jobDirectory, outputTemplate } = createOutputTemplate(jobId);
+  const { jobDirectory, outputTemplate } =
+    createOutputTemplate(jobId);
 
   let metadata = null;
 
@@ -296,18 +298,66 @@ async function downloadInstagramMedia({
     normalizedUrl
   );
 
-  console.log("Instagram requested content type:", normalizedContentType);
-  console.log("Instagram detected media type:", mediaType);
+  console.log(
+    "Instagram requested content type:",
+    normalizedContentType
+  );
+
+  console.log(
+    "Instagram detected media type:",
+    mediaType
+  );
 
   if (
     normalizedContentType === "POST" &&
     ["PHOTO", "CAROUSEL", "UNKNOWN"].includes(mediaType)
   ) {
     try {
-      const galleryFile = await downloadInstagramPhotoWithGalleryDl(
-        normalizedUrl,
-        jobId
+      console.log("Instagram direct HTML test started");
+
+      const htmlResult =
+        await getInstagramPostHtml(normalizedUrl);
+
+      console.log(
+        "Instagram direct HTML status:",
+        htmlResult.status
       );
+
+      console.log(
+        "Instagram direct HTML final URL:",
+        htmlResult.finalUrl
+      );
+
+      console.log(
+        "Instagram direct HTML length:",
+        htmlResult.html.length
+      );
+
+      const hasOgImage =
+        /<meta[^>]+property=["']og:image["'][^>]+content=["'][^"']+/i.test(
+          htmlResult.html
+        );
+
+      const hasOgVideo =
+        /<meta[^>]+property=["']og:video["'][^>]+content=["'][^"']+/i.test(
+          htmlResult.html
+        );
+
+      console.log(
+        "Instagram direct HTML has og:image:",
+        hasOgImage
+      );
+
+      console.log(
+        "Instagram direct HTML has og:video:",
+        hasOgVideo
+      );
+
+      const galleryFile =
+        await downloadInstagramPhotoWithGalleryDl(
+          normalizedUrl,
+          jobId
+        );
 
       return {
         filePath: galleryFile,
@@ -317,6 +367,11 @@ async function downloadInstagramMedia({
       };
     } catch (error) {
       console.log(
+        "Instagram photo HTML/gallery test failed:",
+        error?.message || error
+      );
+
+      console.log(
         "Instagram gallery-dl fallback failed, continuing with yt-dlp"
       );
     }
@@ -325,7 +380,11 @@ async function downloadInstagramMedia({
   const format = getDownloadFormat(normalizedContentType);
 
   console.log("Instagram selected format:", format);
-  console.log("Instagram yt-dlp download started:", normalizedUrl);
+
+  console.log(
+    "Instagram yt-dlp download started:",
+    normalizedUrl
+  );
 
   await ytdlp(normalizedUrl, {
     output: outputTemplate,
@@ -341,12 +400,17 @@ async function downloadInstagramMedia({
     .filter((file) => fs.statSync(file).isFile());
 
   if (!files.length) {
-    throw new Error("Instagram download completed but no file was found");
+    throw new Error(
+      "Instagram download completed but no file was found"
+    );
   }
 
   const filePath = files[0];
 
-  console.log("Instagram download completed:", filePath);
+  console.log(
+    "Instagram download completed:",
+    filePath
+  );
 
   return {
     filePath,
