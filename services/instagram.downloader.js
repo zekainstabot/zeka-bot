@@ -62,6 +62,49 @@ function cleanInstagramUrl(value) {
   }
 }
 
+function normalizeContentType(contentType) {
+  if (!contentType) {
+    return "OTHER";
+  }
+
+  return String(contentType)
+    .trim()
+    .toUpperCase();
+}
+
+function getDownloadFormat(contentType) {
+  const normalizedType =
+    normalizeContentType(contentType);
+
+  if (
+    normalizedType === "REEL" ||
+    normalizedType === "STORY"
+  ) {
+    return {
+      format:
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+      mergeOutputFormat: "mp4",
+    };
+  }
+
+  if (
+    normalizedType === "POST" ||
+    normalizedType === "PROFILE"
+  ) {
+    return {
+      format:
+        "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+      mergeOutputFormat: "mp4",
+    };
+  }
+
+  return {
+    format:
+      "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+    mergeOutputFormat: "mp4",
+  };
+}
+
 function detectFileContentType(filePath) {
   const extension = path
     .extname(filePath)
@@ -196,8 +239,15 @@ async function downloadInstagramMedia({
     );
   }
 
+  const downloadFormat =
+    getDownloadFormat(contentType);
+
   console.log(
     `Instagram requested content type: ${contentType}`
+  );
+
+  console.log(
+    `Instagram selected format: ${downloadFormat.format}`
   );
 
   console.log(
@@ -215,10 +265,10 @@ async function downloadInstagramMedia({
 
     preferFreeFormats: true,
 
-    format:
-      "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    format: downloadFormat.format,
 
-    mergeOutputFormat: "mp4",
+    mergeOutputFormat:
+      downloadFormat.mergeOutputFormat,
 
     retries: 2,
 
@@ -298,4 +348,5 @@ async function downloadInstagramMedia({
 module.exports = {
   downloadInstagramMedia,
   detectFileContentType,
+  getDownloadFormat,
 };
