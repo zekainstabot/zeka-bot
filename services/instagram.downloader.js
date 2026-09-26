@@ -72,13 +72,135 @@ function normalizeContentType(contentType) {
     .toUpperCase();
 }
 
-function getDownloadFormat(contentType) {
+function detectInstagramMediaType(metadata) {
+  if (!metadata) {
+    return "UNKNOWN";
+  }
+
+  if (
+    Array.isArray(metadata.entries) &&
+    metadata.entries.length > 1
+  ) {
+    return "CAROUSEL";
+  }
+
+  const extractorType = String(
+    metadata._type || ""
+  ).toLowerCase();
+
+  if (extractorType === "playlist") {
+    return "CAROUSEL";
+  }
+
+  const webpageUrl = String(
+    metadata.webpage_url ||
+      metadata.original_url ||
+      ""
+  ).toLowerCase();
+
+  if (
+    webpageUrl.includes("/reel/") ||
+    webpageUrl.includes("/reels/")
+  ) {
+    return "VIDEO";
+  }
+
+  if (
+    webpageUrl.includes("/stories/") ||
+    webpageUrl.includes("/story/")
+  ) {
+    if (
+      metadata.ext &&
+      [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "gif",
+        "avif",
+      ].includes(
+        String(metadata.ext).toLowerCase()
+      )
+    ) {
+      return "PHOTO";
+    }
+
+    return "VIDEO";
+  }
+
+  const ext = String(
+    metadata.ext || ""
+  ).toLowerCase();
+
+  if (
+    [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp",
+      "gif",
+      "avif",
+      "heic",
+      "heif",
+    ].includes(ext)
+  ) {
+    return "PHOTO";
+  }
+
+  if (
+    [
+      "mp4",
+      "mov",
+      "webm",
+      "mkv",
+      "m4v",
+      "avi",
+      "3gp",
+    ].includes(ext)
+  ) {
+    return "VIDEO";
+  }
+
+  if (
+    metadata.vcodec &&
+    metadata.vcodec !== "none"
+  ) {
+    return "VIDEO";
+  }
+
+  return "UNKNOWN";
+}
+
+function getDownloadFormat(
+  contentType,
+  mediaType = "UNKNOWN"
+) {
   const normalizedType =
     normalizeContentType(contentType);
 
   if (
     normalizedType === "REEL" ||
     normalizedType === "STORY"
+  ) {
+    return {
+      format:
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+      mergeOutputFormat: "mp4",
+    };
+  }
+
+  if (
+    mediaType === "PHOTO"
+  ) {
+    return {
+      format:
+        "best[ext=jpg]/best[ext=jpeg]/best[ext=png]/best[ext=webp]/best",
+      mergeOutputFormat: null,
+    };
+  }
+
+  if (
+    mediaType === "VIDEO"
   ) {
     return {
       format:
@@ -163,7 +285,7 @@ async function getInstagramMetadata(url) {
   );
 
   const metadata = await ytDlp(url, {
-    noPlaylist: true,
+    noPlaylist: false,
 
     noWarnings: true,
 
@@ -191,6 +313,21 @@ async function getInstagramMetadata(url) {
     caption = metadata.title.trim();
   }
 
+  const mediaType =
+    detectInstagramMediaType(metadata);
+
+  console.log(
+    `Instagram metadata media type: ${mediaType}`
+  );
+
+  console.log(
+    `Instagram metadata entries: ${
+      Array.isArray(metadata?.entries)
+        ? metadata.entries.length
+        : 0
+    }`
+  );
+
   console.log(
     `Instagram metadata caption length: ${caption.length}`
   );
@@ -198,6 +335,7 @@ async function getInstagramMetadata(url) {
   return {
     caption,
     metadata,
+    mediaType,
   };
 }
 
@@ -207,17 +345,24 @@ async function downloadInstagramMedia({
   contentType = "OTHER",
 }) {
   if (!url) {
-    throw new Error("Instagram URL is required");
+    throw new Error(
+      "Instagram URL is required"
+    );
   }
 
   if (!jobId) {
-    throw new Error("Job ID is required");
+    throw new Error(
+      "Job ID is required"
+    );
   }
 
-  const cleanUrl = cleanInstagramUrl(url);
+  const cleanUrl =
+    cleanInstagramUrl(url);
 
   if (!cleanUrl) {
-    throw new Error("Invalid Instagram URL");
+    throw new Error(
+      "Invalid Instagram URL"
+    );
   }
 
   ensureDownloadDirectory();
@@ -226,24 +371,39 @@ async function downloadInstagramMedia({
     createOutputTemplate(jobId);
 
   let caption = "";
+  let mediaType = "UNKNOWN";
 
   try {
     const metadata =
-      await getInstagramMetadata(cleanUrl);
+      await getInstagramMetadata(
+        cleanUrl
+      );
 
-    caption = metadata.caption || "";
+    caption =
+      metadata.caption || "";
+
+    mediaType =
+      metadata.mediaType || "UNKNOWN";
   } catch (metadataError) {
     console.error(
       "Instagram metadata extraction failed:",
-      metadataError?.message || metadataError
+      metadataError?.message ||
+        metadataError
     );
   }
 
   const downloadFormat =
-    getDownloadFormat(contentType);
+    getDownloadFormat(
+      contentType,
+      mediaType
+    );
 
   console.log(
     `Instagram requested content type: ${contentType}`
+  );
+
+  console.log(
+    `Instagram detected media type: ${mediaType}`
   );
 
   console.log(
@@ -254,10 +414,10 @@ async function downloadInstagramMedia({
     `Instagram yt-dlp download started: ${cleanUrl}`
   );
 
-  await ytDlp(cleanUrl, {
+  const ytDlpOptions = {
     output: outputTemplate,
 
-    noPlaylist: true,
+    noPlaylist: false,
 
     restrictFilenames: true,
 
@@ -267,28 +427,41 @@ async function downloadInstagramMedia({
 
     format: downloadFormat.format,
 
-    mergeOutputFormat:
-      downloadFormat.mergeOutputFormat,
-
     retries: 2,
 
     socketTimeout: 30,
 
     noCheckCertificates: true,
-  });
+  };
 
-  const safeJobId = String(jobId).replace(
-    /[^a-zA-Z0-9_-]/g,
-    "_"
+  if (downloadFormat.mergeOutputFormat) {
+    ytDlpOptions.mergeOutputFormat =
+      downloadFormat.mergeOutputFormat;
+  }
+
+  await ytDlp(
+    cleanUrl,
+    ytDlpOptions
   );
+
+  const safeJobId =
+    String(jobId).replace(
+      /[^a-zA-Z0-9_-]/g,
+      "_"
+    );
 
   const files = fs
     .readdirSync(DOWNLOAD_ROOT)
     .map((name) =>
-      path.join(DOWNLOAD_ROOT, name)
+      path.join(
+        DOWNLOAD_ROOT,
+        name
+      )
     )
     .filter((filePath) => {
-      if (!fs.statSync(filePath).isFile()) {
+      if (
+        !fs.statSync(filePath).isFile()
+      ) {
         return false;
       }
 
@@ -306,13 +479,15 @@ async function downloadInstagramMedia({
     );
   }
 
-  const filePath = files.sort(
-    (a, b) =>
-      fs.statSync(b).mtimeMs -
-      fs.statSync(a).mtimeMs
-  )[0];
+  const filePath =
+    files.sort(
+      (a, b) =>
+        fs.statSync(b).mtimeMs -
+        fs.statSync(a).mtimeMs
+    )[0];
 
-  const stats = fs.statSync(filePath);
+  const stats =
+    fs.statSync(filePath);
 
   if (stats.size <= 0) {
     throw new Error(
@@ -321,7 +496,9 @@ async function downloadInstagramMedia({
   }
 
   const detectedContentType =
-    detectFileContentType(filePath);
+    detectFileContentType(
+      filePath
+    );
 
   console.log(
     `Instagram detected file type: ${detectedContentType}`
@@ -339,14 +516,17 @@ async function downloadInstagramMedia({
     success: true,
     filePath,
     fileSize: stats.size,
-    contentType: detectedContentType,
+    contentType:
+      detectedContentType,
     sourceUrl: cleanUrl,
     caption,
+    mediaType,
   };
 }
 
 module.exports = {
   downloadInstagramMedia,
   detectFileContentType,
+  detectInstagramMediaType,
   getDownloadFormat,
 };
