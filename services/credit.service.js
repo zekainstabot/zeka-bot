@@ -82,7 +82,8 @@ async function reserveCredit({
           balanceAfter: newRemaining,
           referenceType: "JOB",
           referenceId: jobId,
-          description: "Credit reserved for download job",
+          description:
+            "Credit reserved for download job",
         },
         client
       );
@@ -134,9 +135,48 @@ async function consumeCredit(jobId) {
             client
           );
 
-        if (result) {
-          consumed.push(result);
+        if (!result) {
+          continue;
         }
+
+        const account =
+          await creditRepository.findByIdForUpdate(
+            reservation.credit_account_id,
+            client
+          );
+
+        if (!account) {
+          throw new Error(
+            `Credit account not found: ${reservation.credit_account_id}`
+          );
+        }
+
+        const amount = Number(reservation.amount);
+
+        const balanceAfter =
+          Number(account.remaining_amount);
+
+        const balanceBefore =
+          balanceAfter + amount;
+
+        await creditLedgerRepository.create(
+          {
+            userId: reservation.user_id,
+            creditAccountId:
+              reservation.credit_account_id,
+            entryType: "CONSUME",
+            amount: -amount,
+            balanceBefore,
+            balanceAfter,
+            referenceType: "JOB",
+            referenceId: jobId,
+            description:
+              "Credit consumed after successful download",
+          },
+          client
+        );
+
+        consumed.push(result);
       }
 
       await client.query("COMMIT");
@@ -156,19 +196,16 @@ async function consumeCredit(jobId) {
       );
     }
 
-    const hasConsumed =
-      allReservations.some(
+    const consumedReservations =
+      allReservations.filter(
         (reservation) =>
           reservation.status === "CONSUMED"
       );
 
-    if (hasConsumed) {
+    if (consumedReservations.length > 0) {
       await client.query("COMMIT");
 
-      return allReservations.filter(
-        (reservation) =>
-          reservation.status === "CONSUMED"
-      );
+      return consumedReservations;
     }
 
     const hasReleased =
