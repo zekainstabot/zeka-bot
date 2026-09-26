@@ -12,8 +12,17 @@ async function findByUserId(userId, client = null) {
       SELECT *
       FROM credit_accounts
       WHERE user_id = $1
-      ORDER BY expires_at ASC NULLS LAST,
-               created_at ASC
+      ORDER BY
+        CASE UPPER(source)
+          WHEN 'ROLLOVER' THEN 1
+          WHEN 'DAILY' THEN 2
+          WHEN 'REFERRAL' THEN 3
+          WHEN 'PURCHASED' THEN 4
+          ELSE 5
+        END ASC,
+        expires_at ASC NULLS LAST,
+        created_at ASC,
+        id ASC
     `,
     [userId]
   );
@@ -48,9 +57,17 @@ async function findAvailablePackages(userId, client = null) {
       WHERE user_id = $1
         AND remaining_amount > 0
         AND (expires_at IS NULL OR expires_at > NOW())
-      ORDER BY expires_at ASC NULLS LAST,
-               amount DESC,
-               created_at ASC
+      ORDER BY
+        CASE UPPER(source)
+          WHEN 'ROLLOVER' THEN 1
+          WHEN 'DAILY' THEN 2
+          WHEN 'REFERRAL' THEN 3
+          WHEN 'PURCHASED' THEN 4
+          ELSE 5
+        END ASC,
+        expires_at ASC NULLS LAST,
+        created_at ASC,
+        id ASC
       FOR UPDATE
     `,
     [userId]
