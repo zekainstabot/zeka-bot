@@ -48,7 +48,7 @@ function cleanInstagramUrl(value) {
   }
 
   cleaned = cleaned
-    .replace(/^["']+|["']+$/g, "")
+    .replace(/^[\"']+|[\"']+$/g, "")
     .trim();
 
   try {
@@ -60,6 +60,58 @@ function cleanInstagramUrl(value) {
   } catch {
     return null;
   }
+}
+
+function detectFileContentType(filePath) {
+  const extension = path
+    .extname(filePath)
+    .toLowerCase();
+
+  if (
+    [
+      ".mp4",
+      ".mov",
+      ".mkv",
+      ".webm",
+      ".avi",
+      ".m4v",
+      ".3gp",
+    ].includes(extension)
+  ) {
+    return "video";
+  }
+
+  if (
+    [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp",
+      ".gif",
+      ".bmp",
+      ".avif",
+      ".heic",
+      ".heif",
+    ].includes(extension)
+  ) {
+    return "photo";
+  }
+
+  if (
+    [
+      ".mp3",
+      ".m4a",
+      ".aac",
+      ".wav",
+      ".ogg",
+      ".opus",
+      ".flac",
+    ].includes(extension)
+  ) {
+    return "audio";
+  }
+
+  return "document";
 }
 
 async function getInstagramMetadata(url) {
@@ -109,6 +161,7 @@ async function getInstagramMetadata(url) {
 async function downloadInstagramMedia({
   url,
   jobId,
+  contentType = "OTHER",
 }) {
   if (!url) {
     throw new Error("Instagram URL is required");
@@ -142,6 +195,10 @@ async function downloadInstagramMedia({
       metadataError?.message || metadataError
     );
   }
+
+  console.log(
+    `Instagram requested content type: ${contentType}`
+  );
 
   console.log(
     `Instagram yt-dlp download started: ${cleanUrl}`
@@ -213,6 +270,13 @@ async function downloadInstagramMedia({
     );
   }
 
+  const detectedContentType =
+    detectFileContentType(filePath);
+
+  console.log(
+    `Instagram detected file type: ${detectedContentType}`
+  );
+
   console.log(
     `Instagram download completed: ${filePath}`
   );
@@ -225,7 +289,7 @@ async function downloadInstagramMedia({
     success: true,
     filePath,
     fileSize: stats.size,
-    contentType: "video",
+    contentType: detectedContentType,
     sourceUrl: cleanUrl,
     caption,
   };
@@ -233,4 +297,5 @@ async function downloadInstagramMedia({
 
 module.exports = {
   downloadInstagramMedia,
+  detectFileContentType,
 };
