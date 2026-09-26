@@ -23,7 +23,6 @@ async function processJob(job) {
   console.log(`Worker started job: ${jobLabel}`);
 
   let downloadedFilePath = null;
-  let fileDelivered = false;
   let creditConsumed = false;
 
   try {
@@ -69,13 +68,11 @@ async function processJob(job) {
       contentType: result.contentType,
     });
 
-    fileDelivered = true;
-
     await consumeCredit(job.id);
     creditConsumed = true;
 
     await markCompleted(job.id, {
-      finalCost: result.finalCost ?? null,
+      finalCost: result.finalCost ?? job.reserved_cost ?? null,
     });
 
     console.log(
@@ -93,7 +90,7 @@ async function processJob(job) {
       error
     );
 
-    if (!fileDelivered && !creditConsumed) {
+    if (!creditConsumed) {
       try {
         await releaseCredit(job.id);
       } catch (releaseError) {
