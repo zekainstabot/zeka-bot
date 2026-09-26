@@ -3,16 +3,27 @@ const path = require("path");
 const os = require("os");
 const ytdlp = require("yt-dlp-exec");
 
-const DOWNLOAD_ROOT = path.join(os.tmpdir(), "zeka-instagram");
+const DOWNLOAD_ROOT = path.join(
+  os.tmpdir(),
+  "zeka-instagram"
+);
 
 function createOutputTemplate(jobId) {
-  const jobDirectory = path.join(DOWNLOAD_ROOT, String(jobId));
+  const jobDirectory = path.join(
+    DOWNLOAD_ROOT,
+    String(jobId)
+  );
 
-  fs.mkdirSync(jobDirectory, { recursive: true });
+  fs.mkdirSync(jobDirectory, {
+    recursive: true,
+  });
 
   return {
     jobDirectory,
-    outputTemplate: path.join(jobDirectory, "%(id)s.%(ext)s"),
+    outputTemplate: path.join(
+      jobDirectory,
+      "%(id)s.%(ext)s"
+    ),
   };
 }
 
@@ -33,10 +44,15 @@ function normalizeContentType(contentType) {
     return "OTHER";
   }
 
-  return String(contentType).trim().toUpperCase();
+  return String(contentType)
+    .trim()
+    .toUpperCase();
 }
 
-function detectInstagramMediaType(metadata, url) {
+function detectInstagramMediaType(
+  metadata,
+  url
+) {
   if (!metadata) {
     return "UNKNOWN";
   }
@@ -52,7 +68,8 @@ function detectInstagramMediaType(metadata, url) {
     return "CAROUSEL";
   }
 
-  const normalizedUrl = String(url || "").toLowerCase();
+  const normalizedUrl =
+    String(url || "").toLowerCase();
 
   if (
     normalizedUrl.includes("/reel/") ||
@@ -65,10 +82,18 @@ function detectInstagramMediaType(metadata, url) {
     normalizedUrl.includes("/stories/") ||
     normalizedUrl.includes("/story/")
   ) {
-    const ext = String(metadata.ext || "").toLowerCase();
+    const ext = String(
+      metadata.ext || ""
+    ).toLowerCase();
 
     if (
-      ["jpg", "jpeg", "png", "webp", "avif"].includes(ext)
+      [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp",
+        "avif",
+      ].includes(ext)
     ) {
       return "PHOTO";
     }
@@ -76,16 +101,29 @@ function detectInstagramMediaType(metadata, url) {
     return "VIDEO";
   }
 
-  const ext = String(metadata.ext || "").toLowerCase();
+  const ext = String(
+    metadata.ext || ""
+  ).toLowerCase();
 
   if (
-    ["jpg", "jpeg", "png", "webp", "avif"].includes(ext)
+    [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp",
+      "avif",
+    ].includes(ext)
   ) {
     return "PHOTO";
   }
 
   if (
-    ["mp4", "mov", "webm", "mkv"].includes(ext) ||
+    [
+      "mp4",
+      "mov",
+      "webm",
+      "mkv",
+    ].includes(ext) ||
     metadata.vcodec
   ) {
     return "VIDEO";
@@ -95,34 +133,64 @@ function detectInstagramMediaType(metadata, url) {
 }
 
 function getDownloadFormat(contentType) {
-  const normalizedType = normalizeContentType(contentType);
+  const normalizedType =
+    normalizeContentType(contentType);
 
   if (normalizedType === "REEL") {
-    return "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best";
+    return (
+      "best[ext=mp4]/" +
+      "bestvideo[ext=mp4]+" +
+      "bestaudio[ext=m4a]/best"
+    );
   }
 
   if (normalizedType === "STORY") {
-    return "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best";
+    return (
+      "best[ext=mp4]/" +
+      "bestvideo[ext=mp4]+" +
+      "bestaudio[ext=m4a]/best"
+    );
   }
 
   if (normalizedType === "VIDEO") {
-    return "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best";
+    return (
+      "best[ext=mp4]/" +
+      "bestvideo[ext=mp4]+" +
+      "bestaudio[ext=m4a]/best"
+    );
   }
 
-  return "best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best";
+  return (
+    "best[ext=mp4]/" +
+    "bestvideo[ext=mp4]+" +
+    "bestaudio[ext=m4a]/best"
+  );
 }
 
 function detectFileContentType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
+  const ext = path
+    .extname(filePath)
+    .toLowerCase();
 
   if (
-    [".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(ext)
+    [
+      ".jpg",
+      ".jpeg",
+      ".png",
+      ".webp",
+      ".avif",
+    ].includes(ext)
   ) {
     return "PHOTO";
   }
 
   if (
-    [".mp4", ".mov", ".webm", ".mkv"].includes(ext)
+    [
+      ".mp4",
+      ".mov",
+      ".webm",
+      ".mkv",
+    ].includes(ext)
   ) {
     return "VIDEO";
   }
@@ -166,13 +234,17 @@ function decodeInstagramUrl(value) {
     .replace(/\\u0026/g, "&")
     .replace(/\\u003D/g, "=")
     .replace(/\\u002F/g, "/")
+    .replace(/\\u003A/g, ":")
+    .replace(/\\u0025/g, "%")
     .replace(/\\\//g, "/")
     .replace(/&amp;/g, "&");
 
   try {
-    decoded = JSON.parse(`"${decoded}"`);
+    decoded = JSON.parse(
+      `"${decoded}"`
+    );
   } catch {
-    // Keep current decoded value.
+    // Keep decoded value.
   }
 
   return decoded;
@@ -183,14 +255,24 @@ function isInstagramMediaUrl(url) {
     return false;
   }
 
-  const normalized = String(url).toLowerCase();
+  const normalized =
+    String(url).toLowerCase();
+
+  if (
+    !normalized.startsWith("https://")
+  ) {
+    return false;
+  }
 
   return (
-    normalized.startsWith("https://") &&
-    (
-      normalized.includes("cdninstagram.com") ||
-      normalized.includes("fbcdn.net") ||
-      normalized.includes("instagram.com")
+    normalized.includes(
+      "cdninstagram.com"
+    ) ||
+    normalized.includes(
+      "fbcdn.net"
+    ) ||
+    normalized.includes(
+      "instagram.com"
     )
   );
 }
@@ -200,19 +282,28 @@ function extractInstagramImageUrls(html) {
 
   const patterns = [
     /"display_url"\s*:\s*"([^"]+)"/g,
+
     /"image_url"\s*:\s*"([^"]+)"/g,
+
     /"thumbnail_src"\s*:\s*"([^"]+)"/g,
+
     /"thumbnail_url"\s*:\s*"([^"]+)"/g,
+
     /"src"\s*:\s*"(https?:[^"]+)"/g,
   ];
 
   for (const pattern of patterns) {
     let match;
 
-    while ((match = pattern.exec(html)) !== null) {
-      const decoded = decodeInstagramUrl(match[1]);
+    while (
+      (match = pattern.exec(html)) !== null
+    ) {
+      const decoded =
+        decodeInstagramUrl(match[1]);
 
-      if (isInstagramMediaUrl(decoded)) {
+      if (
+        isInstagramMediaUrl(decoded)
+      ) {
         urls.add(decoded);
       }
     }
@@ -221,24 +312,53 @@ function extractInstagramImageUrls(html) {
   return [...urls];
 }
 
-function extractInstagramImageFromHtml(html) {
-  const urls = extractInstagramImageUrls(html);
+function getImageExtension(
+  contentType,
+  url
+) {
+  const normalizedContentType =
+    String(
+      contentType || ""
+    ).toLowerCase();
 
-  console.log(
-    "Instagram direct HTML image URLs found:",
-    urls.length
-  );
-
-  if (!urls.length) {
-    return null;
+  if (
+    normalizedContentType.includes(
+      "png"
+    )
+  ) {
+    return ".png";
   }
 
-  return urls[0];
-}
+  if (
+    normalizedContentType.includes(
+      "webp"
+    )
+  ) {
+    return ".webp";
+  }
 
-function getImageExtension(url) {
+  if (
+    normalizedContentType.includes(
+      "avif"
+    )
+  ) {
+    return ".avif";
+  }
+
+  if (
+    normalizedContentType.includes(
+      "jpeg"
+    ) ||
+    normalizedContentType.includes(
+      "jpg"
+    )
+  ) {
+    return ".jpg";
+  }
+
   try {
-    const pathname = new URL(url).pathname.toLowerCase();
+    const pathname =
+      new URL(url).pathname.toLowerCase();
 
     if (pathname.endsWith(".png")) {
       return ".png";
@@ -255,94 +375,162 @@ function getImageExtension(url) {
     if (pathname.endsWith(".jpeg")) {
       return ".jpeg";
     }
-
-    return ".jpg";
   } catch {
-    return ".jpg";
+    // Ignore invalid URL.
   }
+
+  return ".jpg";
 }
 
 async function downloadInstagramImage(
-  imageUrl,
+  imageUrls,
   jobDirectory
 ) {
-  console.log("Instagram direct image download started");
-
-  const response = await fetch(imageUrl, {
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
-
-      Accept:
-        "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-
-      Referer: "https://www.instagram.com/",
-    },
-
-    redirect: "follow",
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Instagram image request failed with HTTP ${response.status}`
-    );
-  }
-
-  const contentType = (
-    response.headers.get("content-type") || ""
-  ).toLowerCase();
-
-  if (!contentType.startsWith("image/")) {
-    throw new Error(
-      `Instagram returned non-image content: ${contentType || "unknown"}`
-    );
-  }
-
-  const buffer = Buffer.from(
-    await response.arrayBuffer()
-  );
-
-  if (!buffer.length) {
-    throw new Error(
-      "Instagram image response was empty"
-    );
-  }
-
-  const extension = getImageExtension(imageUrl);
-
-  const filePath = path.join(
-    jobDirectory,
-    `instagram_photo${extension}`
-  );
-
-  fs.writeFileSync(filePath, buffer);
-
   console.log(
-    "Instagram direct image download completed:",
-    filePath
+    "Instagram direct image candidates:",
+    imageUrls.length
   );
 
-  console.log(
-    "Instagram direct image size:",
-    buffer.length
-  );
+  let lastError = null;
 
-  return filePath;
+  for (
+    let i = 0;
+    i < imageUrls.length;
+    i++
+  ) {
+    const imageUrl = imageUrls[i];
+
+    try {
+      const response = await fetch(
+        imageUrl,
+        {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+
+            Accept:
+              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+
+            Referer:
+              "https://www.instagram.com/",
+          },
+
+          redirect: "follow",
+        }
+      );
+
+      const contentType = (
+        response.headers.get(
+          "content-type"
+        ) || ""
+      ).toLowerCase();
+
+      console.log(
+        `Instagram image candidate ${
+          i + 1
+        }/${imageUrls.length}:`,
+        response.status,
+        contentType
+      );
+
+      if (!response.ok) {
+        lastError = new Error(
+          `HTTP ${response.status}`
+        );
+
+        continue;
+      }
+
+      if (
+        !contentType.startsWith(
+          "image/"
+        )
+      ) {
+        lastError = new Error(
+          `Non-image content: ${
+            contentType || "unknown"
+          }`
+        );
+
+        continue;
+      }
+
+      const buffer = Buffer.from(
+        await response.arrayBuffer()
+      );
+
+      if (!buffer.length) {
+        lastError = new Error(
+          "Image response was empty"
+        );
+
+        continue;
+      }
+
+      const extension =
+        getImageExtension(
+          contentType,
+          imageUrl
+        );
+
+      const filePath = path.join(
+        jobDirectory,
+        `instagram_photo${extension}`
+      );
+
+      fs.writeFileSync(
+        filePath,
+        buffer
+      );
+
+      console.log(
+        "Instagram direct image download completed:",
+        filePath
+      );
+
+      console.log(
+        "Instagram direct image size:",
+        buffer.length
+      );
+
+      return filePath;
+    } catch (error) {
+      lastError = error;
+
+      console.log(
+        `Instagram image candidate ${
+          i + 1
+        } failed:`,
+        error?.message || error
+      );
+    }
+  }
+
+  throw new Error(
+    "No usable Instagram image found. " +
+      `Last error: ${
+        lastError?.message ||
+        "unknown error"
+      }`
+  );
 }
 
-async function getInstagramMetadata(url) {
+async function getInstagramMetadata(
+  url
+) {
   console.log(
     "Instagram metadata extraction started"
   );
 
   try {
-    const metadata = await ytdlp(url, {
-      noPlaylist: true,
-      noWarnings: true,
-      noCheckCertificates: true,
-      dumpSingleJson: true,
-      skipDownload: true,
-    });
+    const metadata =
+      await ytdlp(url, {
+        noPlaylist: true,
+        noWarnings: true,
+        noCheckCertificates: true,
+        dumpSingleJson: true,
+        skipDownload: true,
+      });
 
     console.log(
       "Instagram metadata extraction completed"
@@ -364,7 +552,8 @@ async function downloadInstagramMedia({
   jobId,
   contentType = "OTHER",
 }) {
-  const normalizedUrl = cleanInstagramUrl(url);
+  const normalizedUrl =
+    cleanInstagramUrl(url);
 
   const normalizedContentType =
     normalizeContentType(contentType);
@@ -379,20 +568,27 @@ async function downloadInstagramMedia({
     outputTemplate,
   } = createOutputTemplate(jobId);
 
-  let metadata = null;
-
   /*
-   * برای POST عمداً اول HTML را امتحان می‌کنیم.
-   * این مسیر مستقل از gallery-dl است.
+   * PHOTO / POST
+   *
+   * برای پست عکس، اول HTML مستقیم
+   * Instagram را بررسی می‌کنیم.
+   *
+   * gallery-dl عمداً در این مسیر استفاده
+   * نمی‌شود چون در تست قبلی 429 داد.
    */
-  if (normalizedContentType === "POST") {
+  if (
+    normalizedContentType === "POST"
+  ) {
     try {
       console.log(
         "Instagram direct HTML photo extraction started"
       );
 
       const htmlResult =
-        await getInstagramPostHtml(normalizedUrl);
+        await getInstagramPostHtml(
+          normalizedUrl
+        );
 
       console.log(
         "Instagram direct HTML status:",
@@ -413,19 +609,20 @@ async function downloadInstagramMedia({
         htmlResult.status >= 200 &&
         htmlResult.status < 300
       ) {
-        const imageUrl =
-          extractInstagramImageFromHtml(
+        const imageUrls =
+          extractInstagramImageUrls(
             htmlResult.html
           );
 
-        if (imageUrl) {
-          console.log(
-            "Instagram direct image URL found"
-          );
+        console.log(
+          "Instagram direct HTML image URLs found:",
+          imageUrls.length
+        );
 
+        if (imageUrls.length) {
           const filePath =
             await downloadInstagramImage(
-              imageUrl,
+              imageUrls,
               jobDirectory
             );
 
@@ -438,7 +635,7 @@ async function downloadInstagramMedia({
         }
 
         console.log(
-          "Instagram direct HTML did not contain a usable image URL"
+          "Instagram direct HTML did not contain usable image URLs"
         );
       }
     } catch (error) {
@@ -449,17 +646,22 @@ async function downloadInstagramMedia({
     }
 
     /*
-     * فعلاً gallery-dl را اینجا اجرا نمی‌کنیم.
-     * چون در تست قبلی Instagram برای آن 429 داده بود.
+     * اگر عکس از HTML پیدا نشد،
+     * فعلاً مستقیم yt-dlp را امتحان می‌کنیم.
+     *
+     * gallery-dl اینجا اجرا نمی‌شود.
      */
   }
 
   /*
-   * برای Reel / Story / Video همچنان yt-dlp استفاده می‌شود.
+   * Reel / Story / Video
+   *
+   * مسیر اصلی yt-dlp
    */
-  metadata = await getInstagramMetadata(
-    normalizedUrl
-  );
+  const metadata =
+    await getInstagramMetadata(
+      normalizedUrl
+    );
 
   const mediaType =
     detectInstagramMediaType(
@@ -476,6 +678,20 @@ async function downloadInstagramMedia({
     "Instagram detected media type:",
     mediaType
   );
+
+  /*
+   * اگر POST بود و metadata گفت عکس است،
+   * دیگر نباید آن را با فرمت ویدیویی
+   * yt-dlp دانلود کنیم.
+   */
+  if (
+    normalizedContentType === "POST" &&
+    mediaType === "PHOTO"
+  ) {
+    throw new Error(
+      "Instagram post is a photo but no direct image URL could be extracted"
+    );
+  }
 
   const format =
     getDownloadFormat(
@@ -503,7 +719,10 @@ async function downloadInstagramMedia({
   const files = fs
     .readdirSync(jobDirectory)
     .map((file) =>
-      path.join(jobDirectory, file)
+      path.join(
+        jobDirectory,
+        file
+      )
     )
     .filter((file) =>
       fs.statSync(file).isFile()
@@ -525,7 +744,9 @@ async function downloadInstagramMedia({
   return {
     filePath,
     contentType:
-      detectFileContentType(filePath),
+      detectFileContentType(
+        filePath
+      ),
     mediaType,
     finalCost: null,
   };
@@ -536,7 +757,6 @@ module.exports = {
   getInstagramMetadata,
   getInstagramPostHtml,
   extractInstagramImageUrls,
-  extractInstagramImageFromHtml,
   detectInstagramMediaType,
   detectFileContentType,
 };
