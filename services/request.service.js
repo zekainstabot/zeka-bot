@@ -8,6 +8,7 @@ async function createDownloadRequest({
   originalUrl,
   normalizedUrl,
   requestType = "DOWNLOAD",
+  contentType = "OTHER",
   estimatedCost = null,
   isHeavy = false,
   priority = 0,
@@ -71,7 +72,7 @@ async function createDownloadRequest({
   try {
     const job = await createAndQueueJob({
       request,
-      contentType: requestType,
+      contentType,
       priority,
       isHeavy,
     });
