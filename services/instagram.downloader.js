@@ -30,9 +30,7 @@ function createOutputTemplate(jobId) {
 function cleanInstagramUrl(url) {
   try {
     const parsed = new URL(url);
-
     parsed.search = "";
-
     return parsed.toString();
   } catch {
     return url;
@@ -224,6 +222,8 @@ function decodeInstagramUrl(value) {
     .replace(/\\u002F/g, "/")
     .replace(/\\u003A/g, ":")
     .replace(/\\u0025/g, "%")
+    .replace(/\\u002E/g, ".")
+    .replace(/\\u002D/g, "-")
     .replace(/\\\//g, "/")
     .replace(/&amp;/g, "&");
 
@@ -251,9 +251,7 @@ function isInstagramImageUrl(url) {
     return false;
   }
 
-  if (
-    parsed.protocol !== "https:"
-  ) {
+  if (parsed.protocol !== "https:") {
     return false;
   }
 
@@ -261,25 +259,14 @@ function isInstagramImageUrl(url) {
     parsed.hostname.toLowerCase();
 
   /*
-   * Instagram image CDN domains.
-   *
-   * فقط CDNهای واقعی را قبول می‌کنیم.
-   * دامنه‌هایی مثل:
-   *
-   * static.cdninstagram.com
-   * www.instagram.com
-   * instagram.com
-   *
-   * قبول نمی‌شوند.
+   * فقط CDNهای واقعی Instagram/Facebook.
    */
 
   if (
-    hostname.startsWith(
-      "scontent"
-    ) &&
     hostname.includes(
       "cdninstagram.com"
-    )
+    ) &&
+    !hostname.startsWith("static.")
   ) {
     return true;
   }
@@ -288,20 +275,7 @@ function isInstagramImageUrl(url) {
     hostname.includes(
       "fbcdn.net"
     ) &&
-    !hostname.startsWith(
-      "static."
-    )
-  ) {
-    return true;
-  }
-
-  if (
-    hostname.includes(
-      "cdninstagram.com"
-    ) &&
-    !hostname.startsWith(
-      "static."
-    )
+    !hostname.startsWith("static.")
   ) {
     return true;
   }
@@ -309,29 +283,188 @@ function isInstagramImageUrl(url) {
   return false;
 }
 
-function extractInstagramImageUrls(html) {
+/*
+ * استخراج مستقیم URLهایی که شبیه
+ * CDNهای Instagram هستند.
+ *
+ * این تابع برای تشخیص ساختار صفحه است.
+ */
+function extractDirectCdnUrls(html) {
   const urls = new Set();
 
-  /*
-   * فقط فیلدهایی که احتمالاً واقعاً
-   * مربوط به تصویر پست هستند.
-   *
-   * src عمداً حذف شده.
-   * چون باعث پیدا شدن صدها فایل CSS/JS می‌شد.
-   */
+  const patterns = [
+    /https?:\\?\/\\?\/[^"'\\\s<>]+/gi,
+
+    /https?:\/\/[^"'\\\s<>]+/gi,
+
+    /https?:\\u002F\\u002F[^"'\\\s<>]+/gi,
+  ];
+
+  for (const pattern of patterns) {
+    let match;
+
+    while (
+      (match = pattern.exec(html)) !== null
+    ) {
+      let value =
+        decodeInstagramUrl(
+          match[0]
+        );
+
+      if (!value) {
+        continue;
+      }
+
+      /*
+       * بعضی URLها در HTML با
+       * escaped characters تمام می‌شوند.
+       */
+
+      value = value.replace(
+        /[\\"]+$/,
+        ""
+      );
+
+      if (
+        isInstagramImageUrl(
+          value
+        )
+      ) {
+        urls.add(value);
+      }
+    }
+  }
+
+  return [...urls];
+}
+
+/*
+ * پیدا کردن markerهای مربوط به عکس
+ * و چاپ فقط بخش کوچکی از HTML
+ * اطراف آنها.
+ */
+function logInstagramImageMarkers(html) {
+  const markers = [
+    "display_url",
+    "displayUrl",
+    "image_url",
+    "imageUrl",
+    "image_versions2",
+    "image_versions",
+    "thumbnail_url",
+    "thumbnail_src",
+    "carousel_media",
+    "candidates",
+    "original",
+    "image",
+    "photo",
+  ];
+
+  let totalMatches = 0;
+
+  for (const marker of markers) {
+    const positions = [];
+
+    let start = 0;
+
+    while (true) {
+      const index =
+        html.indexOf(
+          marker,
+          start
+        );
+
+      if (index === -1) {
+        break;
+      }
+
+      positions.push(index);
+
+      start =
+        index + marker.length;
+
+      if (positions.length >= 3) {
+        break;
+      }
+    }
+
+    if (positions.length) {
+      totalMatches +=
+        positions.length;
+
+      console.log(
+        `Instagram HTML marker "${marker}" found:`,
+        positions.length
+      );
+
+      for (
+        const position of positions
+      ) {
+        const snippetStart =
+          Math.max(
+            0,
+            position - 250
+          );
+
+        const snippetEnd =
+          Math.min(
+            html.length,
+            position + 700
+          );
+
+        let snippet =
+          html.slice(
+            snippetStart,
+            snippetEnd
+          );
+
+        /*
+         * برای اینکه لاگ بیش از حد بزرگ
+         * نشود، whitespace را فشرده می‌کنیم.
+         */
+
+        snippet =
+          snippet.replace(
+            /\s+/g,
+            " "
+          );
+
+        console.log(
+          `Instagram HTML marker "${marker}" snippet:`,
+          snippet
+        );
+      }
+    }
+  }
+
+  console.log(
+    "Instagram HTML total relevant marker matches:",
+    totalMatches
+  );
+}
+
+/*
+ * استخراج URL از فیلدهای شناخته‌شده.
+ */
+function extractInstagramImageUrls(html) {
+  const urls = new Set();
 
   const patterns = [
     /"display_url"\s*:\s*"([^"]+)"/g,
 
+    /"displayUrl"\s*:\s*"([^"]+)"/g,
+
     /"image_url"\s*:\s*"([^"]+)"/g,
+
+    /"imageUrl"\s*:\s*"([^"]+)"/g,
 
     /"thumbnail_src"\s*:\s*"([^"]+)"/g,
 
     /"thumbnail_url"\s*:\s*"([^"]+)"/g,
 
-    /"displayUrl"\s*:\s*"([^"]+)"/g,
+    /"thumbnailUrl"\s*:\s*"([^"]+)"/g,
 
-    /"imageUrl"\s*:\s*"([^"]+)"/g,
+    /"original"\s*:\s*"([^"]+)"/g,
   ];
 
   for (
@@ -354,6 +487,24 @@ function extractInstagramImageUrls(html) {
       ) {
         urls.add(decoded);
       }
+    }
+  }
+
+  /*
+   * اگر فیلدهای استاندارد جواب ندادند،
+   * CDNهای مستقیم را هم بررسی می‌کنیم.
+   */
+
+  if (!urls.size) {
+    const directCdnUrls =
+      extractDirectCdnUrls(
+        html
+      );
+
+    for (
+      const url of directCdnUrls
+    ) {
+      urls.add(url);
     }
   }
 
@@ -406,7 +557,9 @@ function getImageExtension(
 
   try {
     const pathname =
-      new URL(url).pathname.toLowerCase();
+      new URL(url)
+        .pathname
+        .toLowerCase();
 
     if (
       pathname.endsWith(".png")
@@ -449,13 +602,21 @@ async function downloadInstagramImage(
 
   let lastError = null;
 
+  /*
+   * برای اینکه در صورت وجود تعداد زیادی
+   * URL دوباره صدها request ایجاد نکنیم،
+   * حداکثر 20 مورد اول را تست می‌کنیم.
+   */
+  const candidates =
+    imageUrls.slice(0, 20);
+
   for (
     let i = 0;
-    i < imageUrls.length;
+    i < candidates.length;
     i++
   ) {
     const imageUrl =
-      imageUrls[i];
+      candidates[i];
 
     try {
       const response =
@@ -484,90 +645,70 @@ async function downloadInstagramImage(
           ) || ""
         ).toLowerCase();
 
-      /*
-       * فقط مواردی که واقعاً
-       * image هستند لاگ می‌شوند.
-       *
-       * دیگر 492 خط CSS/JS
-       * تولید نمی‌کنیم.
-       */
-
       if (
-        !response.ok
-      ) {
-        lastError =
-          new Error(
-            `HTTP ${response.status}`
-          );
-
-        continue;
-      }
-
-      if (
-        !contentType.startsWith(
+        response.ok &&
+        contentType.startsWith(
           "image/"
         )
       ) {
-        lastError =
-          new Error(
-            `Non-image content: ${
-              contentType ||
-              "unknown"
-            }`
+        console.log(
+          "Instagram usable image found:",
+          contentType
+        );
+
+        const buffer =
+          Buffer.from(
+            await response.arrayBuffer()
           );
 
-        continue;
-      }
+        if (!buffer.length) {
+          lastError =
+            new Error(
+              "Image response was empty"
+            );
 
-      console.log(
-        "Instagram usable image found:",
-        contentType
-      );
+          continue;
+        }
 
-      const buffer =
-        Buffer.from(
-          await response.arrayBuffer()
-        );
-
-      if (
-        !buffer.length
-      ) {
-        lastError =
-          new Error(
-            "Image response was empty"
+        const extension =
+          getImageExtension(
+            contentType,
+            imageUrl
           );
 
-        continue;
+        const filePath =
+          path.join(
+            jobDirectory,
+            `instagram_photo${extension}`
+          );
+
+        fs.writeFileSync(
+          filePath,
+          buffer
+        );
+
+        console.log(
+          "Instagram direct image download completed:",
+          filePath
+        );
+
+        console.log(
+          "Instagram direct image size:",
+          buffer.length
+        );
+
+        return filePath;
       }
 
-      const extension =
-        getImageExtension(
-          contentType,
-          imageUrl
+      lastError =
+        new Error(
+          `Candidate ${
+            i + 1
+          } returned ${
+            contentType ||
+            "unknown"
+          }`
         );
-
-      const filePath =
-        path.join(
-          jobDirectory,
-          `instagram_photo${extension}`
-        );
-
-      fs.writeFileSync(
-        filePath,
-        buffer
-      );
-
-      console.log(
-        "Instagram direct image download completed:",
-        filePath
-      );
-
-      console.log(
-        "Instagram direct image size:",
-        buffer.length
-      );
-
-      return filePath;
     } catch (error) {
       lastError = error;
     }
@@ -645,7 +786,7 @@ async function downloadInstagramMedia({
   /*
    * POST
    *
-   * ابتدا HTML مستقیم Instagram.
+   * اول HTML مستقیم Instagram.
    */
 
   if (
@@ -681,6 +822,14 @@ async function downloadInstagramMedia({
         htmlResult.status >= 200 &&
         htmlResult.status < 300
       ) {
+        /*
+         * مرحله تشخیصی:
+         * ساختار واقعی HTML را بررسی می‌کنیم.
+         */
+        logInstagramImageMarkers(
+          htmlResult.html
+        );
+
         const imageUrls =
           extractInstagramImageUrls(
             htmlResult.html
@@ -707,6 +856,10 @@ async function downloadInstagramMedia({
             finalCost: null,
           };
         }
+
+        console.log(
+          "Instagram direct HTML did not contain usable image URLs"
+        );
       }
     } catch (error) {
       console.log(
@@ -716,17 +869,9 @@ async function downloadInstagramMedia({
     }
 
     /*
-     * مهم:
-     *
-     * اگر POST بود و HTML نتوانست
-     * تصویر را استخراج کند، دیگر
-     * yt-dlp را برای عکس اجرا نمی‌کنیم.
-     *
-     * چون yt-dlp قبلاً ثابت کرده:
-     *
-     * There is no video in this post
+     * در این مرحله برای POST عکس
+     * به yt-dlp نمی‌رویم.
      */
-
     throw new Error(
       "Instagram photo URL could not be extracted from direct HTML"
     );
