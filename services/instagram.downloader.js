@@ -31,6 +31,7 @@ function cleanInstagramUrl(url) {
   try {
     const parsed = new URL(url);
     parsed.search = "";
+    parsed.hash = "";
     return parsed.toString();
   } catch {
     return url;
@@ -47,10 +48,7 @@ function normalizeContentType(contentType) {
     .toUpperCase();
 }
 
-function detectInstagramMediaType(
-  metadata,
-  url
-) {
+function detectInstagramMediaType(metadata, url) {
   if (!metadata) {
     return "UNKNOWN";
   }
@@ -85,13 +83,7 @@ function detectInstagramMediaType(
     ).toLowerCase();
 
     if (
-      [
-        "jpg",
-        "jpeg",
-        "png",
-        "webp",
-        "avif",
-      ].includes(ext)
+      ["jpg", "jpeg", "png", "webp", "avif"].includes(ext)
     ) {
       return "PHOTO";
     }
@@ -104,24 +96,13 @@ function detectInstagramMediaType(
   ).toLowerCase();
 
   if (
-    [
-      "jpg",
-      "jpeg",
-      "png",
-      "webp",
-      "avif",
-    ].includes(ext)
+    ["jpg", "jpeg", "png", "webp", "avif"].includes(ext)
   ) {
     return "PHOTO";
   }
 
   if (
-    [
-      "mp4",
-      "mov",
-      "webm",
-      "mkv",
-    ].includes(ext) ||
+    ["mp4", "mov", "webm", "mkv"].includes(ext) ||
     metadata.vcodec
   ) {
     return "VIDEO";
@@ -159,24 +140,13 @@ function detectFileContentType(filePath) {
     .toLowerCase();
 
   if (
-    [
-      ".jpg",
-      ".jpeg",
-      ".png",
-      ".webp",
-      ".avif",
-    ].includes(ext)
+    [".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(ext)
   ) {
     return "PHOTO";
   }
 
   if (
-    [
-      ".mp4",
-      ".mov",
-      ".webm",
-      ".mkv",
-    ].includes(ext)
+    [".mp4", ".mov", ".webm", ".mkv"].includes(ext)
   ) {
     return "VIDEO";
   }
@@ -195,6 +165,12 @@ async function getInstagramPostHtml(url) {
 
       "Accept-Language":
         "en-US,en;q=0.9",
+
+      "Cache-Control":
+        "no-cache",
+
+      Pragma:
+        "no-cache",
     },
 
     redirect: "follow",
@@ -209,31 +185,26 @@ async function getInstagramPostHtml(url) {
   };
 }
 
-function decodeInstagramUrl(value) {
+function decodeInstagramValue(value) {
   if (!value) {
     return null;
   }
 
-  let decoded = value;
+  let decoded = String(value);
 
   decoded = decoded
-    .replace(/\\u0026/g, "&")
-    .replace(/\\u003D/g, "=")
-    .replace(/\\u002F/g, "/")
-    .replace(/\\u003A/g, ":")
-    .replace(/\\u0025/g, "%")
-    .replace(/\\u002E/g, ".")
-    .replace(/\\u002D/g, "-")
+    .replace(/\\u0026/gi, "&")
+    .replace(/\\u003d/gi, "=")
+    .replace(/\\u002f/gi, "/")
+    .replace(/\\u003a/gi, ":")
+    .replace(/\\u0025/gi, "%")
+    .replace(/\\u002e/gi, ".")
+    .replace(/\\u002d/gi, "-")
+    .replace(/\\u003f/gi, "?")
+    .replace(/\\u0023/gi, "#")
+    .replace(/\\u005c/gi, "\\")
     .replace(/\\\//g, "/")
-    .replace(/&amp;/g, "&");
-
-  try {
-    decoded = JSON.parse(
-      `"${decoded}"`
-    );
-  } catch {
-    // Keep decoded value.
-  }
+    .replace(/&amp;/gi, "&");
 
   return decoded;
 }
@@ -258,24 +229,22 @@ function isInstagramImageUrl(url) {
   const hostname =
     parsed.hostname.toLowerCase();
 
-  /*
-   * فقط CDNهای واقعی Instagram/Facebook.
-   */
-
   if (
-    hostname.includes(
-      "cdninstagram.com"
-    ) &&
+    hostname.includes("cdninstagram.com") &&
     !hostname.startsWith("static.")
   ) {
     return true;
   }
 
   if (
-    hostname.includes(
-      "fbcdn.net"
-    ) &&
+    hostname.includes("fbcdn.net") &&
     !hostname.startsWith("static.")
+  ) {
+    return true;
+  }
+
+  if (
+    hostname.includes("scontent")
   ) {
     return true;
   }
@@ -283,226 +252,87 @@ function isInstagramImageUrl(url) {
   return false;
 }
 
-/*
- * استخراج مستقیم URLهایی که شبیه
- * CDNهای Instagram هستند.
- *
- * این تابع برای تشخیص ساختار صفحه است.
- */
-function extractDirectCdnUrls(html) {
-  const urls = new Set();
+function sanitizeUrlForLog(url) {
+  if (!url) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(url);
+
+    return (
+      `${parsed.protocol}//` +
+      `${parsed.hostname}` +
+      `${parsed.pathname.slice(0, 120)}`
+    );
+  } catch {
+    return String(url).slice(0, 160);
+  }
+}
+
+function extractCdnUrlsFromText(text) {
+  const results = new Set();
+
+  if (!text) {
+    return [];
+  }
+
+  const decodedText =
+    decodeInstagramValue(text);
 
   const patterns = [
-    /https?:\\?\/\\?\/[^"'\\\s<>]+/gi,
+    /https?:\/\/[^"'\\<>\s]+/gi,
 
-    /https?:\/\/[^"'\\\s<>]+/gi,
+    /https?:\\\/\\\/[^"'\\<>\s]+/gi,
 
-    /https?:\\u002F\\u002F[^"'\\\s<>]+/gi,
+    /https?:\\u002f\\u002f[^"'\\<>\s]+/gi,
   ];
 
   for (const pattern of patterns) {
     let match;
 
     while (
-      (match = pattern.exec(html)) !== null
+      (match = pattern.exec(decodedText)) !== null
     ) {
-      let value =
-        decodeInstagramUrl(
+      let url =
+        decodeInstagramValue(
           match[0]
         );
 
-      if (!value) {
-        continue;
-      }
-
-      /*
-       * بعضی URLها در HTML با
-       * escaped characters تمام می‌شوند.
-       */
-
-      value = value.replace(
-        /[\\"]+$/,
+      url = url.replace(
+        /[\\"]+$/g,
         ""
       );
 
       if (
-        isInstagramImageUrl(
-          value
-        )
+        isInstagramImageUrl(url)
       ) {
-        urls.add(value);
+        results.add(url);
       }
     }
   }
 
-  return [...urls];
+  return [...results];
 }
 
-/*
- * پیدا کردن markerهای مربوط به عکس
- * و چاپ فقط بخش کوچکی از HTML
- * اطراف آنها.
- */
-function logInstagramImageMarkers(html) {
-  const markers = [
-    "display_url",
-    "displayUrl",
-    "image_url",
-    "imageUrl",
-    "image_versions2",
-    "image_versions",
-    "thumbnail_url",
-    "thumbnail_src",
-    "carousel_media",
-    "candidates",
-    "original",
-    "image",
-    "photo",
-  ];
-
-  let totalMatches = 0;
-
-  for (const marker of markers) {
-    const positions = [];
-
-    let start = 0;
-
-    while (true) {
-      const index =
-        html.indexOf(
-          marker,
-          start
-        );
-
-      if (index === -1) {
-        break;
-      }
-
-      positions.push(index);
-
-      start =
-        index + marker.length;
-
-      if (positions.length >= 3) {
-        break;
-      }
-    }
-
-    if (positions.length) {
-      totalMatches +=
-        positions.length;
-
-      console.log(
-        `Instagram HTML marker "${marker}" found:`,
-        positions.length
-      );
-
-      for (
-        const position of positions
-      ) {
-        const snippetStart =
-          Math.max(
-            0,
-            position - 250
-          );
-
-        const snippetEnd =
-          Math.min(
-            html.length,
-            position + 700
-          );
-
-        let snippet =
-          html.slice(
-            snippetStart,
-            snippetEnd
-          );
-
-        /*
-         * برای اینکه لاگ بیش از حد بزرگ
-         * نشود، whitespace را فشرده می‌کنیم.
-         */
-
-        snippet =
-          snippet.replace(
-            /\s+/g,
-            " "
-          );
-
-        console.log(
-          `Instagram HTML marker "${marker}" snippet:`,
-          snippet
-        );
-      }
-    }
-  }
-
-  console.log(
-    "Instagram HTML total relevant marker matches:",
-    totalMatches
-  );
-}
-
-/*
- * استخراج URL از فیلدهای شناخته‌شده.
- */
-function extractInstagramImageUrls(html) {
+function extractMetaImageUrls(html) {
   const urls = new Set();
 
-  const patterns = [
-    /"display_url"\s*:\s*"([^"]+)"/g,
+  const pattern =
+    /<meta[^>]+(?:property|name)=["'](?:og:image|og:image:url|og:image:secure_url|twitter:image)["'][^>]+content=["']([^"']+)["'][^>]*>/gi;
 
-    /"displayUrl"\s*:\s*"([^"]+)"/g,
+  let match;
 
-    /"image_url"\s*:\s*"([^"]+)"/g,
-
-    /"imageUrl"\s*:\s*"([^"]+)"/g,
-
-    /"thumbnail_src"\s*:\s*"([^"]+)"/g,
-
-    /"thumbnail_url"\s*:\s*"([^"]+)"/g,
-
-    /"thumbnailUrl"\s*:\s*"([^"]+)"/g,
-
-    /"original"\s*:\s*"([^"]+)"/g,
-  ];
-
-  for (
-    const pattern of patterns
+  while (
+    (match = pattern.exec(html)) !== null
   ) {
-    let match;
-
-    while (
-      (match = pattern.exec(html)) !== null
-    ) {
-      const decoded =
-        decodeInstagramUrl(
-          match[1]
-        );
-
-      if (
-        isInstagramImageUrl(
-          decoded
-        )
-      ) {
-        urls.add(decoded);
-      }
-    }
-  }
-
-  /*
-   * اگر فیلدهای استاندارد جواب ندادند،
-   * CDNهای مستقیم را هم بررسی می‌کنیم.
-   */
-
-  if (!urls.size) {
-    const directCdnUrls =
-      extractDirectCdnUrls(
-        html
+    const url =
+      decodeInstagramValue(
+        match[1]
       );
 
-    for (
-      const url of directCdnUrls
+    if (
+      isInstagramImageUrl(url)
     ) {
       urls.add(url);
     }
@@ -511,84 +341,334 @@ function extractInstagramImageUrls(html) {
   return [...urls];
 }
 
-function getImageExtension(
-  contentType,
-  url
+function extractJsonLdBlocks(html) {
+  const blocks = [];
+
+  const pattern =
+    /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+
+  let match;
+
+  while (
+    (match = pattern.exec(html)) !== null
+  ) {
+    blocks.push(match[1]);
+  }
+
+  return blocks;
+}
+
+function collectImageUrlsFromObject(
+  value,
+  urls = [],
+  depth = 0
 ) {
-  const normalizedContentType =
-    String(
-      contentType || ""
-    ).toLowerCase();
-
-  if (
-    normalizedContentType.includes(
-      "png"
-    )
-  ) {
-    return ".png";
+  if (depth > 12 || value == null) {
+    return urls;
   }
 
-  if (
-    normalizedContentType.includes(
-      "webp"
-    )
-  ) {
-    return ".webp";
-  }
-
-  if (
-    normalizedContentType.includes(
-      "avif"
-    )
-  ) {
-    return ".avif";
-  }
-
-  if (
-    normalizedContentType.includes(
-      "jpeg"
-    ) ||
-    normalizedContentType.includes(
-      "jpg"
-    )
-  ) {
-    return ".jpg";
-  }
-
-  try {
-    const pathname =
-      new URL(url)
-        .pathname
-        .toLowerCase();
+  if (typeof value === "string") {
+    const decoded =
+      decodeInstagramValue(value);
 
     if (
-      pathname.endsWith(".png")
+      isInstagramImageUrl(decoded)
     ) {
-      return ".png";
+      urls.push(decoded);
     }
 
-    if (
-      pathname.endsWith(".webp")
-    ) {
-      return ".webp";
-    }
-
-    if (
-      pathname.endsWith(".avif")
-    ) {
-      return ".avif";
-    }
-
-    if (
-      pathname.endsWith(".jpeg")
-    ) {
-      return ".jpeg";
-    }
-  } catch {
-    // Ignore invalid URL.
+    return urls;
   }
 
-  return ".jpg";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectImageUrlsFromObject(
+        item,
+        urls,
+        depth + 1
+      );
+    }
+
+    return urls;
+  }
+
+  if (
+    typeof value === "object"
+  ) {
+    for (const [key, item] of Object.entries(value)) {
+      const normalizedKey =
+        key.toLowerCase();
+
+      if (
+        normalizedKey.includes("image") ||
+        normalizedKey.includes("thumbnail") ||
+        normalizedKey.includes("contenturl") ||
+        normalizedKey.includes("displayurl") ||
+        normalizedKey.includes("candidate") ||
+        normalizedKey.includes("original")
+      ) {
+        collectImageUrlsFromObject(
+          item,
+          urls,
+          depth + 1
+        );
+      } else if (
+        typeof item === "object"
+      ) {
+        collectImageUrlsFromObject(
+          item,
+          urls,
+          depth + 1
+        );
+      }
+    }
+  }
+
+  return urls;
+}
+
+function extractJsonLdImageUrls(html) {
+  const urls = new Set();
+
+  const blocks =
+    extractJsonLdBlocks(html);
+
+  console.log(
+    "Instagram JSON-LD blocks found:",
+    blocks.length
+  );
+
+  for (
+    let i = 0;
+    i < blocks.length;
+    i++
+  ) {
+    const block =
+      blocks[i].trim();
+
+    if (!block) {
+      continue;
+    }
+
+    try {
+      const parsed =
+        JSON.parse(block);
+
+      const found =
+        collectImageUrlsFromObject(
+          parsed
+        );
+
+      for (const url of found) {
+        urls.add(url);
+      }
+
+      if (found.length) {
+        console.log(
+          `Instagram JSON-LD block ${i + 1} image URLs:`,
+          found.length
+        );
+
+        for (
+          const url of found.slice(0, 5)
+        ) {
+          console.log(
+            "Instagram JSON-LD image:",
+            sanitizeUrlForLog(url)
+          );
+        }
+      }
+    } catch (error) {
+      console.log(
+        `Instagram JSON-LD block ${i + 1} parse failed`
+      );
+    }
+  }
+
+  return [...urls];
+}
+
+function logRelevantHtmlContexts(html) {
+  const markers = [
+    "image_versions2",
+    "image_versions",
+    "shortcode_media",
+    "xdt_api__v1__media",
+    "display_url",
+    "displayUrl",
+    "image_url",
+    "imageUrl",
+    "thumbnail_url",
+    "thumbnailUrl",
+    "thumbnail_src",
+    "carousel_media",
+    "og:image",
+    "contentUrl",
+    "content_url",
+    "scontent",
+    "cdninstagram",
+    "fbcdn",
+  ];
+
+  const lowerHtml =
+    html.toLowerCase();
+
+  for (const marker of markers) {
+    const lowerMarker =
+      marker.toLowerCase();
+
+    const index =
+      lowerHtml.indexOf(
+        lowerMarker
+      );
+
+    if (index === -1) {
+      continue;
+    }
+
+    const start =
+      Math.max(
+        0,
+        index - 300
+      );
+
+    const end =
+      Math.min(
+        html.length,
+        index + 1200
+      );
+
+    let snippet =
+      html.slice(
+        start,
+        end
+      );
+
+    snippet =
+      snippet.replace(
+        /\s+/g,
+        " "
+      );
+
+    console.log(
+      `Instagram relevant marker "${marker}" found`
+    );
+
+    console.log(
+      `Instagram relevant context "${marker}":`,
+      snippet
+    );
+  }
+}
+
+function extractInstagramImageUrls(html) {
+  const urls = new Set();
+
+  /*
+   * 1. Meta tags
+   */
+  const metaUrls =
+    extractMetaImageUrls(html);
+
+  for (const url of metaUrls) {
+    urls.add(url);
+  }
+
+  console.log(
+    "Instagram meta image URLs:",
+    metaUrls.length
+  );
+
+  /*
+   * 2. JSON-LD
+   */
+  const jsonLdUrls =
+    extractJsonLdImageUrls(
+      html
+    );
+
+  for (const url of jsonLdUrls) {
+    urls.add(url);
+  }
+
+  /*
+   * 3. Known Instagram fields
+   */
+  const knownPatterns = [
+    /"display_url"\s*:\s*"([^"]+)"/gi,
+
+    /"displayUrl"\s*:\s*"([^"]+)"/gi,
+
+    /"image_url"\s*:\s*"([^"]+)"/gi,
+
+    /"imageUrl"\s*:\s*"([^"]+)"/gi,
+
+    /"thumbnail_url"\s*:\s*"([^"]+)"/gi,
+
+    /"thumbnailUrl"\s*:\s*"([^"]+)"/gi,
+
+    /"thumbnail_src"\s*:\s*"([^"]+)"/gi,
+
+    /"contentUrl"\s*:\s*"([^"]+)"/gi,
+
+    /"content_url"\s*:\s*"([^"]+)"/gi,
+
+    /"original"\s*:\s*"([^"]+)"/gi,
+  ];
+
+  for (
+    const pattern of knownPatterns
+  ) {
+    let match;
+
+    while (
+      (match = pattern.exec(html)) !== null
+    ) {
+      const url =
+        decodeInstagramValue(
+          match[1]
+        );
+
+      if (
+        isInstagramImageUrl(url)
+      ) {
+        urls.add(url);
+      }
+    }
+  }
+
+  console.log(
+    "Instagram known-field image URLs:",
+    urls.size
+  );
+
+  /*
+   * 4. مستقیم دنبال URLهای CDN
+   */
+  const directUrls =
+    extractCdnUrlsFromText(
+      html
+    );
+
+  console.log(
+    "Instagram direct CDN image URLs:",
+    directUrls.length
+  );
+
+  for (const url of directUrls) {
+    urls.add(url);
+  }
+
+  /*
+   * تشخیص ساختار واقعی صفحه.
+   */
+  if (!urls.size) {
+    logRelevantHtmlContexts(
+      html
+    );
+  }
+
+  return [...urls];
 }
 
 async function downloadInstagramImage(
@@ -600,15 +680,10 @@ async function downloadInstagramImage(
     imageUrls.length
   );
 
-  let lastError = null;
-
-  /*
-   * برای اینکه در صورت وجود تعداد زیادی
-   * URL دوباره صدها request ایجاد نکنیم،
-   * حداکثر 20 مورد اول را تست می‌کنیم.
-   */
   const candidates =
-    imageUrls.slice(0, 20);
+    imageUrls.slice(0, 10);
+
+  let lastError = null;
 
   for (
     let i = 0;
@@ -617,6 +692,11 @@ async function downloadInstagramImage(
   ) {
     const imageUrl =
       candidates[i];
+
+    console.log(
+      `Instagram testing image candidate ${i + 1}/${candidates.length}:`,
+      sanitizeUrlForLog(imageUrl)
+    );
 
     try {
       const response =
@@ -628,7 +708,7 @@ async function downloadInstagramImage(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
 
               Accept:
-                "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
 
               Referer:
                 "https://www.instagram.com/",
@@ -645,29 +725,27 @@ async function downloadInstagramImage(
           ) || ""
         ).toLowerCase();
 
+      console.log(
+        `Instagram image candidate ${i + 1} response:`,
+        response.status,
+        contentType
+      );
+
       if (
         response.ok &&
         contentType.startsWith(
           "image/"
         )
       ) {
-        console.log(
-          "Instagram usable image found:",
-          contentType
-        );
-
         const buffer =
           Buffer.from(
             await response.arrayBuffer()
           );
 
         if (!buffer.length) {
-          lastError =
-            new Error(
-              "Image response was empty"
-            );
-
-          continue;
+          throw new Error(
+            "Image response was empty"
+          );
         }
 
         const extension =
@@ -702,15 +780,15 @@ async function downloadInstagramImage(
 
       lastError =
         new Error(
-          `Candidate ${
-            i + 1
-          } returned ${
-            contentType ||
-            "unknown"
-          }`
+          `HTTP ${response.status} ${contentType}`
         );
     } catch (error) {
       lastError = error;
+
+      console.log(
+        `Instagram image candidate ${i + 1} failed:`,
+        error?.message || error
+      );
     }
   }
 
@@ -723,9 +801,65 @@ async function downloadInstagramImage(
   );
 }
 
-async function getInstagramMetadata(
+function getImageExtension(
+  contentType,
   url
 ) {
+  const type =
+    String(
+      contentType || ""
+    ).toLowerCase();
+
+  if (type.includes("png")) {
+    return ".png";
+  }
+
+  if (type.includes("webp")) {
+    return ".webp";
+  }
+
+  if (type.includes("avif")) {
+    return ".avif";
+  }
+
+  if (
+    type.includes("jpeg") ||
+    type.includes("jpg")
+  ) {
+    return ".jpg";
+  }
+
+  try {
+    const pathname =
+      new URL(url)
+        .pathname
+        .toLowerCase();
+
+    if (pathname.endsWith(".png")) {
+      return ".png";
+    }
+
+    if (pathname.endsWith(".webp")) {
+      return ".webp";
+    }
+
+    if (pathname.endsWith(".avif")) {
+      return ".avif";
+    }
+
+    if (
+      pathname.endsWith(".jpeg")
+    ) {
+      return ".jpeg";
+    }
+  } catch {
+    // Ignore.
+  }
+
+  return ".jpg";
+}
+
+async function getInstagramMetadata(url) {
   console.log(
     "Instagram metadata extraction started"
   );
@@ -784,14 +918,10 @@ async function downloadInstagramMedia({
   );
 
   /*
-   * POST
-   *
-   * اول HTML مستقیم Instagram.
+   * PHOTO / POST
    */
-
   if (
-    normalizedContentType ===
-    "POST"
+    normalizedContentType === "POST"
   ) {
     try {
       console.log(
@@ -822,14 +952,6 @@ async function downloadInstagramMedia({
         htmlResult.status >= 200 &&
         htmlResult.status < 300
       ) {
-        /*
-         * مرحله تشخیصی:
-         * ساختار واقعی HTML را بررسی می‌کنیم.
-         */
-        logInstagramImageMarkers(
-          htmlResult.html
-        );
-
         const imageUrls =
           extractInstagramImageUrls(
             htmlResult.html
@@ -840,9 +962,21 @@ async function downloadInstagramMedia({
           imageUrls.length
         );
 
-        if (
-          imageUrls.length
+        for (
+          const imageUrl of imageUrls.slice(
+            0,
+            5
+          )
         ) {
+          console.log(
+            "Instagram extracted image:",
+            sanitizeUrlForLog(
+              imageUrl
+            )
+          );
+        }
+
+        if (imageUrls.length) {
           const filePath =
             await downloadInstagramImage(
               imageUrls,
@@ -856,10 +990,6 @@ async function downloadInstagramMedia({
             finalCost: null,
           };
         }
-
-        console.log(
-          "Instagram direct HTML did not contain usable image URLs"
-        );
       }
     } catch (error) {
       console.log(
@@ -868,21 +998,14 @@ async function downloadInstagramMedia({
       );
     }
 
-    /*
-     * در این مرحله برای POST عکس
-     * به yt-dlp نمی‌رویم.
-     */
     throw new Error(
       "Instagram photo URL could not be extracted from direct HTML"
     );
   }
 
   /*
-   * Reel / Story / Video
-   *
-   * مسیر yt-dlp
+   * REEL / STORY / VIDEO
    */
-
   const metadata =
     await getInstagramMetadata(
       normalizedUrl
@@ -922,24 +1045,17 @@ async function downloadInstagramMedia({
   await ytdlp(
     normalizedUrl,
     {
-      output:
-        outputTemplate,
-
+      output: outputTemplate,
       format,
-
       noPlaylist: true,
-
       noWarnings: true,
-
       noCheckCertificates: true,
     }
   );
 
   const files =
     fs
-      .readdirSync(
-        jobDirectory
-      )
+      .readdirSync(jobDirectory)
       .map((file) =>
         path.join(
           jobDirectory,
@@ -947,9 +1063,7 @@ async function downloadInstagramMedia({
         )
       )
       .filter((file) =>
-        fs.statSync(
-          file
-        ).isFile()
+        fs.statSync(file).isFile()
       );
 
   if (!files.length) {
@@ -968,14 +1082,11 @@ async function downloadInstagramMedia({
 
   return {
     filePath,
-
     contentType:
       detectFileContentType(
         filePath
       ),
-
     mediaType,
-
     finalCost: null,
   };
 }
