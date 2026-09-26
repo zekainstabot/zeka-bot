@@ -27,6 +27,7 @@ async function downloadInstagram(job) {
   const result = await downloadInstagramMedia({
     url,
     jobId: job.job_id || job.id,
+    contentType: job.content_type || "OTHER",
   });
 
   if (!result?.success) {
