@@ -136,23 +136,11 @@ function getDownloadFormat(contentType) {
   const normalizedType =
     normalizeContentType(contentType);
 
-  if (normalizedType === "REEL") {
-    return (
-      "best[ext=mp4]/" +
-      "bestvideo[ext=mp4]+" +
-      "bestaudio[ext=m4a]/best"
-    );
-  }
-
-  if (normalizedType === "STORY") {
-    return (
-      "best[ext=mp4]/" +
-      "bestvideo[ext=mp4]+" +
-      "bestaudio[ext=m4a]/best"
-    );
-  }
-
-  if (normalizedType === "VIDEO") {
+  if (
+    normalizedType === "REEL" ||
+    normalizedType === "STORY" ||
+    normalizedType === "VIDEO"
+  ) {
     return (
       "best[ext=mp4]/" +
       "bestvideo[ext=mp4]+" +
@@ -250,35 +238,87 @@ function decodeInstagramUrl(value) {
   return decoded;
 }
 
-function isInstagramMediaUrl(url) {
+function isInstagramImageUrl(url) {
   if (!url) {
     return false;
   }
 
-  const normalized =
-    String(url).toLowerCase();
+  let parsed;
+
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
 
   if (
-    !normalized.startsWith("https://")
+    parsed.protocol !== "https:"
   ) {
     return false;
   }
 
-  return (
-    normalized.includes(
+  const hostname =
+    parsed.hostname.toLowerCase();
+
+  /*
+   * Instagram image CDN domains.
+   *
+   * فقط CDNهای واقعی را قبول می‌کنیم.
+   * دامنه‌هایی مثل:
+   *
+   * static.cdninstagram.com
+   * www.instagram.com
+   * instagram.com
+   *
+   * قبول نمی‌شوند.
+   */
+
+  if (
+    hostname.startsWith(
+      "scontent"
+    ) &&
+    hostname.includes(
       "cdninstagram.com"
-    ) ||
-    normalized.includes(
-      "fbcdn.net"
-    ) ||
-    normalized.includes(
-      "instagram.com"
     )
-  );
+  ) {
+    return true;
+  }
+
+  if (
+    hostname.includes(
+      "fbcdn.net"
+    ) &&
+    !hostname.startsWith(
+      "static."
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    hostname.includes(
+      "cdninstagram.com"
+    ) &&
+    !hostname.startsWith(
+      "static."
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function extractInstagramImageUrls(html) {
   const urls = new Set();
+
+  /*
+   * فقط فیلدهایی که احتمالاً واقعاً
+   * مربوط به تصویر پست هستند.
+   *
+   * src عمداً حذف شده.
+   * چون باعث پیدا شدن صدها فایل CSS/JS می‌شد.
+   */
 
   const patterns = [
     /"display_url"\s*:\s*"([^"]+)"/g,
@@ -289,20 +329,28 @@ function extractInstagramImageUrls(html) {
 
     /"thumbnail_url"\s*:\s*"([^"]+)"/g,
 
-    /"src"\s*:\s*"(https?:[^"]+)"/g,
+    /"displayUrl"\s*:\s*"([^"]+)"/g,
+
+    /"imageUrl"\s*:\s*"([^"]+)"/g,
   ];
 
-  for (const pattern of patterns) {
+  for (
+    const pattern of patterns
+  ) {
     let match;
 
     while (
       (match = pattern.exec(html)) !== null
     ) {
       const decoded =
-        decodeInstagramUrl(match[1]);
+        decodeInstagramUrl(
+          match[1]
+        );
 
       if (
-        isInstagramMediaUrl(decoded)
+        isInstagramImageUrl(
+          decoded
+        )
       ) {
         urls.add(decoded);
       }
@@ -360,19 +408,27 @@ function getImageExtension(
     const pathname =
       new URL(url).pathname.toLowerCase();
 
-    if (pathname.endsWith(".png")) {
+    if (
+      pathname.endsWith(".png")
+    ) {
       return ".png";
     }
 
-    if (pathname.endsWith(".webp")) {
+    if (
+      pathname.endsWith(".webp")
+    ) {
       return ".webp";
     }
 
-    if (pathname.endsWith(".avif")) {
+    if (
+      pathname.endsWith(".avif")
+    ) {
       return ".avif";
     }
 
-    if (pathname.endsWith(".jpeg")) {
+    if (
+      pathname.endsWith(".jpeg")
+    ) {
       return ".jpeg";
     }
   } catch {
@@ -398,45 +454,51 @@ async function downloadInstagramImage(
     i < imageUrls.length;
     i++
   ) {
-    const imageUrl = imageUrls[i];
+    const imageUrl =
+      imageUrls[i];
 
     try {
-      const response = await fetch(
-        imageUrl,
-        {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
+      const response =
+        await fetch(
+          imageUrl,
+          {
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0.0.0 Safari/537.36",
 
-            Accept:
-              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+              Accept:
+                "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
 
-            Referer:
-              "https://www.instagram.com/",
-          },
+              Referer:
+                "https://www.instagram.com/",
+            },
 
-          redirect: "follow",
-        }
-      );
-
-      const contentType = (
-        response.headers.get(
-          "content-type"
-        ) || ""
-      ).toLowerCase();
-
-      console.log(
-        `Instagram image candidate ${
-          i + 1
-        }/${imageUrls.length}:`,
-        response.status,
-        contentType
-      );
-
-      if (!response.ok) {
-        lastError = new Error(
-          `HTTP ${response.status}`
+            redirect: "follow",
+          }
         );
+
+      const contentType =
+        (
+          response.headers.get(
+            "content-type"
+          ) || ""
+        ).toLowerCase();
+
+      /*
+       * فقط مواردی که واقعاً
+       * image هستند لاگ می‌شوند.
+       *
+       * دیگر 492 خط CSS/JS
+       * تولید نمی‌کنیم.
+       */
+
+      if (
+        !response.ok
+      ) {
+        lastError =
+          new Error(
+            `HTTP ${response.status}`
+          );
 
         continue;
       }
@@ -446,23 +508,34 @@ async function downloadInstagramImage(
           "image/"
         )
       ) {
-        lastError = new Error(
-          `Non-image content: ${
-            contentType || "unknown"
-          }`
-        );
+        lastError =
+          new Error(
+            `Non-image content: ${
+              contentType ||
+              "unknown"
+            }`
+          );
 
         continue;
       }
 
-      const buffer = Buffer.from(
-        await response.arrayBuffer()
+      console.log(
+        "Instagram usable image found:",
+        contentType
       );
 
-      if (!buffer.length) {
-        lastError = new Error(
-          "Image response was empty"
+      const buffer =
+        Buffer.from(
+          await response.arrayBuffer()
         );
+
+      if (
+        !buffer.length
+      ) {
+        lastError =
+          new Error(
+            "Image response was empty"
+          );
 
         continue;
       }
@@ -473,10 +546,11 @@ async function downloadInstagramImage(
           imageUrl
         );
 
-      const filePath = path.join(
-        jobDirectory,
-        `instagram_photo${extension}`
-      );
+      const filePath =
+        path.join(
+          jobDirectory,
+          `instagram_photo${extension}`
+        );
 
       fs.writeFileSync(
         filePath,
@@ -496,13 +570,6 @@ async function downloadInstagramImage(
       return filePath;
     } catch (error) {
       lastError = error;
-
-      console.log(
-        `Instagram image candidate ${
-          i + 1
-        } failed:`,
-        error?.message || error
-      );
     }
   }
 
@@ -524,13 +591,16 @@ async function getInstagramMetadata(
 
   try {
     const metadata =
-      await ytdlp(url, {
-        noPlaylist: true,
-        noWarnings: true,
-        noCheckCertificates: true,
-        dumpSingleJson: true,
-        skipDownload: true,
-      });
+      await ytdlp(
+        url,
+        {
+          noPlaylist: true,
+          noWarnings: true,
+          noCheckCertificates: true,
+          dumpSingleJson: true,
+          skipDownload: true,
+        }
+      );
 
     console.log(
       "Instagram metadata extraction completed"
@@ -556,7 +626,9 @@ async function downloadInstagramMedia({
     cleanInstagramUrl(url);
 
   const normalizedContentType =
-    normalizeContentType(contentType);
+    normalizeContentType(
+      contentType
+    );
 
   console.log(
     "Instagram download started:",
@@ -566,19 +638,19 @@ async function downloadInstagramMedia({
   const {
     jobDirectory,
     outputTemplate,
-  } = createOutputTemplate(jobId);
+  } = createOutputTemplate(
+    jobId
+  );
 
   /*
-   * PHOTO / POST
+   * POST
    *
-   * برای پست عکس، اول HTML مستقیم
-   * Instagram را بررسی می‌کنیم.
-   *
-   * gallery-dl عمداً در این مسیر استفاده
-   * نمی‌شود چون در تست قبلی 429 داد.
+   * ابتدا HTML مستقیم Instagram.
    */
+
   if (
-    normalizedContentType === "POST"
+    normalizedContentType ===
+    "POST"
   ) {
     try {
       console.log(
@@ -619,7 +691,9 @@ async function downloadInstagramMedia({
           imageUrls.length
         );
 
-        if (imageUrls.length) {
+        if (
+          imageUrls.length
+        ) {
           const filePath =
             await downloadInstagramImage(
               imageUrls,
@@ -633,10 +707,6 @@ async function downloadInstagramMedia({
             finalCost: null,
           };
         }
-
-        console.log(
-          "Instagram direct HTML did not contain usable image URLs"
-        );
       }
     } catch (error) {
       console.log(
@@ -646,18 +716,28 @@ async function downloadInstagramMedia({
     }
 
     /*
-     * اگر عکس از HTML پیدا نشد،
-     * فعلاً مستقیم yt-dlp را امتحان می‌کنیم.
+     * مهم:
      *
-     * gallery-dl اینجا اجرا نمی‌شود.
+     * اگر POST بود و HTML نتوانست
+     * تصویر را استخراج کند، دیگر
+     * yt-dlp را برای عکس اجرا نمی‌کنیم.
+     *
+     * چون yt-dlp قبلاً ثابت کرده:
+     *
+     * There is no video in this post
      */
+
+    throw new Error(
+      "Instagram photo URL could not be extracted from direct HTML"
+    );
   }
 
   /*
    * Reel / Story / Video
    *
-   * مسیر اصلی yt-dlp
+   * مسیر yt-dlp
    */
+
   const metadata =
     await getInstagramMetadata(
       normalizedUrl
@@ -679,20 +759,6 @@ async function downloadInstagramMedia({
     mediaType
   );
 
-  /*
-   * اگر POST بود و metadata گفت عکس است،
-   * دیگر نباید آن را با فرمت ویدیویی
-   * yt-dlp دانلود کنیم.
-   */
-  if (
-    normalizedContentType === "POST" &&
-    mediaType === "PHOTO"
-  ) {
-    throw new Error(
-      "Instagram post is a photo but no direct image URL could be extracted"
-    );
-  }
-
   const format =
     getDownloadFormat(
       normalizedContentType
@@ -708,25 +774,38 @@ async function downloadInstagramMedia({
     normalizedUrl
   );
 
-  await ytdlp(normalizedUrl, {
-    output: outputTemplate,
-    format,
-    noPlaylist: true,
-    noWarnings: true,
-    noCheckCertificates: true,
-  });
+  await ytdlp(
+    normalizedUrl,
+    {
+      output:
+        outputTemplate,
 
-  const files = fs
-    .readdirSync(jobDirectory)
-    .map((file) =>
-      path.join(
-        jobDirectory,
-        file
+      format,
+
+      noPlaylist: true,
+
+      noWarnings: true,
+
+      noCheckCertificates: true,
+    }
+  );
+
+  const files =
+    fs
+      .readdirSync(
+        jobDirectory
       )
-    )
-    .filter((file) =>
-      fs.statSync(file).isFile()
-    );
+      .map((file) =>
+        path.join(
+          jobDirectory,
+          file
+        )
+      )
+      .filter((file) =>
+        fs.statSync(
+          file
+        ).isFile()
+      );
 
   if (!files.length) {
     throw new Error(
@@ -734,7 +813,8 @@ async function downloadInstagramMedia({
     );
   }
 
-  const filePath = files[0];
+  const filePath =
+    files[0];
 
   console.log(
     "Instagram download completed:",
@@ -743,11 +823,14 @@ async function downloadInstagramMedia({
 
   return {
     filePath,
+
     contentType:
       detectFileContentType(
         filePath
       ),
+
     mediaType,
+
     finalCost: null,
   };
 }
