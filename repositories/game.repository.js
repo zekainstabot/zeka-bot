@@ -4,7 +4,10 @@ function getDb(client = null) {
   return client || getClient();
 }
 
-async function createSession(data, client = null) {
+async function createSession(
+  data,
+  client = null
+) {
   const db = getDb(client);
 
   const result = await db.query(
@@ -43,7 +46,10 @@ async function createSession(data, client = null) {
   return result.rows[0];
 }
 
-async function findSessionById(id, client = null) {
+async function findSessionById(
+  id,
+  client = null
+) {
   const db = getDb(client);
 
   const result = await db.query(
@@ -52,6 +58,26 @@ async function findSessionById(id, client = null) {
       FROM game_sessions
       WHERE id = $1
       LIMIT 1
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function findSessionByIdForUpdate(
+  id,
+  client = null
+) {
+  const db = getDb(client);
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM game_sessions
+      WHERE id = $1
+      LIMIT 1
+      FOR UPDATE
     `,
     [id]
   );
@@ -153,6 +179,7 @@ async function updateSession(
 module.exports = {
   createSession,
   findSessionById,
+  findSessionByIdForUpdate,
   findSessionByKey,
   updateSession,
 };
