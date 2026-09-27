@@ -3,6 +3,10 @@ const path = require("path");
 const os = require("os");
 const ytdlp = require("yt-dlp-exec");
 
+const {
+  downloadInstagramWithBrowser,
+} = require("./instagram.browser");
+
 const DOWNLOAD_ROOT = path.join(
   os.tmpdir(),
   "zeka-instagram"
@@ -916,6 +920,41 @@ async function downloadInstagramPost(
   };
 }
 
+function isRateLimitError(error) {
+  const message =
+    error?.message ||
+    String(error || "");
+
+  return (
+    message.includes("429") ||
+    message.includes(
+      "Too Many Requests"
+    ) ||
+    message.includes(
+      "HTTP Error 429"
+    ) ||
+    error?.code ===
+      "INSTAGRAM_RATE_LIMITED"
+  );
+}
+
+function createRateLimitError(
+  error
+) {
+  const rateLimitError =
+    new Error(
+      "Instagram rate limit: HTTP 429 Too Many Requests"
+    );
+
+  rateLimitError.code =
+    "INSTAGRAM_RATE_LIMITED";
+
+  rateLimitError.cause =
+    error;
+
+  return rateLimitError;
+}
+
 async function getInstagramMetadata(
   url
 ) {
@@ -960,29 +999,96 @@ async function getInstagramMetadata(
     );
 
     if (
-      message.includes("429") ||
-      message.includes(
-        "Too Many Requests"
-      ) ||
-      message.includes(
-        "HTTP Error 429"
+      isRateLimitError(
+        error
       )
     ) {
-      const rateLimitError =
-        new Error(
-          "Instagram rate limit: HTTP 429 Too Many Requests"
-        );
-
-      rateLimitError.code =
-        "INSTAGRAM_RATE_LIMITED";
-
-      rateLimitError.cause =
-        error;
-
-      throw rateLimitError;
+      throw createRateLimitError(
+        error
+      );
     }
 
     return null;
+  }
+}
+
+async function downloadWithBrowserFallback({
+  url,
+  jobId,
+  contentType,
+}) {
+  console.log(
+    "Instagram yt-dlp fallback started."
+  );
+
+  console.log(
+    "Instagram fallback method: Playwright Browser"
+  );
+
+  try {
+    const result =
+      await downloadInstagramWithBrowser({
+        url,
+        jobId,
+      });
+
+    if (
+      !result?.success ||
+      !result.filePath
+    ) {
+      throw new Error(
+        "Instagram browser fallback completed without a file"
+      );
+    }
+
+    console.log(
+      "Instagram browser fallback completed:",
+      result.filePath
+    );
+
+    return {
+      success: true,
+
+      filePath:
+        result.filePath,
+
+      fileSize:
+        result.fileSize ||
+        fs.statSync(
+          result.filePath
+        ).size,
+
+      contentType:
+        result.contentType ||
+        detectFileContentType(
+          result.filePath
+        ),
+
+      mediaType:
+        result.mediaType ||
+        "UNKNOWN",
+
+      sourceUrl:
+        result.sourceUrl ||
+        url,
+
+      contentId:
+        result.contentId ||
+        null,
+
+      finalCost:
+        null,
+    };
+  } catch (
+    error
+  ) {
+    console.error(
+      "Instagram browser fallback failed:",
+      error?.message ||
+        String(error)
+    );
+
+    throw error;
   }
 }
 
@@ -1017,18 +1123,8 @@ async function downloadInstagramMedia({
   /*
    * POST
    *
-   * اینجا دیگر HTML را
-   * برای عکس استفاده نمی‌کنیم.
-   *
-   * مسیر:
-   *
-   * shortcode
-   * ↓
-   * GraphQL
-   * ↓
-   * image_versions2.candidates
-   * ↓
-   * download
+   * GraphQL مسیر اصلی
+   * عکس‌ها.
    */
 
   if (
@@ -1056,13 +1152,47 @@ async function downloadInstagramMedia({
   /*
    * REEL / STORY / VIDEO
    *
-   * مسیر قبلی بدون تغییر.
+   * اول yt-dlp
+   * اگر 429 شد:
+   * Browser fallback
    */
 
-  const metadata =
-    await getInstagramMetadata(
-      normalizedUrl
-    );
+  let metadata;
+
+  try {
+    metadata =
+      await getInstagramMetadata(
+        normalizedUrl
+      );
+  } catch (
+    error
+  ) {
+    if (
+      isRateLimitError(
+        error
+      )
+    ) {
+      console.log(
+        "Instagram metadata received HTTP 429."
+      );
+
+      console.log(
+        "Switching from yt-dlp to Browser fallback."
+      );
+
+      return await downloadWithBrowserFallback({
+        url:
+          normalizedUrl,
+
+        jobId,
+
+        contentType:
+          normalizedContentType,
+      });
+    }
+
+    throw error;
+  }
 
   const mediaType =
     detectInstagramMediaType(
@@ -1118,27 +1248,33 @@ async function downloadInstagramMedia({
       error?.message ||
       String(error || "");
 
+    console.log(
+      "Instagram yt-dlp download failed:",
+      message
+    );
+
     if (
-      message.includes("429") ||
-      message.includes(
-        "Too Many Requests"
-      ) ||
-      message.includes(
-        "HTTP Error 429"
+      isRateLimitError(
+        error
       )
     ) {
-      const rateLimitError =
-        new Error(
-          "Instagram rate limit: HTTP 429 Too Many Requests"
-        );
+      console.log(
+        "Instagram yt-dlp received HTTP 429."
+      );
 
-      rateLimitError.code =
-        "INSTAGRAM_RATE_LIMITED";
+      console.log(
+        "Switching to Browser fallback."
+      );
 
-      rateLimitError.cause =
-        error;
+      return await downloadWithBrowserFallback({
+        url:
+          normalizedUrl,
 
-      throw rateLimitError;
+        jobId,
+
+        contentType:
+          normalizedContentType,
+      });
     }
 
     throw error;
