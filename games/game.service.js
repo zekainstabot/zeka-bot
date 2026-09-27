@@ -8,12 +8,9 @@ const {
 
 function generateSessionKey(gameKey, userId) {
   const timestamp = Date.now().toString(36);
-  const random = Math.random()
-    .toString(36)
-    .slice(2, 12);
+  const random = Math.random().toString(36).slice(2, 12);
 
-  return `${gameKey}-${userId}-${timestamp}-${random}`
-    .slice(0, 64);
+  return `${gameKey}-${userId}-${timestamp}-${random}`.slice(0, 64);
 }
 
 async function getGameType(gameKey) {
@@ -22,13 +19,10 @@ async function getGameType(gameKey) {
   }
 
   const gameType =
-    await gameSettingsService
-      .getGameTypeByKey(gameKey);
+    await gameSettingsService.getGameTypeByKey(gameKey);
 
   if (!gameType) {
-    throw new Error(
-      `Game type not found: ${gameKey}`
-    );
+    throw new Error(`Game type not found: ${gameKey}`);
   }
 
   return gameType;
@@ -36,9 +30,7 @@ async function getGameType(gameKey) {
 
 async function assertGameEnabled(gameTypeId) {
   const enabled =
-    await gameSettingsService.isGameEnabled(
-      gameTypeId
-    );
+    await gameSettingsService.isGameEnabled(gameTypeId);
 
   if (!enabled) {
     throw new Error("Game is currently disabled");
@@ -49,19 +41,12 @@ async function assertGameEnabled(gameTypeId) {
 
 async function getGameCost(gameTypeId) {
   const cost =
-    await gameSettingsService.getGameCost(
-      gameTypeId
-    );
+    await gameSettingsService.getGameCost(gameTypeId);
 
   const numericCost = Number(cost);
 
-  if (
-    !Number.isFinite(numericCost) ||
-    numericCost < 0
-  ) {
-    throw new Error(
-      `Invalid game cost: ${cost}`
-    );
+  if (!Number.isFinite(numericCost) || numericCost < 0) {
+    throw new Error(`Invalid game cost: ${cost}`);
   }
 
   return numericCost;
@@ -82,42 +67,32 @@ async function startGame({
     throw new Error("Game key is required");
   }
 
-  if (
-    !Number.isInteger(totalRounds) ||
-    totalRounds <= 0
-  ) {
-    throw new Error(
-      "Total rounds must be a positive integer"
-    );
+  if (!Number.isInteger(totalRounds) || totalRounds <= 0) {
+    throw new Error("Total rounds must be a positive integer");
   }
 
-  const gameType =
-    await getGameType(gameKey);
+  const gameType = await getGameType(gameKey);
 
   await assertGameEnabled(gameType.id);
 
-  const cost =
-    await getGameCost(gameType.id);
+  const cost = await getGameCost(gameType.id);
 
-  const sessionKey =
-    generateSessionKey(
-      gameKey,
-      userId
-    );
+  const sessionKey = generateSessionKey(gameKey, userId);
 
-  const session =
-    await gameRepository.createSession({
-      sessionKey,
-      gameTypeId: gameType.id,
-      userId,
-      status: "WAITING",
-      entryCost: cost,
-      reservedCost: 0,
-      currentRound: 0,
-      totalRounds,
-      metadata,
-      expiresAt,
-    });
+  const session = await gameRepository.createSession({
+    sessionKey,
+    gameTypeId: gameType.id,
+    userId,
+    status: "WAITING",
+    entryCost: cost,
+    reservedCost: 0,
+    currentRound: 0,
+    totalRounds,
+    metadata,
+    expiresAt,
+  });
+
+  let creditReserved = false;
 
   try {
     await reserveGameCredit({
@@ -126,32 +101,39 @@ async function startGame({
       gameSessionId: session.id,
     });
 
+    creditReserved = true;
+
     const updatedSession =
-      await gameRepository.updateSession(
-        session.id,
-        {
-          status: "ACTIVE",
-          reserved_cost: cost,
-          started_at: new Date(),
-        }
-      );
+      await gameRepository.updateSession(session.id, {
+        status: "ACTIVE",
+        reserved_cost: cost,
+        started_at: new Date(),
+      });
 
     return updatedSession || session;
   } catch (error) {
+    if (creditReserved) {
+      try {
+        await releaseGameCredit(session.id);
+      } catch (releaseError) {
+        console.error(
+          `Failed to release game credit for session ${session.id}:`,
+          releaseError
+        );
+      }
+    }
+
     try {
-      await gameRepository.updateSession(
-        session.id,
-        {
-          status: "CANCELLED",
-          result: {
-            error: error.message,
-          },
-          completed_at: new Date(),
-        }
-      );
+      await gameRepository.updateSession(session.id, {
+        status: "FAILED",
+        result: {
+          error: error.message,
+        },
+        completed_at: new Date(),
+      });
     } catch (updateError) {
       console.error(
-        "Failed to cancel game session:",
+        "Failed to mark game session as FAILED:",
         updateError
       );
     }
@@ -160,20 +142,13 @@ async function startGame({
   }
 }
 
-async function completeGame(
-  gameSessionId,
-  result = {}
-) {
+async function completeGame(gameSessionId, result = {}) {
   if (!gameSessionId) {
-    throw new Error(
-      "Game session ID is required"
-    );
+    throw new Error("Game session ID is required");
   }
 
   const session =
-    await gameRepository.findSessionById(
-      gameSessionId
-    );
+    await gameRepository.findSessionById(gameSessionId);
 
   if (!session) {
     throw new Error(
@@ -185,43 +160,32 @@ async function completeGame(
     return session;
   }
 
-  if (session.status === "CANCELLED") {
-    throw new Error(
-      "Game session is already cancelled"
-    );
+  if (
+    session.status === "CANCELLED" ||
+    session.status === "FAILED"
+  ) {
+    throw new Error("Game session is not active");
   }
 
-  await consumeGameCredit(
-    gameSessionId
-  );
+  await consumeGameCredit(gameSessionId);
 
   const updatedSession =
-    await gameRepository.updateSession(
-      gameSessionId,
-      {
-        status: "COMPLETED",
-        result,
-        completed_at: new Date(),
-      }
-    );
+    await gameRepository.updateSession(gameSessionId, {
+      status: "COMPLETED",
+      result,
+      completed_at: new Date(),
+    });
 
   return updatedSession || session;
 }
 
-async function cancelGame(
-  gameSessionId,
-  reason = null
-) {
+async function cancelGame(gameSessionId, reason = null) {
   if (!gameSessionId) {
-    throw new Error(
-      "Game session ID is required"
-    );
+    throw new Error("Game session ID is required");
   }
 
   const session =
-    await gameRepository.findSessionById(
-      gameSessionId
-    );
+    await gameRepository.findSessionById(gameSessionId);
 
   if (!session) {
     throw new Error(
@@ -239,38 +203,31 @@ async function cancelGame(
     return session;
   }
 
-  await releaseGameCredit(
-    gameSessionId
-  );
+  if (session.status === "FAILED") {
+    return session;
+  }
+
+  await releaseGameCredit(gameSessionId);
 
   const updatedSession =
-    await gameRepository.updateSession(
-      gameSessionId,
-      {
-        status: "CANCELLED",
-        result: {
-          cancelled: true,
-          reason,
-        },
-        completed_at: new Date(),
-      }
-    );
+    await gameRepository.updateSession(gameSessionId, {
+      status: "CANCELLED",
+      result: {
+        cancelled: true,
+        reason,
+      },
+      completed_at: new Date(),
+    });
 
   return updatedSession || session;
 }
 
-async function getGameSession(
-  gameSessionId
-) {
+async function getGameSession(gameSessionId) {
   if (!gameSessionId) {
-    throw new Error(
-      "Game session ID is required"
-    );
+    throw new Error("Game session ID is required");
   }
 
-  return gameRepository.findSessionById(
-    gameSessionId
-  );
+  return gameRepository.findSessionById(gameSessionId);
 }
 
 module.exports = {
