@@ -4,6 +4,9 @@ const {
   reserveCredit,
   releaseCredit,
 } = require("../services/credit.service");
+const {
+  createDailyCreditsForUser,
+} = require("../services/daily-credit.service");
 
 async function createAndQueueJob({
   request,
@@ -45,6 +48,8 @@ async function createAndQueueJob({
   let creditReserved = false;
 
   try {
+    await createDailyCreditsForUser(request.user_id);
+
     await reserveCredit({
       userId: request.user_id,
       amount: estimatedCost,
