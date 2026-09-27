@@ -1,7 +1,9 @@
+const { getClient } = require("../database/client");
 const creditRepository = require("../repositories/credit.repository");
 
 const DAILY_CREDIT_AMOUNT = 12;
 const ROLLOVER_CAP = 1.5;
+const IRAN_TIMEZONE = "Asia/Tehran";
 
 function calculateRollover(remainingDaily) {
   const remaining = Number(remainingDaily || 0);
@@ -18,99 +20,137 @@ function calculateRollover(remainingDaily) {
   );
 }
 
+function getIranDateString(date = new Date()) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: IRAN_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 async function createDailyCreditsForUser(userId) {
   if (!userId) {
     throw new Error("User ID is required");
   }
 
-  const accounts =
-    await creditRepository.findByUserId(userId);
+  const db = getClient();
 
-  const now = new Date();
+  await db.query("BEGIN");
 
-  const dailyAccounts = accounts.filter((account) => {
-    return (
-      String(account.source || "").toUpperCase() === "DAILY" &&
-      Number(account.remaining_amount || 0) > 0
+  try {
+    const todayIran = getIranDateString();
+
+    const dailyResult = await db.query(
+      `
+        SELECT *
+        FROM credit_accounts
+        WHERE user_id = $1
+          AND UPPER(source) = 'DAILY'
+        ORDER BY created_at DESC, id DESC
+        FOR UPDATE
+      `,
+      [userId]
     );
-  });
 
-  const activeDailyAccounts = dailyAccounts.filter((account) => {
-    if (!account.expires_at) {
-      return true;
+    const dailyAccounts = dailyResult.rows;
+
+    const todayDaily = dailyAccounts.find((account) => {
+      const createdDate = getIranDateString(
+        new Date(account.created_at)
+      );
+
+      return createdDate === todayIran;
+    });
+
+    if (todayDaily) {
+      await db.query("COMMIT");
+
+      return {
+        created: false,
+        reason: "DAILY_CREDIT_ALREADY_CREATED",
+        daily: Number(
+          todayDaily.remaining_amount || 0
+        ),
+        rollover: 0,
+      };
     }
 
-    return new Date(account.expires_at) > now;
-  });
-
-  /*
-   * اگر اعتبار روزانه فعال هنوز وجود دارد،
-   * اعتبار روزانه جدید ایجاد نمی‌کنیم.
-   */
-  if (activeDailyAccounts.length > 0) {
-    const existingDaily = activeDailyAccounts.reduce(
-      (total, account) =>
-        total + Number(account.remaining_amount || 0),
-      0
+    const previousDaily = dailyAccounts.find(
+      (account) =>
+        getIranDateString(
+          new Date(account.created_at)
+        ) !== todayIran
     );
 
+    let rollover = 0;
+
+    if (previousDaily) {
+      const remainingDaily = Number(
+        previousDaily.remaining_amount || 0
+      );
+
+      rollover = calculateRollover(
+        remainingDaily
+      );
+
+      if (rollover > 0) {
+        await creditRepository.create(
+          {
+            userId,
+            creditType: "ROLLOVER",
+            amount: rollover,
+            remainingAmount: rollover,
+            source: "ROLLOVER",
+            expiresAt: null,
+          },
+          db
+        );
+      }
+
+      await db.query(
+        `
+          UPDATE credit_accounts
+          SET
+            remaining_amount = 0,
+            updated_at = NOW()
+          WHERE id = $1
+        `,
+        [previousDaily.id]
+      );
+    }
+
+    const dailyAccount =
+      await creditRepository.create(
+        {
+          userId,
+          creditType: "DOWNLOAD",
+          amount: DAILY_CREDIT_AMOUNT,
+          remainingAmount: DAILY_CREDIT_AMOUNT,
+          source: "DAILY",
+          expiresAt: null,
+        },
+        db
+      );
+
+    await db.query("COMMIT");
+
     return {
-      created: false,
-      reason: "DAILY_CREDIT_ALREADY_EXISTS",
-      daily: Number(existingDaily.toFixed(2)),
-      rollover: 0,
+      created: true,
+      daily: DAILY_CREDIT_AMOUNT,
+      rollover,
+      accountId: dailyAccount.id,
     };
+  } catch (error) {
+    await db.query("ROLLBACK");
+    throw error;
   }
-
-  /*
-   * آخرین اعتبار روزانه مصرف‌نشده را پیدا می‌کنیم.
-   * این مقدار همان چیزی است که باید تبدیل به rollover شود.
-   */
-  const remainingDaily = dailyAccounts.reduce(
-    (total, account) =>
-      total + Number(account.remaining_amount || 0),
-    0
-  );
-
-  const rollover = calculateRollover(remainingDaily);
-
-  if (rollover > 0) {
-    await creditRepository.create({
-      userId,
-      creditType: "ROLLOVER",
-      amount: rollover,
-      remainingAmount: rollover,
-      source: "ROLLOVER",
-      expiresAt: null,
-    });
-  }
-
-  /*
-   * اعتبار روزانه جدید برای چرخه جدید.
-   */
-  const expiresAt = new Date(
-    now.getTime() + 24 * 60 * 60 * 1000
-  );
-
-  await creditRepository.create({
-    userId,
-    creditType: "DAILY",
-    amount: DAILY_CREDIT_AMOUNT,
-    remainingAmount: DAILY_CREDIT_AMOUNT,
-    source: "DAILY",
-    expiresAt,
-  });
-
-  return {
-    created: true,
-    daily: DAILY_CREDIT_AMOUNT,
-    rollover,
-  };
 }
 
 module.exports = {
   DAILY_CREDIT_AMOUNT,
   ROLLOVER_CAP,
   calculateRollover,
+  getIranDateString,
   createDailyCreditsForUser,
 };
