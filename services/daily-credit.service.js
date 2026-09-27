@@ -10,7 +10,7 @@ function calculateRollover(remainingDaily) {
     return 0;
   }
 
-  const rollover = remaining * 0.5;
+  const rollover = remaining / 6;
 
   return Math.min(
     ROLLOVER_CAP,
@@ -28,15 +28,14 @@ async function createDailyCreditsForUser(userId) {
 
   const now = new Date();
 
-  const activeDailyAccounts = accounts.filter((account) => {
-    if (String(account.source || "").toUpperCase() !== "DAILY") {
-      return false;
-    }
+  const dailyAccounts = accounts.filter((account) => {
+    return (
+      String(account.source || "").toUpperCase() === "DAILY" &&
+      Number(account.remaining_amount || 0) > 0
+    );
+  });
 
-    if (Number(account.remaining_amount || 0) <= 0) {
-      return false;
-    }
-
+  const activeDailyAccounts = dailyAccounts.filter((account) => {
     if (!account.expires_at) {
       return true;
     }
@@ -44,13 +43,17 @@ async function createDailyCreditsForUser(userId) {
     return new Date(account.expires_at) > now;
   });
 
-  const existingDaily = activeDailyAccounts.reduce(
-    (total, account) =>
-      total + Number(account.remaining_amount || 0),
-    0
-  );
+  /*
+   * اگر اعتبار روزانه فعال هنوز وجود دارد،
+   * اعتبار روزانه جدید ایجاد نمی‌کنیم.
+   */
+  if (activeDailyAccounts.length > 0) {
+    const existingDaily = activeDailyAccounts.reduce(
+      (total, account) =>
+        total + Number(account.remaining_amount || 0),
+      0
+    );
 
-  if (existingDaily > 0) {
     return {
       created: false,
       reason: "DAILY_CREDIT_ALREADY_EXISTS",
@@ -59,14 +62,11 @@ async function createDailyCreditsForUser(userId) {
     };
   }
 
-  const previousDailyAccounts = accounts.filter((account) => {
-    return (
-      String(account.source || "").toUpperCase() === "DAILY" &&
-      Number(account.remaining_amount || 0) > 0
-    );
-  });
-
-  const remainingDaily = previousDailyAccounts.reduce(
+  /*
+   * آخرین اعتبار روزانه مصرف‌نشده را پیدا می‌کنیم.
+   * این مقدار همان چیزی است که باید تبدیل به rollover شود.
+   */
+  const remainingDaily = dailyAccounts.reduce(
     (total, account) =>
       total + Number(account.remaining_amount || 0),
     0
@@ -75,7 +75,7 @@ async function createDailyCreditsForUser(userId) {
   const rollover = calculateRollover(remainingDaily);
 
   if (rollover > 0) {
-    await creditRepository.createAccount({
+    await creditRepository.create({
       userId,
       creditType: "ROLLOVER",
       amount: rollover,
@@ -85,11 +85,14 @@ async function createDailyCreditsForUser(userId) {
     });
   }
 
+  /*
+   * اعتبار روزانه جدید برای چرخه جدید.
+   */
   const expiresAt = new Date(
     now.getTime() + 24 * 60 * 60 * 1000
   );
 
-  await creditRepository.createAccount({
+  await creditRepository.create({
     userId,
     creditType: "DAILY",
     amount: DAILY_CREDIT_AMOUNT,
