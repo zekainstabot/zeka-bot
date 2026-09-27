@@ -47,7 +47,8 @@ function validateSegments(segments) {
 }
 
 function selectWeightedSegment(segments) {
-  const random = Math.random() * MAX_PROBABILITY_TOTAL;
+  const random =
+    Math.random() * MAX_PROBABILITY_TOTAL;
 
   let cumulativeProbability = 0;
 
@@ -61,6 +62,111 @@ function selectWeightedSegment(segments) {
   }
 
   return segments[segments.length - 1];
+}
+
+function buildWheelReward(
+  selectedSegment,
+  gameSessionId
+) {
+  const resultType =
+    String(
+      selectedSegment.result_type || ""
+    ).toUpperCase();
+
+  const creditAmount =
+    Number(
+      selectedSegment.credit_amount || 0
+    );
+
+  const xpAmount =
+    Number(
+      selectedSegment.xp_amount || 0
+    );
+
+  const proDays =
+    Number(
+      selectedSegment.pro_days || 0
+    );
+
+  if (resultType === "CREDIT") {
+    if (!Number.isFinite(creditAmount) || creditAmount <= 0) {
+      throw new Error(
+        `Invalid wheel credit reward: ${creditAmount}`
+      );
+    }
+
+    return {
+      rewardType: "WHEEL_CREDIT",
+      sourceType: "GAME",
+      sourceId: gameSessionId,
+      creditAmount,
+      xpAmount: 0,
+      proDays: 0,
+      metadata: {
+        game: WHEEL_GAME_KEY,
+        resultType,
+        segmentId: selectedSegment.id,
+        segmentNumber:
+          selectedSegment.segment_number,
+      },
+    };
+  }
+
+  if (resultType === "XP") {
+    if (!Number.isInteger(xpAmount) || xpAmount <= 0) {
+      throw new Error(
+        `Invalid wheel XP reward: ${xpAmount}`
+      );
+    }
+
+    return {
+      rewardType: "WHEEL_XP",
+      sourceType: "GAME",
+      sourceId: gameSessionId,
+      creditAmount: 0,
+      xpAmount,
+      proDays: 0,
+      metadata: {
+        game: WHEEL_GAME_KEY,
+        resultType,
+        segmentId: selectedSegment.id,
+        segmentNumber:
+          selectedSegment.segment_number,
+      },
+    };
+  }
+
+  if (resultType === "PRO") {
+    if (!Number.isInteger(proDays) || proDays <= 0) {
+      throw new Error(
+        `Invalid wheel Pro reward: ${proDays}`
+      );
+    }
+
+    return {
+      rewardType: "WHEEL_PRO",
+      sourceType: "GAME",
+      sourceId: gameSessionId,
+      creditAmount: 0,
+      xpAmount: 0,
+      proDays,
+      metadata: {
+        game: WHEEL_GAME_KEY,
+        resultType,
+        segmentId: selectedSegment.id,
+        segmentNumber:
+          selectedSegment.segment_number,
+      },
+    };
+  }
+
+  if (resultType === "BLANK") {
+    return null;
+  }
+
+  throw new Error(
+    `Unsupported wheel result type: ${resultType}`
+  );
 }
 
 async function getWheelSegments() {
@@ -115,25 +221,45 @@ async function startSpin({
       selectWeightedSegment(segments);
 
     const result = {
-      segment_id: selectedSegment.id,
+      segment_id:
+        selectedSegment.id,
+
       segment_number:
         selectedSegment.segment_number,
+
       result_type:
         selectedSegment.result_type,
+
       credit_amount:
-        Number(selectedSegment.credit_amount || 0),
+        Number(
+          selectedSegment.credit_amount || 0
+        ),
+
       xp_amount:
-        Number(selectedSegment.xp_amount || 0),
+        Number(
+          selectedSegment.xp_amount || 0
+        ),
+
       pro_days:
-        Number(selectedSegment.pro_days || 0),
+        Number(
+          selectedSegment.pro_days || 0
+        ),
+
       title_key:
         selectedSegment.title_key,
     };
 
+    const reward =
+      buildWheelReward(
+        selectedSegment,
+        session.id
+      );
+
     const completedSession =
       await gameService.completeGame(
         session.id,
-        result
+        result,
+        reward
       );
 
     return {
@@ -163,4 +289,5 @@ module.exports = {
   startSpin,
   validateSegments,
   selectWeightedSegment,
+  buildWheelReward,
 };
