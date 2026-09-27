@@ -28,10 +28,11 @@ async function create(data, client = null) {
         credit_account_id,
         request_id,
         job_id,
+        game_session_id,
         amount,
         status
       )
-      VALUES ($1, $2, $3, $4, $5, 'RESERVED')
+      VALUES ($1, $2, $3, $4, $5, $6, 'RESERVED')
       RETURNING *
     `,
     [
@@ -39,6 +40,7 @@ async function create(data, client = null) {
       data.creditAccountId,
       data.requestId || null,
       data.jobId || null,
+      data.gameSessionId || null,
       data.amount,
     ]
   );
@@ -78,6 +80,46 @@ async function findActiveByJobId(
       FOR UPDATE
     `,
     [jobId]
+  );
+
+  return result.rows;
+}
+
+async function findByGameSessionId(
+  gameSessionId,
+  client = null
+) {
+  const db = getDb(client);
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM credit_reservations
+      WHERE game_session_id = $1
+      ORDER BY id ASC
+    `,
+    [gameSessionId]
+  );
+
+  return result.rows;
+}
+
+async function findActiveByGameSessionId(
+  gameSessionId,
+  client = null
+) {
+  const db = getDb(client);
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM credit_reservations
+      WHERE game_session_id = $1
+        AND status = 'RESERVED'
+      ORDER BY id ASC
+      FOR UPDATE
+    `,
+    [gameSessionId]
   );
 
   return result.rows;
@@ -125,6 +167,8 @@ module.exports = {
   create,
   findByJobId,
   findActiveByJobId,
+  findByGameSessionId,
+  findActiveByGameSessionId,
   markConsumed,
   markReleased,
 };
