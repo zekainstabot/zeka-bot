@@ -21,34 +21,64 @@ async function grantRewardInTransaction({
   client,
 }) {
   if (!userId) {
-    throw new Error("User ID is required");
+    throw new Error(
+      "User ID is required"
+    );
   }
 
   if (!rewardType) {
-    throw new Error("Reward type is required");
+    throw new Error(
+      "Reward type is required"
+    );
   }
 
   if (!client) {
-    throw new Error("Database client is required");
+    throw new Error(
+      "Database client is required"
+    );
   }
 
-  const credit = Number(creditAmount);
-  const xp = Number(xpAmount);
-  const pro = Number(proDays);
+  const credit =
+    Number(creditAmount);
 
-  if (!Number.isFinite(credit) || credit < 0) {
-    throw new Error("Invalid reward credit amount");
+  const xp =
+    Number(xpAmount);
+
+  const pro =
+    Number(proDays);
+
+  if (
+    !Number.isFinite(credit) ||
+    credit < 0
+  ) {
+    throw new Error(
+      "Invalid reward credit amount"
+    );
   }
 
-  if (!Number.isInteger(xp) || xp < 0) {
-    throw new Error("Invalid reward XP amount");
+  if (
+    !Number.isInteger(xp) ||
+    xp < 0
+  ) {
+    throw new Error(
+      "Invalid reward XP amount"
+    );
   }
 
-  if (!Number.isInteger(pro) || pro < 0) {
-    throw new Error("Invalid reward Pro days");
+  if (
+    !Number.isInteger(pro) ||
+    pro < 0
+  ) {
+    throw new Error(
+      "Invalid reward Pro days"
+    );
   }
 
-  if (credit === 0 && xp === 0 && pro === 0) {
+  if (
+    credit === 0 &&
+    xp === 0 &&
+    pro === 0
+  ) {
     return {
       granted: false,
       reward: null,
@@ -58,7 +88,10 @@ async function grantRewardInTransaction({
     };
   }
 
-  if (sourceType && sourceId) {
+  if (
+    sourceType &&
+    sourceId
+  ) {
     const existing =
       await rewardRepository.findBySource(
         {
@@ -76,11 +109,17 @@ async function grantRewardInTransaction({
         duplicate: true,
         reward: existing,
         creditAmount:
-          Number(existing.credit_amount || 0),
+          Number(
+            existing.credit_amount || 0
+          ),
         xpAmount:
-          Number(existing.xp_amount || 0),
+          Number(
+            existing.xp_amount || 0
+          ),
         proDays:
-          Number(existing.pro_days || 0),
+          Number(
+            existing.pro_days || 0
+          ),
       };
     }
   }
@@ -89,7 +128,8 @@ async function grantRewardInTransaction({
     await rewardRepository.create(
       {
         userId,
-        rewardId: generateRewardId(),
+        rewardId:
+          generateRewardId(),
         rewardType,
         sourceType,
         sourceId,
@@ -101,6 +141,51 @@ async function grantRewardInTransaction({
       },
       client
     );
+
+  if (!reward) {
+    if (
+      sourceType &&
+      sourceId
+    ) {
+      const existing =
+        await rewardRepository.findBySource(
+          {
+            userId,
+            sourceType,
+            sourceId,
+            rewardType,
+          },
+          client
+        );
+
+      if (existing) {
+        return {
+          granted: false,
+          duplicate: true,
+          reward: existing,
+          creditAmount:
+            Number(
+              existing.credit_amount ||
+                0
+            ),
+          xpAmount:
+            Number(
+              existing.xp_amount ||
+                0
+            ),
+          proDays:
+            Number(
+              existing.pro_days ||
+                0
+            ),
+        };
+      }
+    }
+
+    throw new Error(
+      "Failed to create reward"
+    );
+  }
 
   let grantedCredit = null;
   let grantedXp = 0;
@@ -150,7 +235,8 @@ async function grantRewardInTransaction({
         [userId]
       );
 
-    const user = userResult.rows[0];
+    const user =
+      userResult.rows[0];
 
     if (!user) {
       throw new Error(
@@ -171,14 +257,16 @@ async function grantRewardInTransaction({
           FROM levels
           WHERE required_xp <= $1
             AND status = 'ACTIVE'
-          ORDER BY required_xp DESC, level_number DESC
+          ORDER BY required_xp DESC,
+                   level_number DESC
           LIMIT 1
         `,
         [balanceAfter]
       );
 
     const newLevel =
-      levelResult.rows[0]?.level_number ??
+      levelResult.rows[0]
+        ?.level_number ??
       Number(user.level || 0);
 
     await client.query(
@@ -220,7 +308,9 @@ async function grantRewardInTransaction({
         balanceBefore,
         balanceAfter,
         "XP reward granted",
-        JSON.stringify(metadata || {}),
+        JSON.stringify(
+          metadata || {}
+        ),
       ]
     );
 
@@ -239,7 +329,8 @@ async function grantRewardInTransaction({
         [userId]
       );
 
-    const user = userResult.rows[0];
+    const user =
+      userResult.rows[0];
 
     if (!user) {
       throw new Error(
@@ -247,19 +338,27 @@ async function grantRewardInTransaction({
       );
     }
 
-    const now = new Date();
+    const now =
+      new Date();
 
     const currentExpiry =
       user.pro_expires_at &&
-      new Date(user.pro_expires_at) > now
-        ? new Date(user.pro_expires_at)
+      new Date(
+        user.pro_expires_at
+      ) > now
+        ? new Date(
+            user.pro_expires_at
+          )
         : now;
 
     const newExpiry =
-      new Date(currentExpiry);
+      new Date(
+        currentExpiry
+      );
 
     newExpiry.setUTCDate(
-      newExpiry.getUTCDate() + pro
+      newExpiry.getUTCDate() +
+        pro
     );
 
     await client.query(
@@ -285,7 +384,8 @@ async function grantRewardInTransaction({
     reward,
     creditAmount: credit,
     xpAmount: grantedXp,
-    proDays: grantedProDays,
+    proDays:
+      grantedProDays,
   };
 }
 
@@ -299,30 +399,42 @@ async function grantReward({
   proDays = 0,
   metadata = {},
 }) {
-  const pool = getPool();
-  const client = await pool.connect();
+  const pool =
+    getPool();
+
+  const client =
+    await pool.connect();
 
   try {
-    await client.query("BEGIN");
+    await client.query(
+      "BEGIN"
+    );
 
     const result =
-      await grantRewardInTransaction({
-        userId,
-        rewardType,
-        sourceType,
-        sourceId,
-        creditAmount,
-        xpAmount,
-        proDays,
-        metadata,
-        client,
-      });
+      await grantRewardInTransaction(
+        {
+          userId,
+          rewardType,
+          sourceType,
+          sourceId,
+          creditAmount,
+          xpAmount,
+          proDays,
+          metadata,
+          client,
+        }
+      );
 
-    await client.query("COMMIT");
+    await client.query(
+      "COMMIT"
+    );
 
     return result;
   } catch (error) {
-    await client.query("ROLLBACK");
+    await client.query(
+      "ROLLBACK"
+    );
+
     throw error;
   } finally {
     client.release();
