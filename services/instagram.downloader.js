@@ -434,19 +434,6 @@ async function getInstagramPostHtml(url) {
   };
 }
 
-/*
- * Instagram GraphQL
- *
- * مسیر جدید:
- *
- * doc_id:
- * 27128499623469141
- *
- * response:
- * data
- *   -> xdt_api__v1__media__shortcode__web_info
- *   -> items
- */
 async function getInstagramPostGraphQL(
   shortcode,
   postUrl
@@ -659,12 +646,6 @@ function extractImageUrlsFromMedia(
       }
     }
   }
-
-  /*
-   * بعض نسخه‌های پاسخ ممکن است
-   * image_versions2 را داخل carousel_media
-   * قرار دهند.
-   */
 
   const carouselMedia =
     Array.isArray(
@@ -953,9 +934,6 @@ async function getInstagramMetadata(
           noWarnings:
             true,
 
-          noCheckCertificates:
-            true,
-
           dumpSingleJson:
             true,
 
@@ -972,11 +950,37 @@ async function getInstagramMetadata(
   } catch (
     error
   ) {
+    const message =
+      error?.message ||
+      String(error || "");
+
     console.log(
       "Instagram metadata extraction failed:",
-      error?.message ||
-        error
+      message
     );
+
+    if (
+      message.includes("429") ||
+      message.includes(
+        "Too Many Requests"
+      ) ||
+      message.includes(
+        "HTTP Error 429"
+      )
+    ) {
+      const rateLimitError =
+        new Error(
+          "Instagram rate limit: HTTP 429 Too Many Requests"
+        );
+
+      rateLimitError.code =
+        "INSTAGRAM_RATE_LIMITED";
+
+      rateLimitError.cause =
+        error;
+
+      throw rateLimitError;
+    }
 
     return null;
   }
@@ -1091,24 +1095,54 @@ async function downloadInstagramMedia({
     normalizedUrl
   );
 
-  await ytdlp(
-    normalizedUrl,
-    {
-      output:
-        outputTemplate,
+  try {
+    await ytdlp(
+      normalizedUrl,
+      {
+        output:
+          outputTemplate,
 
-      format,
+        format,
 
-      noPlaylist:
-        true,
+        noPlaylist:
+          true,
 
-      noWarnings:
-        true,
+        noWarnings:
+          true,
+      }
+    );
+  } catch (
+    error
+  ) {
+    const message =
+      error?.message ||
+      String(error || "");
 
-      noCheckCertificates:
-        true,
+    if (
+      message.includes("429") ||
+      message.includes(
+        "Too Many Requests"
+      ) ||
+      message.includes(
+        "HTTP Error 429"
+      )
+    ) {
+      const rateLimitError =
+        new Error(
+          "Instagram rate limit: HTTP 429 Too Many Requests"
+        );
+
+      rateLimitError.code =
+        "INSTAGRAM_RATE_LIMITED";
+
+      rateLimitError.cause =
+        error;
+
+      throw rateLimitError;
     }
-  );
+
+    throw error;
+  }
 
   const files =
     fs
