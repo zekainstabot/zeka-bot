@@ -904,6 +904,8 @@ async function downloadInstagramPost(
     );
 
   return {
+    success: true,
+
     filePath,
 
     contentType:
@@ -1312,6 +1314,8 @@ async function downloadInstagramMedia({
   );
 
   return {
+    success: true,
+
     filePath,
 
     contentType:
