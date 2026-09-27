@@ -88,6 +88,16 @@ async function setSetting(
   );
 }
 
+async function getGameTypeByKey(gameKey) {
+  if (!gameKey) {
+    throw new Error("Game key is required");
+  }
+
+  return gameSettingsRepository.getGameTypeByKey(
+    gameKey
+  );
+}
+
 async function isGameEnabled(gameTypeId) {
   const value = await getSetting(
     gameTypeId,
@@ -155,6 +165,7 @@ module.exports = {
   getSettings,
   getAllSettings,
   setSetting,
+  getGameTypeByKey,
   isGameEnabled,
   getGameCost,
   getQuestionCount,
