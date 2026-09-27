@@ -1,40 +1,18 @@
 const gameSettingsRepository = require("../repositories/game-settings.repository");
 
-function parseValue(value, valueType, defaultValue = null) {
+function parseSettingValue(value, defaultValue = null) {
   if (value === null || value === undefined) {
     return defaultValue;
   }
 
-  switch (valueType) {
-    case "boolean":
-      if (typeof value === "boolean") {
-        return value;
-      }
+  if (typeof value === "object") {
+    return value;
+  }
 
-      return String(value).toLowerCase() === "true";
-
-    case "number": {
-      const number = Number(value);
-
-      return Number.isFinite(number)
-        ? number
-        : defaultValue;
-    }
-
-    case "json":
-      if (typeof value === "object") {
-        return value;
-      }
-
-      try {
-        return JSON.parse(value);
-      } catch {
-        return defaultValue;
-      }
-
-    case "string":
-    default:
-      return String(value);
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
   }
 }
 
@@ -53,9 +31,8 @@ async function getSetting(
     return defaultValue;
   }
 
-  return parseValue(
+  return parseSettingValue(
     setting.setting_value,
-    setting.value_type,
     defaultValue
   );
 }
@@ -65,9 +42,8 @@ async function getSettings(gameTypeId) {
     await gameSettingsRepository.getByGameType(gameTypeId);
 
   return settings.reduce((result, setting) => {
-    result[setting.setting_key] = parseValue(
+    result[setting.setting_key] = parseSettingValue(
       setting.setting_value,
-      setting.value_type,
       null
     );
 
@@ -81,9 +57,8 @@ async function getAllSettings() {
 
   return settings.map((setting) => ({
     ...setting,
-    parsed_value: parseValue(
+    parsed_value: parseSettingValue(
       setting.setting_value,
-      setting.value_type,
       null
     ),
   }));
@@ -106,43 +81,73 @@ async function setSetting(
     );
   }
 
-  let valueToStore;
-
-  if (setting.value_type === "json") {
-    valueToStore = JSON.stringify(value);
-  } else {
-    valueToStore = String(value);
-  }
-
   return gameSettingsRepository.setByGameTypeAndKey(
     gameTypeId,
     settingKey,
-    valueToStore
+    value
   );
 }
 
 async function isGameEnabled(gameTypeId) {
-  return getSetting(
+  const value = await getSetting(
     gameTypeId,
     "enabled",
     false
   );
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return Boolean(value);
 }
 
 async function getGameCost(gameTypeId) {
-  return getSetting(
+  const value = await getSetting(
     gameTypeId,
     "cost",
-    1
+    { credit: 1 }
   );
+
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    const cost = Number(value.credit);
+
+    return Number.isFinite(cost) ? cost : 1;
+  }
+
+  const cost = Number(value);
+
+  return Number.isFinite(cost) ? cost : 1;
 }
 
 async function getQuestionCount(gameTypeId) {
-  return getSetting(
+  const value = await getSetting(
     gameTypeId,
-    "question_count",
-    10
+    "quiz_question_count",
+    { count: 10 }
   );
+
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    const count = Number(value.count);
+
+    return Number.isInteger(count) && count > 0
+      ? count
+      : 10;
+  }
+
+  const count = Number(value);
+
+  return Number.isInteger(count) && count > 0
+    ? count
+    : 10;
 }
 
 module.exports = {
