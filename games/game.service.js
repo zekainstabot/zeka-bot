@@ -6,6 +6,7 @@ const {
   reserveGameCredit,
   consumeGameCreditInTransaction,
   releaseGameCredit,
+  releaseGameCreditInTransaction,
 } = require("../services/credit.service");
 
 function generateSessionKey(
@@ -407,65 +408,113 @@ async function cancelGame(
     );
   }
 
-  const session =
-    await gameRepository.findSessionById(
-      gameSessionId
+  const pool =
+    getPool();
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      "BEGIN"
     );
 
-  if (!session) {
-    throw new Error(
-      `Game session not found: ${gameSessionId}`
-    );
-  }
+    const session =
+      await gameRepository.findSessionByIdForUpdate(
+        gameSessionId,
+        client
+      );
 
-  if (
-    session.status ===
-    "COMPLETED"
-  ) {
-    throw new Error(
-      "Completed game cannot be cancelled"
-    );
-  }
+    if (!session) {
+      throw new Error(
+        `Game session not found: ${gameSessionId}`
+      );
+    }
 
-  if (
-    session.status ===
-    "CANCELLED"
-  ) {
-    return session;
-  }
+    if (
+      session.status ===
+      "COMPLETED"
+    ) {
+      throw new Error(
+        "Completed game cannot be cancelled"
+      );
+    }
 
-  if (
-    session.status ===
-    "FAILED"
-  ) {
-    return session;
-  }
+    if (
+      session.status ===
+      "CANCELLED"
+    ) {
+      await client.query(
+        "COMMIT"
+      );
 
-  await releaseGameCredit(
-    gameSessionId
-  );
+      return session;
+    }
 
-  const updatedSession =
-    await gameRepository.updateSession(
+    if (
+      session.status ===
+      "FAILED"
+    ) {
+      await client.query(
+        "COMMIT"
+      );
+
+      return session;
+    }
+
+    await releaseGameCreditInTransaction(
       gameSessionId,
+      client
+    );
+
+    const updatedSession =
+      await gameRepository.updateSession(
+        gameSessionId,
+        {
+          status:
+            "CANCELLED",
+
+          result: {
+            cancelled: true,
+            reason,
+          },
+
+          completed_at:
+            new Date(),
+        },
+        client
+      );
+
+    await client.query(
+      "COMMIT"
+    );
+
+    return (
+      updatedSession ||
       {
+        ...session,
         status:
           "CANCELLED",
-
-        result: {
-          cancelled: true,
-          reason,
-        },
-
-        completed_at:
-          new Date(),
       }
     );
+  } catch (error) {
+    try {
+      await client.query(
+        "ROLLBACK"
+      );
+    } catch (
+      rollbackError
+    ) {
+      console.error(
+        `Failed to rollback game cancellation for session ${gameSessionId}:`,
+        rollbackError
+      );
+    }
 
-  return (
-    updatedSession ||
-    session
-  );
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function getGameSession(
