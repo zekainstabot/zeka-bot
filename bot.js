@@ -26,6 +26,14 @@ const mainMenu = Markup.keyboard([
   .resize()
   .persistent();
 
+const accountMenu = Markup.keyboard([
+  ["📊 اعتبار من", "🏆 سطح و XP"],
+  ["🌐 زبان", "👤 اطلاعات حساب"],
+  ["🔙 بازگشت"],
+])
+  .resize()
+  .persistent();
+
 function createBot() {
   if (bot) {
     return bot;
@@ -118,13 +126,7 @@ function createBot() {
           `✨ XP: ${account.xp}\n` +
           `🔥 روزهای فعال متوالی: ${account.streakDays}\n\n` +
           `⭐ زکا پرو: ${proStatus}`,
-        Markup.keyboard([
-          ["📊 اعتبار من", "🏆 سطح و XP"],
-          ["🌐 زبان", "👤 اطلاعات حساب"],
-          ["🔙 بازگشت"],
-        ])
-          .resize()
-          .persistent()
+        accountMenu
       );
     } catch (error) {
       console.error("Account menu failed:", error);
@@ -204,7 +206,7 @@ function createBot() {
   });
 
   // =========================
-  // ACCOUNT SUBMENU
+  // ACCOUNT - CREDIT
   // =========================
 
   bot.hears("📊 اعتبار من", async (ctx) => {
@@ -212,18 +214,18 @@ function createBot() {
       const user = await getOrCreateUser(ctx.from);
       const account = await getAccountSummary(user);
 
+      const credits = account.credits || {};
+
       await ctx.reply(
         "📊 اعتبار من\n\n" +
-          `💳 اعتبار قابل استفاده: ${account.credit}\n\n` +
-          "اعتبارهای روزانه، رول‌اور، دعوت دوستان و خریداری‌شده " +
-          "در موجودی نهایی شما محاسبه می‌شوند.",
-        Markup.keyboard([
-          ["📊 اعتبار من", "🏆 سطح و XP"],
-          ["🌐 زبان", "👤 اطلاعات حساب"],
-          ["🔙 بازگشت"],
-        ])
-          .resize()
-          .persistent()
+          `🔄 رول‌اور: ${credits.rollover || 0}\n` +
+          `📅 اعتبار روزانه: ${credits.daily || 0}\n` +
+          `👥 اعتبار دعوت: ${credits.referral || 0}\n` +
+          `💳 اعتبار خریداری‌شده: ${credits.purchased || 0}\n` +
+          `➕ سایر اعتبارها: ${credits.other || 0}\n\n` +
+          `💰 مجموع اعتبار: ${account.credit}\n\n` +
+          "ℹ️ مصرف اعتبار طبق اولویت سیستم زکا انجام می‌شود.",
+        accountMenu
       );
     } catch (error) {
       console.error("Credit menu failed:", error);
@@ -234,6 +236,10 @@ function createBot() {
       );
     }
   });
+
+  // =========================
+  // ACCOUNT - XP
+  // =========================
 
   bot.hears("🏆 سطح و XP", async (ctx) => {
     try {
@@ -246,13 +252,7 @@ function createBot() {
           `✨ XP فعلی: ${account.xp}\n` +
           `🔥 روزهای فعال متوالی: ${account.streakDays}\n\n` +
           "جزئیات سیستم سطح و XP به‌زودی تکمیل می‌شود.",
-        Markup.keyboard([
-          ["📊 اعتبار من", "🏆 سطح و XP"],
-          ["🌐 زبان", "👤 اطلاعات حساب"],
-          ["🔙 بازگشت"],
-        ])
-          .resize()
-          .persistent()
+        accountMenu
       );
     } catch (error) {
       console.error("XP menu failed:", error);
@@ -264,20 +264,22 @@ function createBot() {
     }
   });
 
+  // =========================
+  // ACCOUNT - LANGUAGE
+  // =========================
+
   bot.hears("🌐 زبان", async (ctx) => {
     await ctx.reply(
       "🌐 زبان\n\n" +
         `زبان فعلی حساب شما: ${ctx.from.language_code || "fa"}\n\n` +
         "بخش انتخاب زبان در مرحله بعد تکمیل می‌شود.",
-      Markup.keyboard([
-        ["📊 اعتبار من", "🏆 سطح و XP"],
-        ["🌐 زبان", "👤 اطلاعات حساب"],
-        ["🔙 بازگشت"],
-      ])
-        .resize()
-        .persistent()
+      accountMenu
     );
   });
+
+  // =========================
+  // ACCOUNT - INFORMATION
+  // =========================
 
   bot.hears("👤 اطلاعات حساب", async (ctx) => {
     try {
@@ -300,13 +302,7 @@ function createBot() {
               ? "فعال"
               : "فعال نیست"
           }`,
-        Markup.keyboard([
-          ["📊 اعتبار من", "🏆 سطح و XP"],
-          ["🌐 زبان", "👤 اطلاعات حساب"],
-          ["🔙 بازگشت"],
-        ])
-          .resize()
-          .persistent()
+        accountMenu
       );
     } catch (error) {
       console.error("Account information failed:", error);
@@ -317,6 +313,10 @@ function createBot() {
       );
     }
   });
+
+  // =========================
+  // BACK TO MAIN MENU
+  // =========================
 
   bot.hears("🔙 بازگشت", async (ctx) => {
     await ctx.reply(
@@ -447,6 +447,10 @@ function createBot() {
   return bot;
 }
 
+// =========================
+// PROCESS SIGNALS
+// =========================
+
 process.once("SIGINT", async () => {
   await shutdown("SIGINT");
 });
@@ -454,6 +458,10 @@ process.once("SIGINT", async () => {
 process.once("SIGTERM", async () => {
   await shutdown("SIGTERM");
 });
+
+// =========================
+// START BOT
+// =========================
 
 async function startBot() {
   const telegramBot = createBot();
