@@ -9,7 +9,7 @@ function generateRewardId() {
     .slice(0, 32);
 }
 
-async function grantReward({
+async function grantRewardInTransaction({
   userId,
   rewardType,
   sourceType,
@@ -18,6 +18,7 @@ async function grantReward({
   xpAmount = 0,
   proDays = 0,
   metadata = {},
+  client,
 }) {
   if (!userId) {
     throw new Error("User ID is required");
@@ -25,6 +26,10 @@ async function grantReward({
 
   if (!rewardType) {
     throw new Error("Reward type is required");
+  }
+
+  if (!client) {
+    throw new Error("Database client is required");
   }
 
   const credit = Number(creditAmount);
@@ -53,14 +58,9 @@ async function grantReward({
     };
   }
 
-  const pool = getPool();
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    if (sourceType && sourceId) {
-      const existing = await rewardRepository.findBySource(
+  if (sourceType && sourceId) {
+    const existing =
+      await rewardRepository.findBySource(
         {
           userId,
           sourceType,
@@ -70,21 +70,23 @@ async function grantReward({
         client
       );
 
-      if (existing) {
-        await client.query("COMMIT");
-
-        return {
-          granted: false,
-          duplicate: true,
-          reward: existing,
-          creditAmount: Number(existing.credit_amount || 0),
-          xpAmount: Number(existing.xp_amount || 0),
-          proDays: Number(existing.pro_days || 0),
-        };
-      }
+    if (existing) {
+      return {
+        granted: false,
+        duplicate: true,
+        reward: existing,
+        creditAmount:
+          Number(existing.credit_amount || 0),
+        xpAmount:
+          Number(existing.xp_amount || 0),
+        proDays:
+          Number(existing.pro_days || 0),
+      };
     }
+  }
 
-    const reward = await rewardRepository.create(
+  const reward =
+    await rewardRepository.create(
       {
         userId,
         rewardId: generateRewardId(),
@@ -100,12 +102,13 @@ async function grantReward({
       client
     );
 
-    let grantedCredit = null;
-    let grantedXp = 0;
-    let grantedProDays = 0;
+  let grantedCredit = null;
+  let grantedXp = 0;
+  let grantedProDays = 0;
 
-    if (credit > 0) {
-      grantedCredit = await creditRepository.create(
+  if (credit > 0) {
+    grantedCredit =
+      await creditRepository.create(
         {
           userId,
           creditType: "REWARD",
@@ -117,24 +120,27 @@ async function grantReward({
         client
       );
 
-      await creditRepository.createLedgerEntry(
-        {
-          userId,
-          creditAccountId: grantedCredit.id,
-          entryType: "GRANT",
-          amount: credit,
-          balanceBefore: 0,
-          balanceAfter: credit,
-          referenceType: "REWARD",
-          referenceId: reward.id,
-          description: "Credit reward granted",
-        },
-        client
-      );
-    }
+    await creditRepository.createLedgerEntry(
+      {
+        userId,
+        creditAccountId:
+          grantedCredit.id,
+        entryType: "GRANT",
+        amount: credit,
+        balanceBefore: 0,
+        balanceAfter: credit,
+        referenceType: "REWARD",
+        referenceId: reward.id,
+        description:
+          "Credit reward granted",
+      },
+      client
+    );
+  }
 
-    if (xp > 0) {
-      const userResult = await client.query(
+  if (xp > 0) {
+    const userResult =
+      await client.query(
         `
           SELECT id, xp, level
           FROM users
@@ -144,16 +150,22 @@ async function grantReward({
         [userId]
       );
 
-      const user = userResult.rows[0];
+    const user = userResult.rows[0];
 
-      if (!user) {
-        throw new Error(`User not found: ${userId}`);
-      }
+    if (!user) {
+      throw new Error(
+        `User not found: ${userId}`
+      );
+    }
 
-      const balanceBefore = Number(user.xp || 0);
-      const balanceAfter = balanceBefore + xp;
+    const balanceBefore =
+      Number(user.xp || 0);
 
-      const levelResult = await client.query(
+    const balanceAfter =
+      balanceBefore + xp;
+
+    const levelResult =
+      await client.query(
         `
           SELECT level_number
           FROM levels
@@ -165,54 +177,59 @@ async function grantReward({
         [balanceAfter]
       );
 
-      const newLevel =
-        levelResult.rows[0]?.level_number ??
-        Number(user.level || 0);
+    const newLevel =
+      levelResult.rows[0]?.level_number ??
+      Number(user.level || 0);
 
+    await client.query(
+      `
+        UPDATE users
+        SET xp = $2,
+            level = $3,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [
+        userId,
+        balanceAfter,
+        newLevel,
+      ]
+    );
+
+    await client.query(
+      `
+        INSERT INTO xp_transactions (
+          user_id,
+          amount,
+          source_type,
+          source_id,
+          balance_before,
+          balance_after,
+          description,
+          metadata
+        )
+        VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8::JSONB
+        )
+      `,
+      [
+        userId,
+        xp,
+        "REWARD",
+        reward.id,
+        balanceBefore,
+        balanceAfter,
+        "XP reward granted",
+        JSON.stringify(metadata || {}),
+      ]
+    );
+
+    grantedXp = xp;
+  }
+
+  if (pro > 0) {
+    const userResult =
       await client.query(
-        `
-          UPDATE users
-          SET xp = $2,
-              level = $3,
-              updated_at = NOW()
-          WHERE id = $1
-        `,
-        [userId, balanceAfter, newLevel]
-      );
-
-      await client.query(
-        `
-          INSERT INTO xp_transactions (
-            user_id,
-            amount,
-            source_type,
-            source_id,
-            balance_before,
-            balance_after,
-            description,
-            metadata
-          )
-          VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8::JSONB
-          )
-        `,
-        [
-          userId,
-          xp,
-          "REWARD",
-          reward.id,
-          balanceBefore,
-          balanceAfter,
-          "XP reward granted",
-          JSON.stringify(metadata || {}),
-        ]
-      );
-
-      grantedXp = xp;
-    }
-
-    if (pro > 0) {
-      const userResult = await client.query(
         `
           SELECT id, is_pro, pro_expires_at
           FROM users
@@ -222,50 +239,88 @@ async function grantReward({
         [userId]
       );
 
-      const user = userResult.rows[0];
+    const user = userResult.rows[0];
 
-      if (!user) {
-        throw new Error(`User not found: ${userId}`);
-      }
-
-      const now = new Date();
-
-      const currentExpiry =
-        user.pro_expires_at &&
-        new Date(user.pro_expires_at) > now
-          ? new Date(user.pro_expires_at)
-          : now;
-
-      const newExpiry = new Date(currentExpiry);
-
-      newExpiry.setUTCDate(
-        newExpiry.getUTCDate() + pro
+    if (!user) {
+      throw new Error(
+        `User not found: ${userId}`
       );
-
-      await client.query(
-        `
-          UPDATE users
-          SET is_pro = TRUE,
-              pro_expires_at = $2,
-              updated_at = NOW()
-          WHERE id = $1
-        `,
-        [userId, newExpiry]
-      );
-
-      grantedProDays = pro;
     }
+
+    const now = new Date();
+
+    const currentExpiry =
+      user.pro_expires_at &&
+      new Date(user.pro_expires_at) > now
+        ? new Date(user.pro_expires_at)
+        : now;
+
+    const newExpiry =
+      new Date(currentExpiry);
+
+    newExpiry.setUTCDate(
+      newExpiry.getUTCDate() + pro
+    );
+
+    await client.query(
+      `
+        UPDATE users
+        SET is_pro = TRUE,
+            pro_expires_at = $2,
+            updated_at = NOW()
+        WHERE id = $1
+      `,
+      [
+        userId,
+        newExpiry,
+      ]
+    );
+
+    grantedProDays = pro;
+  }
+
+  return {
+    granted: true,
+    duplicate: false,
+    reward,
+    creditAmount: credit,
+    xpAmount: grantedXp,
+    proDays: grantedProDays,
+  };
+}
+
+async function grantReward({
+  userId,
+  rewardType,
+  sourceType,
+  sourceId,
+  creditAmount = 0,
+  xpAmount = 0,
+  proDays = 0,
+  metadata = {},
+}) {
+  const pool = getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const result =
+      await grantRewardInTransaction({
+        userId,
+        rewardType,
+        sourceType,
+        sourceId,
+        creditAmount,
+        xpAmount,
+        proDays,
+        metadata,
+        client,
+      });
 
     await client.query("COMMIT");
 
-    return {
-      granted: true,
-      duplicate: false,
-      reward,
-      creditAmount: credit,
-      xpAmount: grantedXp,
-      proDays: grantedProDays,
-    };
+    return result;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -276,4 +331,5 @@ async function grantReward({
 
 module.exports = {
   grantReward,
+  grantRewardInTransaction,
 };
