@@ -55,6 +55,27 @@ async function createDailyCreditsForUser(userId) {
   await db.query("BEGIN");
 
   try {
+    /*
+     * Lock the user row first.
+     *
+     * This prevents two simultaneous requests from both
+     * seeing "no Daily credit for today" and creating
+     * duplicate Daily credits.
+     */
+    const userResult = await db.query(
+      `
+        SELECT id
+        FROM users
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [userId]
+    );
+
+    if (!userResult.rows.length) {
+      throw new Error(`User not found: ${userId}`);
+    }
+
     const todayIran = getIranDateString();
 
     const dailyResult = await db.query(
