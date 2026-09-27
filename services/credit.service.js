@@ -593,6 +593,119 @@ async function consumeGameCredit(gameSessionId) {
   }
 }
 
+async function consumeGameCreditInTransaction(
+  gameSessionId,
+  client
+) {
+  if (!gameSessionId) {
+    throw new Error("Game session ID is required");
+  }
+
+  if (!client) {
+    throw new Error("Database client is required");
+  }
+
+  const activeReservations =
+    await creditReservationRepository.findActiveByGameSessionId(
+      gameSessionId,
+      client
+    );
+
+  if (activeReservations.length > 0) {
+    const consumed = [];
+
+    for (const reservation of activeReservations) {
+      const result =
+        await creditReservationRepository.markConsumed(
+          reservation.id,
+          client
+        );
+
+      if (!result) {
+        continue;
+      }
+
+      const account =
+        await creditRepository.findByIdForUpdate(
+          reservation.credit_account_id,
+          client
+        );
+
+      if (!account) {
+        throw new Error(
+          `Credit account not found: ${reservation.credit_account_id}`
+        );
+      }
+
+      const amount =
+        Number(reservation.amount);
+
+      const balanceAfter =
+        Number(account.remaining_amount);
+
+      const balanceBefore =
+        balanceAfter + amount;
+
+      await creditLedgerRepository.create(
+        {
+          userId: reservation.user_id,
+          creditAccountId:
+            reservation.credit_account_id,
+          entryType: "CONSUME",
+          amount: -amount,
+          balanceBefore,
+          balanceAfter,
+          referenceType: "GAME",
+          referenceId: gameSessionId,
+          description:
+            "Credit consumed after game completion",
+        },
+        client
+      );
+
+      consumed.push(result);
+    }
+
+    return consumed;
+  }
+
+  const allReservations =
+    await creditReservationRepository.findByGameSessionId(
+      gameSessionId,
+      client
+    );
+
+  if (!allReservations.length) {
+    throw new Error(
+      `No credit reservation found for game session: ${gameSessionId}`
+    );
+  }
+
+  const consumedReservations =
+    allReservations.filter(
+      (reservation) =>
+        reservation.status === "CONSUMED"
+    );
+
+  if (consumedReservations.length > 0) {
+    return consumedReservations;
+  }
+
+  const hasReleased =
+    allReservations.some(
+      (reservation) =>
+        reservation.status === "RELEASED"
+    );
+
+  if (hasReleased) {
+    throw new Error(
+      `Credit reservation already released for game session: ${gameSessionId}`
+    );
+  }
+
+  return [];
+}
+
 async function releaseGameCredit(gameSessionId) {
   if (!gameSessionId) {
     throw new Error("Game session ID is required");
@@ -737,6 +850,7 @@ module.exports = {
   releaseCredit,
   reserveGameCredit,
   consumeGameCredit,
+  consumeGameCreditInTransaction,
   releaseGameCredit,
   getBalance,
 };
