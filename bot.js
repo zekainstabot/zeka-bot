@@ -15,13 +15,17 @@ const {
 const {
   handleAdminCommand,
 } = require("./handlers/admin.handler");
+const {
+  startSpin,
+} = require("./games/wheel/wheel.service");
 
 let bot = null;
 
 const mainMenu = Markup.keyboard([
   ["📥 دانلود", "👤 حساب من"],
   ["🎁 هدایا", "⭐ زکا پرو"],
-  ["🛠 امکانات ویژه", "📚 راهنما"],
+  ["🎮 مینی‌گیم‌ها", "🛠 امکانات ویژه"],
+  ["📚 راهنما"],
 ])
   .resize()
   .persistent();
@@ -29,6 +33,13 @@ const mainMenu = Markup.keyboard([
 const accountMenu = Markup.keyboard([
   ["📊 اعتبار من", "🏆 سطح و XP"],
   ["🌐 زبان", "👤 اطلاعات حساب"],
+  ["🔙 بازگشت"],
+])
+  .resize()
+  .persistent();
+
+const gamesMenu = Markup.keyboard([
+  ["🎡 گردونه شانس", "🧠 مسابقه"],
   ["🔙 بازگشت"],
 ])
   .resize()
@@ -315,6 +326,96 @@ function createBot() {
   });
 
   // =========================
+  // MINI GAMES
+  // =========================
+
+  bot.hears("🎮 مینی‌گیم‌ها", async (ctx) => {
+    await ctx.reply(
+      "🎮 مینی‌گیم‌ها\n\n" +
+        "یکی از بازی‌ها را انتخاب کن:",
+      gamesMenu
+    );
+  });
+
+  // =========================
+  // WHEEL OF FORTUNE
+  // =========================
+
+  bot.hears("🎡 گردونه شانس", async (ctx) => {
+    try {
+      const user = await getOrCreateUser(ctx.from);
+
+      const result = await startSpin({
+        userId: user.id,
+      });
+
+      const prize = result.result;
+
+      let message =
+        "🎡 نتیجه گردونه شانس\n\n" +
+        `🎯 بخش: ${prize.segment_number}\n`;
+
+      if (prize.result_type === "CREDIT") {
+        message +=
+          `💳 جایزه: +${prize.credit_amount} اعتبار\n`;
+      } else if (prize.result_type === "XP") {
+        message +=
+          `✨ جایزه: +${prize.xp_amount} XP\n`;
+      } else if (prize.result_type === "PRO") {
+        message +=
+          `⭐ جایزه: +${prize.pro_days} روز زکا پرو\n`;
+      } else {
+        message +=
+          "😐 این بار چیزی برنده نشدی.\n";
+      }
+
+      message +=
+        "\n💳 هزینه چرخش: 1 اعتبار";
+
+      await ctx.reply(
+        message,
+        gamesMenu
+      );
+    } catch (error) {
+      console.error(
+        "Wheel spin failed:",
+        error
+      );
+
+      if (
+        error &&
+        (
+          error.message === "Insufficient credit" ||
+          error.code === "INSUFFICIENT_CREDIT"
+        )
+      ) {
+        await ctx.reply(
+          "❌ اعتبار کافی برای چرخاندن گردونه نداری.",
+          gamesMenu
+        );
+        return;
+      }
+
+      await ctx.reply(
+        "❌ اجرای گردونه انجام نشد.\nلطفاً دوباره تلاش کن.",
+        gamesMenu
+      );
+    }
+  });
+
+  // =========================
+  // QUIZ
+  // =========================
+
+  bot.hears("🧠 مسابقه", async (ctx) => {
+    await ctx.reply(
+      "🧠 مسابقه\n\n" +
+        "این بخش در حال توسعه است و به‌زودی فعال می‌شود.",
+      gamesMenu
+    );
+  });
+
+  // =========================
   // BACK TO MAIN MENU
   // =========================
 
@@ -347,6 +448,9 @@ function createBot() {
       "👤 حساب من",
       "🎁 هدایا",
       "⭐ زکا پرو",
+      "🎮 مینی‌گیم‌ها",
+      "🎡 گردونه شانس",
+      "🧠 مسابقه",
       "🛠 امکانات ویژه",
       "📚 راهنما",
       "📊 اعتبار من",
@@ -405,7 +509,10 @@ function createBot() {
     } catch (error) {
       console.error("Download request failed:", error);
 
-      if (error && error.code === "DUPLICATE_ACTIVE_REQUEST") {
+      if (
+        error &&
+        error.code === "DUPLICATE_ACTIVE_REQUEST"
+      ) {
         await ctx.reply(
           "⏳ این لینک در حال حاضر در صف پردازش است.\n\n" +
             "لطفاً صبر کن تا دانلود قبلی تمام شود.",
@@ -414,7 +521,10 @@ function createBot() {
         return;
       }
 
-      if (error && error.code === "PLATFORM_DISABLED") {
+      if (
+        error &&
+        error.code === "PLATFORM_DISABLED"
+      ) {
         await ctx.reply(
           `⚠️ دانلود از ${error.platform} در حال حاضر غیرفعال است.\n\n` +
             "لطفاً بعداً دوباره تلاش کن.",
