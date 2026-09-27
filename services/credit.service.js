@@ -243,123 +243,139 @@ async function releaseCredit(jobId) {
   try {
     await client.query("BEGIN");
 
-    const activeReservations =
-      await creditReservationRepository.findActiveByJobId(
+    const result =
+      await releaseCreditInTransaction(
         jobId,
         client
       );
 
-    if (!activeReservations.length) {
-      const allReservations =
-        await creditReservationRepository.findByJobId(
-          jobId,
-          client
-        );
-
-      if (!allReservations.length) {
-        await client.query("COMMIT");
-        return [];
-      }
-
-      const hasReleased =
-        allReservations.some(
-          (reservation) =>
-            reservation.status === "RELEASED"
-        );
-
-      if (hasReleased) {
-        await client.query("COMMIT");
-
-        return allReservations.filter(
-          (reservation) =>
-            reservation.status === "RELEASED"
-        );
-      }
-
-      const hasConsumed =
-        allReservations.some(
-          (reservation) =>
-            reservation.status === "CONSUMED"
-        );
-
-      if (hasConsumed) {
-        throw new Error(
-          `Credit reservation already consumed for job: ${jobId}`
-        );
-      }
-
-      await client.query("COMMIT");
-
-      return [];
-    }
-
-    const released = [];
-
-    for (const reservation of activeReservations) {
-      const amount =
-        Number(reservation.amount);
-
-      const targetAccount =
-        await creditRepository.findByIdForUpdate(
-          reservation.credit_account_id,
-          client
-        );
-
-      if (!targetAccount) {
-        throw new Error(
-          `Credit account not found: ${reservation.credit_account_id}`
-        );
-      }
-
-      const balanceBefore =
-        Number(targetAccount.remaining_amount);
-
-      const newRemaining =
-        balanceBefore + amount;
-
-      await creditRepository.updateRemaining(
-        targetAccount.id,
-        newRemaining,
-        client
-      );
-
-      const result =
-        await creditReservationRepository.markReleased(
-          reservation.id,
-          client
-        );
-
-      if (result) {
-        await creditLedgerRepository.create(
-          {
-            userId: reservation.user_id,
-            creditAccountId:
-              reservation.credit_account_id,
-            entryType: "RELEASE",
-            amount,
-            balanceBefore,
-            balanceAfter: newRemaining,
-            referenceType: "JOB",
-            referenceId: jobId,
-            description:
-              "Reserved credit released after job failure",
-          },
-          client
-        );
-
-        released.push(result);
-      }
-    }
-
     await client.query("COMMIT");
 
-    return released;
+    return result;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
   }
+}
+
+async function releaseCreditInTransaction(
+  jobId,
+  client
+) {
+  if (!jobId) {
+    throw new Error("Job ID is required");
+  }
+
+  if (!client) {
+    throw new Error("Database client is required");
+  }
+
+  const activeReservations =
+    await creditReservationRepository.findActiveByJobId(
+      jobId,
+      client
+    );
+
+  if (!activeReservations.length) {
+    const allReservations =
+      await creditReservationRepository.findByJobId(
+        jobId,
+        client
+      );
+
+    if (!allReservations.length) {
+      return [];
+    }
+
+    const hasReleased =
+      allReservations.some(
+        (reservation) =>
+          reservation.status === "RELEASED"
+      );
+
+    if (hasReleased) {
+      return allReservations.filter(
+        (reservation) =>
+          reservation.status === "RELEASED"
+      );
+    }
+
+    const hasConsumed =
+      allReservations.some(
+        (reservation) =>
+          reservation.status === "CONSUMED"
+      );
+
+    if (hasConsumed) {
+      throw new Error(
+        `Credit reservation already consumed for job: ${jobId}`
+      );
+    }
+
+    return [];
+  }
+
+  const released = [];
+
+  for (const reservation of activeReservations) {
+    const amount =
+      Number(reservation.amount);
+
+    const targetAccount =
+      await creditRepository.findByIdForUpdate(
+        reservation.credit_account_id,
+        client
+      );
+
+    if (!targetAccount) {
+      throw new Error(
+        `Credit account not found: ${reservation.credit_account_id}`
+      );
+    }
+
+    const balanceBefore =
+      Number(targetAccount.remaining_amount);
+
+    const newRemaining =
+      balanceBefore + amount;
+
+    await creditRepository.updateRemaining(
+      targetAccount.id,
+      newRemaining,
+      client
+    );
+
+    const result =
+      await creditReservationRepository.markReleased(
+        reservation.id,
+        client
+      );
+
+    if (result) {
+      await creditLedgerRepository.create(
+        {
+          userId: reservation.user_id,
+          creditAccountId:
+            reservation.credit_account_id,
+          entryType: "RELEASE",
+          amount,
+          balanceBefore,
+          balanceAfter: newRemaining,
+          referenceType: "JOB",
+          referenceId: jobId,
+          description:
+            "Reserved credit released after job failure",
+        },
+        client
+      );
+
+      released.push(result);
+    }
+  }
+
+  return released;
 }
 
 async function reserveGameCredit({
@@ -480,111 +496,15 @@ async function consumeGameCredit(gameSessionId) {
   try {
     await client.query("BEGIN");
 
-    const activeReservations =
-      await creditReservationRepository.findActiveByGameSessionId(
+    const result =
+      await consumeGameCreditInTransaction(
         gameSessionId,
         client
       );
-
-    if (activeReservations.length > 0) {
-      const consumed = [];
-
-      for (const reservation of activeReservations) {
-        const result =
-          await creditReservationRepository.markConsumed(
-            reservation.id,
-            client
-          );
-
-        if (!result) {
-          continue;
-        }
-
-        const account =
-          await creditRepository.findByIdForUpdate(
-            reservation.credit_account_id,
-            client
-          );
-
-        if (!account) {
-          throw new Error(
-            `Credit account not found: ${reservation.credit_account_id}`
-          );
-        }
-
-        const amount =
-          Number(reservation.amount);
-
-        const balanceAfter =
-          Number(account.remaining_amount);
-
-        const balanceBefore =
-          balanceAfter + amount;
-
-        await creditLedgerRepository.create(
-          {
-            userId: reservation.user_id,
-            creditAccountId:
-              reservation.credit_account_id,
-            entryType: "CONSUME",
-            amount: -amount,
-            balanceBefore,
-            balanceAfter,
-            referenceType: "GAME",
-            referenceId: gameSessionId,
-            description:
-              "Credit consumed after game completion",
-          },
-          client
-        );
-
-        consumed.push(result);
-      }
-
-      await client.query("COMMIT");
-
-      return consumed;
-    }
-
-    const allReservations =
-      await creditReservationRepository.findByGameSessionId(
-        gameSessionId,
-        client
-      );
-
-    if (!allReservations.length) {
-      throw new Error(
-        `No credit reservation found for game session: ${gameSessionId}`
-      );
-    }
-
-    const consumedReservations =
-      allReservations.filter(
-        (reservation) =>
-          reservation.status === "CONSUMED"
-      );
-
-    if (consumedReservations.length > 0) {
-      await client.query("COMMIT");
-
-      return consumedReservations;
-    }
-
-    const hasReleased =
-      allReservations.some(
-        (reservation) =>
-          reservation.status === "RELEASED"
-      );
-
-    if (hasReleased) {
-      throw new Error(
-        `Credit reservation already released for game session: ${gameSessionId}`
-      );
-    }
 
     await client.query("COMMIT");
 
-    return [];
+    return result;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
@@ -706,7 +626,9 @@ async function consumeGameCreditInTransaction(
   return [];
 }
 
-async function releaseGameCredit(gameSessionId) {
+async function releaseGameCredit(
+  gameSessionId
+) {
   if (!gameSessionId) {
     throw new Error("Game session ID is required");
   }
@@ -717,123 +639,139 @@ async function releaseGameCredit(gameSessionId) {
   try {
     await client.query("BEGIN");
 
-    const activeReservations =
-      await creditReservationRepository.findActiveByGameSessionId(
+    const result =
+      await releaseGameCreditInTransaction(
         gameSessionId,
         client
       );
 
-    if (!activeReservations.length) {
-      const allReservations =
-        await creditReservationRepository.findByGameSessionId(
-          gameSessionId,
-          client
-        );
-
-      if (!allReservations.length) {
-        await client.query("COMMIT");
-        return [];
-      }
-
-      const hasReleased =
-        allReservations.some(
-          (reservation) =>
-            reservation.status === "RELEASED"
-        );
-
-      if (hasReleased) {
-        await client.query("COMMIT");
-
-        return allReservations.filter(
-          (reservation) =>
-            reservation.status === "RELEASED"
-        );
-      }
-
-      const hasConsumed =
-        allReservations.some(
-          (reservation) =>
-            reservation.status === "CONSUMED"
-        );
-
-      if (hasConsumed) {
-        throw new Error(
-          `Credit reservation already consumed for game session: ${gameSessionId}`
-        );
-      }
-
-      await client.query("COMMIT");
-
-      return [];
-    }
-
-    const released = [];
-
-    for (const reservation of activeReservations) {
-      const amount =
-        Number(reservation.amount);
-
-      const targetAccount =
-        await creditRepository.findByIdForUpdate(
-          reservation.credit_account_id,
-          client
-        );
-
-      if (!targetAccount) {
-        throw new Error(
-          `Credit account not found: ${reservation.credit_account_id}`
-        );
-      }
-
-      const balanceBefore =
-        Number(targetAccount.remaining_amount);
-
-      const newRemaining =
-        balanceBefore + amount;
-
-      await creditRepository.updateRemaining(
-        targetAccount.id,
-        newRemaining,
-        client
-      );
-
-      const result =
-        await creditReservationRepository.markReleased(
-          reservation.id,
-          client
-        );
-
-      if (result) {
-        await creditLedgerRepository.create(
-          {
-            userId: reservation.user_id,
-            creditAccountId:
-              reservation.credit_account_id,
-            entryType: "RELEASE",
-            amount,
-            balanceBefore,
-            balanceAfter: newRemaining,
-            referenceType: "GAME",
-            referenceId: gameSessionId,
-            description:
-              "Reserved credit released after game failure",
-          },
-          client
-        );
-
-        released.push(result);
-      }
-    }
-
     await client.query("COMMIT");
 
-    return released;
+    return result;
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
   }
+}
+
+async function releaseGameCreditInTransaction(
+  gameSessionId,
+  client
+) {
+  if (!gameSessionId) {
+    throw new Error("Game session ID is required");
+  }
+
+  if (!client) {
+    throw new Error("Database client is required");
+  }
+
+  const activeReservations =
+    await creditReservationRepository.findActiveByGameSessionId(
+      gameSessionId,
+      client
+    );
+
+  if (!activeReservations.length) {
+    const allReservations =
+      await creditReservationRepository.findByGameSessionId(
+        gameSessionId,
+        client
+      );
+
+    if (!allReservations.length) {
+      return [];
+    }
+
+    const hasReleased =
+      allReservations.some(
+        (reservation) =>
+          reservation.status === "RELEASED"
+      );
+
+    if (hasReleased) {
+      return allReservations.filter(
+        (reservation) =>
+          reservation.status === "RELEASED"
+      );
+    }
+
+    const hasConsumed =
+      allReservations.some(
+        (reservation) =>
+          reservation.status === "CONSUMED"
+      );
+
+    if (hasConsumed) {
+      throw new Error(
+        `Credit reservation already consumed for game session: ${gameSessionId}`
+      );
+    }
+
+    return [];
+  }
+
+  const released = [];
+
+  for (const reservation of activeReservations) {
+    const amount =
+      Number(reservation.amount);
+
+    const targetAccount =
+      await creditRepository.findByIdForUpdate(
+        reservation.credit_account_id,
+        client
+      );
+
+    if (!targetAccount) {
+      throw new Error(
+        `Credit account not found: ${reservation.credit_account_id}`
+      );
+    }
+
+    const balanceBefore =
+      Number(targetAccount.remaining_amount);
+
+    const newRemaining =
+      balanceBefore + amount;
+
+    await creditRepository.updateRemaining(
+      targetAccount.id,
+      newRemaining,
+      client
+    );
+
+    const result =
+      await creditReservationRepository.markReleased(
+        reservation.id,
+        client
+      );
+
+    if (result) {
+      await creditLedgerRepository.create(
+        {
+          userId: reservation.user_id,
+          creditAccountId:
+            reservation.credit_account_id,
+          entryType: "RELEASE",
+          amount,
+          balanceBefore,
+          balanceAfter: newRemaining,
+          referenceType: "GAME",
+          referenceId: gameSessionId,
+          description:
+            "Reserved credit released after game failure",
+        },
+        client
+      );
+
+      released.push(result);
+    }
+  }
+
+  return released;
 }
 
 async function getBalance(userId) {
@@ -852,5 +790,6 @@ module.exports = {
   consumeGameCredit,
   consumeGameCreditInTransaction,
   releaseGameCredit,
+  releaseGameCreditInTransaction,
   getBalance,
 };
