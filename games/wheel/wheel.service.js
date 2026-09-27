@@ -89,7 +89,10 @@ function buildWheelReward(
     );
 
   if (resultType === "CREDIT") {
-    if (!Number.isFinite(creditAmount) || creditAmount <= 0) {
+    if (
+      !Number.isFinite(creditAmount) ||
+      creditAmount <= 0
+    ) {
       throw new Error(
         `Invalid wheel credit reward: ${creditAmount}`
       );
@@ -105,7 +108,8 @@ function buildWheelReward(
       metadata: {
         game: WHEEL_GAME_KEY,
         resultType,
-        segmentId: selectedSegment.id,
+        segmentId:
+          selectedSegment.id,
         segmentNumber:
           selectedSegment.segment_number,
       },
@@ -113,7 +117,10 @@ function buildWheelReward(
   }
 
   if (resultType === "XP") {
-    if (!Number.isInteger(xpAmount) || xpAmount <= 0) {
+    if (
+      !Number.isInteger(xpAmount) ||
+      xpAmount <= 0
+    ) {
       throw new Error(
         `Invalid wheel XP reward: ${xpAmount}`
       );
@@ -129,7 +136,8 @@ function buildWheelReward(
       metadata: {
         game: WHEEL_GAME_KEY,
         resultType,
-        segmentId: selectedSegment.id,
+        segmentId:
+          selectedSegment.id,
         segmentNumber:
           selectedSegment.segment_number,
       },
@@ -137,7 +145,10 @@ function buildWheelReward(
   }
 
   if (resultType === "PRO") {
-    if (!Number.isInteger(proDays) || proDays <= 0) {
+    if (
+      !Number.isInteger(proDays) ||
+      proDays <= 0
+    ) {
       throw new Error(
         `Invalid wheel Pro reward: ${proDays}`
       );
@@ -153,7 +164,8 @@ function buildWheelReward(
       metadata: {
         game: WHEEL_GAME_KEY,
         resultType,
-        segmentId: selectedSegment.id,
+        segmentId:
+          selectedSegment.id,
         segmentNumber:
           selectedSegment.segment_number,
       },
@@ -268,10 +280,22 @@ async function startSpin({
     };
   } catch (error) {
     try {
-      await gameService.cancelGame(
-        session.id,
-        error.message
-      );
+      const currentSession =
+        await gameService.getGameSession(
+          session.id
+        );
+
+      if (
+        currentSession &&
+        currentSession.status !== "COMPLETED" &&
+        currentSession.status !== "CANCELLED" &&
+        currentSession.status !== "FAILED"
+      ) {
+        await gameService.cancelGame(
+          session.id,
+          error.message
+        );
+      }
     } catch (cancelError) {
       console.error(
         `Failed to cancel wheel session ${session.id}:`,
