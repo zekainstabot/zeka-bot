@@ -24,25 +24,39 @@ async function findBySource({
       ORDER BY id DESC
       LIMIT 1
     `,
-    [userId, sourceType, sourceId, rewardType]
+    [
+      userId,
+      sourceType,
+      sourceId,
+      rewardType,
+    ]
   );
 
   return result.rows[0] || null;
 }
 
-async function create(data, client = null) {
+async function create(
+  data,
+  client = null
+) {
   const db = getDb(client);
 
   if (!data.userId) {
-    throw new Error("User ID is required");
+    throw new Error(
+      "User ID is required"
+    );
   }
 
   if (!data.rewardId) {
-    throw new Error("Reward ID is required");
+    throw new Error(
+      "Reward ID is required"
+    );
   }
 
   if (!data.rewardType) {
-    throw new Error("Reward type is required");
+    throw new Error(
+      "Reward type is required"
+    );
   }
 
   const result = await db.query(
@@ -65,6 +79,15 @@ async function create(data, client = null) {
         $1, $2, $3, $4, $5, $6, $7, $8, $9,
         $10, $11, $12::JSONB
       )
+      ON CONFLICT (
+        user_id,
+        source_type,
+        source_id,
+        reward_type
+      )
+      WHERE source_type IS NOT NULL
+        AND source_id IS NOT NULL
+      DO NOTHING
       RETURNING *
     `,
     [
@@ -79,11 +102,13 @@ async function create(data, client = null) {
       data.status || "GRANTED",
       data.expiresAt || null,
       data.claimedAt || null,
-      JSON.stringify(data.metadata || {}),
+      JSON.stringify(
+        data.metadata || {}
+      ),
     ]
   );
 
-  return result.rows[0];
+  return result.rows[0] || null;
 }
 
 module.exports = {
