@@ -4,6 +4,7 @@ const config = require("./config/app");
 const { close } = require("./database/client");
 const { register, shutdown } = require("./core/shutdown");
 const { getOrCreateUser } = require("./services/user.service");
+const { getAccountSummary } = require("./services/account.service");
 const { parseUrl } = require("./services/url.service");
 const {
   createDownloadRequest,
@@ -100,12 +101,39 @@ function createBot() {
   // =========================
 
   bot.hears("👤 حساب من", async (ctx) => {
-    await ctx.reply(
-      "👤 حساب من\n\n" +
-        "این بخش در حال تکمیل است.\n\n" +
-        "به‌زودی اطلاعات حساب، اعتبار، سطح و زبان از این قسمت قابل مدیریت خواهد بود.",
-      mainMenu
-    );
+    try {
+      const user = await getOrCreateUser(ctx.from);
+      const account = await getAccountSummary(user);
+
+      const proStatus = account.isPro
+        ? "⭐ فعال"
+        : "❌ فعال نیست";
+
+      await ctx.reply(
+        "👤 حساب من\n\n" +
+          `👤 نام: ${account.displayName || "ثبت نشده"}\n` +
+          `🆔 شناسه: ${account.telegramUserId}\n\n` +
+          `💳 اعتبار: ${account.credit}\n` +
+          `🏆 سطح: ${account.level}\n` +
+          `✨ XP: ${account.xp}\n` +
+          `🔥 روزهای فعال متوالی: ${account.streakDays}\n\n` +
+          `⭐ زکا پرو: ${proStatus}`,
+        Markup.keyboard([
+          ["📊 اعتبار من", "🏆 سطح و XP"],
+          ["🌐 زبان", "👤 اطلاعات حساب"],
+          ["🔙 بازگشت"],
+        ])
+          .resize()
+          .persistent()
+      );
+    } catch (error) {
+      console.error("Account menu failed:", error);
+
+      await ctx.reply(
+        "❌ دریافت اطلاعات حساب انجام نشد.\nلطفاً دوباره تلاش کنید.",
+        mainMenu
+      );
+    }
   });
 
   // =========================
@@ -176,6 +204,128 @@ function createBot() {
   });
 
   // =========================
+  // ACCOUNT SUBMENU
+  // =========================
+
+  bot.hears("📊 اعتبار من", async (ctx) => {
+    try {
+      const user = await getOrCreateUser(ctx.from);
+      const account = await getAccountSummary(user);
+
+      await ctx.reply(
+        "📊 اعتبار من\n\n" +
+          `💳 اعتبار قابل استفاده: ${account.credit}\n\n` +
+          "اعتبارهای روزانه، رول‌اور، دعوت دوستان و خریداری‌شده " +
+          "در موجودی نهایی شما محاسبه می‌شوند.",
+        Markup.keyboard([
+          ["📊 اعتبار من", "🏆 سطح و XP"],
+          ["🌐 زبان", "👤 اطلاعات حساب"],
+          ["🔙 بازگشت"],
+        ])
+          .resize()
+          .persistent()
+      );
+    } catch (error) {
+      console.error("Credit menu failed:", error);
+
+      await ctx.reply(
+        "❌ دریافت اعتبار انجام نشد.\nلطفاً دوباره تلاش کنید.",
+        mainMenu
+      );
+    }
+  });
+
+  bot.hears("🏆 سطح و XP", async (ctx) => {
+    try {
+      const user = await getOrCreateUser(ctx.from);
+      const account = await getAccountSummary(user);
+
+      await ctx.reply(
+        "🏆 سطح و XP\n\n" +
+          `🏆 سطح فعلی: ${account.level}\n` +
+          `✨ XP فعلی: ${account.xp}\n` +
+          `🔥 روزهای فعال متوالی: ${account.streakDays}\n\n` +
+          "جزئیات سیستم سطح و XP به‌زودی تکمیل می‌شود.",
+        Markup.keyboard([
+          ["📊 اعتبار من", "🏆 سطح و XP"],
+          ["🌐 زبان", "👤 اطلاعات حساب"],
+          ["🔙 بازگشت"],
+        ])
+          .resize()
+          .persistent()
+      );
+    } catch (error) {
+      console.error("XP menu failed:", error);
+
+      await ctx.reply(
+        "❌ دریافت اطلاعات سطح انجام نشد.\nلطفاً دوباره تلاش کنید.",
+        mainMenu
+      );
+    }
+  });
+
+  bot.hears("🌐 زبان", async (ctx) => {
+    await ctx.reply(
+      "🌐 زبان\n\n" +
+        `زبان فعلی حساب شما: ${ctx.from.language_code || "fa"}\n\n` +
+        "بخش انتخاب زبان در مرحله بعد تکمیل می‌شود.",
+      Markup.keyboard([
+        ["📊 اعتبار من", "🏆 سطح و XP"],
+        ["🌐 زبان", "👤 اطلاعات حساب"],
+        ["🔙 بازگشت"],
+      ])
+        .resize()
+        .persistent()
+    );
+  });
+
+  bot.hears("👤 اطلاعات حساب", async (ctx) => {
+    try {
+      const user = await getOrCreateUser(ctx.from);
+      const account = await getAccountSummary(user);
+
+      await ctx.reply(
+        "👤 اطلاعات حساب\n\n" +
+          `👤 نام: ${account.displayName || "ثبت نشده"}\n` +
+          `🔹 نام کاربری: ${
+            account.username
+              ? "@" + account.username
+              : "ثبت نشده"
+          }\n` +
+          `🆔 شناسه تلگرام: ${account.telegramUserId}\n` +
+          `🏆 سطح: ${account.level}\n` +
+          `✨ XP: ${account.xp}\n` +
+          `⭐ زکا پرو: ${
+            account.isPro
+              ? "فعال"
+              : "فعال نیست"
+          }`,
+        Markup.keyboard([
+          ["📊 اعتبار من", "🏆 سطح و XP"],
+          ["🌐 زبان", "👤 اطلاعات حساب"],
+          ["🔙 بازگشت"],
+        ])
+          .resize()
+          .persistent()
+      );
+    } catch (error) {
+      console.error("Account information failed:", error);
+
+      await ctx.reply(
+        "❌ دریافت اطلاعات حساب انجام نشد.\nلطفاً دوباره تلاش کنید.",
+        mainMenu
+      );
+    }
+  });
+
+  bot.hears("🔙 بازگشت", async (ctx) => {
+    await ctx.reply(
+      "🏠 منوی اصلی",
+      mainMenu
+    );
+  });
+
+  // =========================
   // ADMIN
   // =========================
 
@@ -192,7 +342,6 @@ function createBot() {
       return;
     }
 
-    // دکمه‌های منو قبلاً توسط hears پردازش شده‌اند
     const menuButtons = [
       "📥 دانلود",
       "👤 حساب من",
@@ -200,6 +349,11 @@ function createBot() {
       "⭐ زکا پرو",
       "🛠 امکانات ویژه",
       "📚 راهنما",
+      "📊 اعتبار من",
+      "🏆 سطح و XP",
+      "🌐 زبان",
+      "👤 اطلاعات حساب",
+      "🔙 بازگشت",
     ];
 
     if (menuButtons.includes(text)) {
