@@ -15,6 +15,7 @@ const DEFAULT_TIME_LIMIT = 10;
 const DEFAULT_QUESTION_COUNT = 10;
 const DEFAULT_REWARD_CREDIT = 0.5;
 const DEFAULT_REWARD_XP = 1;
+const DEFAULT_DAILY_CREDIT_CAP = 5;
 
 function normalizeOption(option) {
   if (
@@ -127,6 +128,16 @@ async function getQuizConfig() {
       }
     );
 
+  const dailyCreditCapSetting =
+    await gameSettingsService.getSetting(
+      gameType.id,
+      "quiz_daily_credit_cap",
+      {
+        credit:
+          DEFAULT_DAILY_CREDIT_CAP,
+      }
+    );
+
   let timeLimit =
     Number(
       timeSetting?.seconds ??
@@ -140,6 +151,20 @@ async function getQuizConfig() {
   ) {
     timeLimit =
       DEFAULT_TIME_LIMIT;
+  }
+
+  let dailyCreditCap =
+    Number(
+      dailyCreditCapSetting?.credit ??
+      dailyCreditCapSetting
+    );
+
+  if (
+    !Number.isFinite(dailyCreditCap) ||
+    dailyCreditCap < 0
+  ) {
+    dailyCreditCap =
+      DEFAULT_DAILY_CREDIT_CAP;
   }
 
   return {
@@ -159,6 +184,8 @@ async function getQuizConfig() {
       ),
 
     timeLimit,
+
+    dailyCreditCap,
   };
 }
 
@@ -530,6 +557,74 @@ async function findActiveQuizByUser(
   );
 }
 
+async function getDailyQuizCreditReward(
+  userId,
+  dailyCreditCap,
+  client
+) {
+  const userResult =
+    await client.query(
+      `
+        SELECT id
+        FROM users
+        WHERE id = $1
+        FOR UPDATE
+      `,
+      [userId]
+    );
+
+  if (!userResult.rows[0]) {
+    throw new Error(
+      "User not found"
+    );
+  }
+
+  const result =
+    await client.query(
+      `
+        SELECT
+          COALESCE(
+            SUM(credit_amount),
+            0
+          ) AS total
+        FROM rewards
+        WHERE user_id = $1
+          AND reward_type = 'QUIZ_CORRECT'
+          AND source_type = 'GAME_ANSWER'
+          AND created_at >= (
+            DATE_TRUNC(
+              'day',
+              NOW() AT TIME ZONE 'Asia/Tehran'
+            )
+            AT TIME ZONE 'Asia/Tehran'
+          )
+          AND created_at < (
+            (
+              DATE_TRUNC(
+                'day',
+                NOW() AT TIME ZONE 'Asia/Tehran'
+              ) + INTERVAL '1 day'
+            )
+            AT TIME ZONE 'Asia/Tehran'
+          )
+      `,
+      [userId]
+    );
+
+  const used =
+    Number(
+      result.rows[0]?.total || 0
+    );
+
+  const remaining =
+    Math.max(
+      0,
+      Number(dailyCreditCap) - used
+    );
+
+  return remaining;
+}
+
 async function processAnswer({
   sessionId,
   selectedOption = null,
@@ -711,13 +806,37 @@ async function processAnswer({
     const config =
       await getQuizConfig();
 
-    const reward =
-      isCorrect
-        ? config.reward
-        : {
-            credit: 0,
-            xp: 0,
-          };
+    let reward = {
+      credit: 0,
+      xp: 0,
+    };
+
+    if (isCorrect) {
+      const remainingDailyCredit =
+        await getDailyQuizCreditReward(
+          session.user_id,
+          config.dailyCreditCap,
+          client
+        );
+
+      const actualCreditReward =
+        Math.min(
+          Number(
+            config.reward.credit || 0
+          ),
+          remainingDailyCredit
+        );
+
+      reward = {
+        credit:
+          actualCreditReward,
+
+        xp:
+          Number(
+            config.reward.xp || 0
+          ),
+      };
+    }
 
     const answer =
       await quizRepository.createAnswer(
@@ -807,6 +926,9 @@ async function processAnswer({
               question.id,
 
             round,
+
+            dailyCreditCap:
+              config.dailyCreditCap,
           },
 
           client,
