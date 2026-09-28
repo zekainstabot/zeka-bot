@@ -17,11 +17,11 @@ const DEFAULT_REWARD_CREDIT = 0.5;
 const DEFAULT_REWARD_XP = 1;
 const DEFAULT_DAILY_CREDIT_CAP = 5;
 
+// اگر مسابقه بیشتر از این مدت بدون فعالیت بماند، گیرکرده محسوب می‌شود.
+const STALE_QUIZ_MINUTES = 30;
+
 function normalizeOption(option) {
-  if (
-    option === null ||
-    option === undefined
-  ) {
+  if (option === null || option === undefined) {
     return null;
   }
 
@@ -29,9 +29,7 @@ function normalizeOption(option) {
     .trim()
     .toUpperCase();
 
-  if (
-    !["A", "B", "C", "D"].includes(value)
-  ) {
+  if (!["A", "B", "C", "D"].includes(value)) {
     return null;
   }
 
@@ -53,32 +51,24 @@ function optionIndexToLetter(index) {
 }
 
 function getRewardValue(value) {
-  if (
-    !value ||
-    typeof value !== "object"
-  ) {
+  if (!value || typeof value !== "object") {
     return {
       credit: DEFAULT_REWARD_CREDIT,
       xp: DEFAULT_REWARD_XP,
     };
   }
 
-  const credit =
-    Number(value.credit);
-
-  const xp =
-    Number(value.xp);
+  const credit = Number(value.credit);
+  const xp = Number(value.xp);
 
   return {
     credit:
-      Number.isFinite(credit) &&
-      credit >= 0
+      Number.isFinite(credit) && credit >= 0
         ? credit
         : DEFAULT_REWARD_CREDIT,
 
     xp:
-      Number.isInteger(xp) &&
-      xp >= 0
+      Number.isInteger(xp) && xp >= 0
         ? xp
         : DEFAULT_REWARD_XP,
   };
@@ -86,9 +76,7 @@ function getRewardValue(value) {
 
 async function getQuizConfig() {
   const gameType =
-    await gameService.getGameType(
-      QUIZ_GAME_KEY
-    );
+    await gameService.getGameType(QUIZ_GAME_KEY);
 
   const enabled =
     await gameSettingsService.isGameEnabled(
@@ -96,9 +84,7 @@ async function getQuizConfig() {
     );
 
   if (!enabled) {
-    throw new Error(
-      "Quiz is disabled"
-    );
+    throw new Error("Quiz is disabled");
   }
 
   const questionCount =
@@ -111,10 +97,8 @@ async function getQuizConfig() {
       gameType.id,
       "quiz_reward",
       {
-        credit:
-          DEFAULT_REWARD_CREDIT,
-        xp:
-          DEFAULT_REWARD_XP,
+        credit: DEFAULT_REWARD_CREDIT,
+        xp: DEFAULT_REWARD_XP,
       }
     );
 
@@ -123,8 +107,7 @@ async function getQuizConfig() {
       gameType.id,
       "quiz_time_limit",
       {
-        seconds:
-          DEFAULT_TIME_LIMIT,
+        seconds: DEFAULT_TIME_LIMIT,
       }
     );
 
@@ -133,55 +116,44 @@ async function getQuizConfig() {
       gameType.id,
       "quiz_daily_credit_cap",
       {
-        credit:
-          DEFAULT_DAILY_CREDIT_CAP,
+        credit: DEFAULT_DAILY_CREDIT_CAP,
       }
     );
 
-  let timeLimit =
-    Number(
-      timeSetting?.seconds ??
-      timeSetting
-    );
+  let timeLimit = Number(
+    timeSetting?.seconds ?? timeSetting
+  );
 
   if (
     !Number.isInteger(timeLimit) ||
     timeLimit < 5 ||
     timeLimit > 60
   ) {
-    timeLimit =
-      DEFAULT_TIME_LIMIT;
+    timeLimit = DEFAULT_TIME_LIMIT;
   }
 
-  let dailyCreditCap =
-    Number(
-      dailyCreditCapSetting?.credit ??
+  let dailyCreditCap = Number(
+    dailyCreditCapSetting?.credit ??
       dailyCreditCapSetting
-    );
+  );
 
   if (
     !Number.isFinite(dailyCreditCap) ||
     dailyCreditCap < 0
   ) {
-    dailyCreditCap =
-      DEFAULT_DAILY_CREDIT_CAP;
+    dailyCreditCap = DEFAULT_DAILY_CREDIT_CAP;
   }
 
   return {
     gameType,
 
     questionCount:
-      Number.isInteger(
-        questionCount
-      ) &&
+      Number.isInteger(questionCount) &&
       questionCount > 0
         ? questionCount
         : DEFAULT_QUESTION_COUNT,
 
-    reward:
-      getRewardValue(
-        rewardSetting
-      ),
+    reward: getRewardValue(rewardSetting),
 
     timeLimit,
 
@@ -194,9 +166,30 @@ async function startQuiz({
   languageCode = "fa",
 }) {
   if (!userId) {
-    throw new Error(
-      "User ID is required"
+    throw new Error("User ID is required");
+  }
+
+  /*
+   * قبل از ساخت مسابقه جدید،
+   * مسابقه ACTIVE قبلی کاربر را بررسی می‌کنیم.
+   *
+   * اگر بیشتر از ۳۰ دقیقه بدون فعالیت مانده باشد،
+   * آن را خودکار لغو می‌کنیم تا Credit رزروشده هم آزاد شود.
+   */
+  await cleanupStaleQuizForUser(userId);
+
+  const activeQuiz =
+    await findActiveQuizByUser(userId);
+
+  if (activeQuiz) {
+    const error = new Error(
+      "ACTIVE_QUIZ_EXISTS"
     );
+
+    error.code = "ACTIVE_QUIZ_EXISTS";
+    error.sessionId = activeQuiz.id;
+
+    throw error;
   }
 
   const config =
@@ -248,6 +241,9 @@ async function startQuiz({
 
         processing:
           false,
+
+        lastActivityAt:
+          new Date().toISOString(),
       },
     });
 
@@ -284,6 +280,129 @@ async function startQuiz({
 
     throw error;
   }
+}
+
+/*
+ * مسابقه‌های ACTIVE قدیمی را برای یک کاربر پیدا می‌کند.
+ *
+ * معیار:
+ * - اگر currentPollId وجود داشته باشد، pollSentAt بررسی می‌شود.
+ * - اگر pollSentAt وجود نداشته باشد، created_at بررسی می‌شود.
+ * - اگر بیشتر از ۳۰ دقیقه گذشته باشد، مسابقه گیرکرده است.
+ */
+async function cleanupStaleQuizForUser(userId) {
+  if (!userId) {
+    return null;
+  }
+
+  const pool =
+    getPool();
+
+  const result =
+    await pool.query(
+      `
+        SELECT
+          gs.*
+        FROM game_sessions gs
+        INNER JOIN game_types gt
+          ON gt.id = gs.game_type_id
+        WHERE gs.user_id = $1
+          AND gs.status = 'ACTIVE'
+          AND gt.game_key = $2
+        ORDER BY gs.id DESC
+      `,
+      [
+        userId,
+        QUIZ_GAME_KEY,
+      ]
+    );
+
+  if (!result.rows.length) {
+    return null;
+  }
+
+  let cleaned = null;
+
+  for (const session of result.rows) {
+    const metadata =
+      session.metadata || {};
+
+    let lastActivityTime =
+      null;
+
+    if (metadata.lastActivityAt) {
+      const date =
+        new Date(
+          metadata.lastActivityAt
+        );
+
+      if (!Number.isNaN(date.getTime())) {
+        lastActivityTime = date;
+      }
+    }
+
+    if (
+      !lastActivityTime &&
+      metadata.pollSentAt
+    ) {
+      const date =
+        new Date(
+          metadata.pollSentAt
+        );
+
+      if (!Number.isNaN(date.getTime())) {
+        lastActivityTime = date;
+      }
+    }
+
+    if (!lastActivityTime) {
+      const date =
+        new Date(
+          session.updated_at ||
+            session.created_at
+        );
+
+      if (!Number.isNaN(date.getTime())) {
+        lastActivityTime = date;
+      }
+    }
+
+    if (!lastActivityTime) {
+      continue;
+    }
+
+    const ageMs =
+      Date.now() -
+      lastActivityTime.getTime();
+
+    const staleMs =
+      STALE_QUIZ_MINUTES *
+      60 *
+      1000;
+
+    if (ageMs < staleMs) {
+      continue;
+    }
+
+    try {
+      cleaned =
+        await gameService.cancelGame(
+          session.id,
+          `Quiz automatically cancelled after ${STALE_QUIZ_MINUTES} minutes of inactivity`
+        );
+
+      console.log(
+        `Stale quiz session ${session.id} cancelled for user ${userId}`
+      );
+    } catch (error) {
+      console.error(
+        `Failed to cleanup stale quiz session ${session.id}:`,
+        error
+      );
+    }
+  }
+
+  return cleaned;
 }
 
 async function prepareNextQuestion(
@@ -331,7 +450,7 @@ async function prepareNextQuestion(
   const totalRounds =
     Number(
       session.total_rounds ||
-      config.questionCount
+        config.questionCount
     );
 
   if (
@@ -344,23 +463,19 @@ async function prepareNextQuestion(
   }
 
   let question =
-    await quizRepository.getRandomQuestion(
-      {
-        languageCode,
+    await quizRepository.getRandomQuestion({
+      languageCode,
 
-        excludedIds:
-          usedQuestionIds,
-      }
-    );
+      excludedIds:
+        usedQuestionIds,
+    });
 
   if (!question) {
     question =
-      await quizRepository.getRandomQuestionAnyLanguage(
-        {
-          excludedIds:
-            usedQuestionIds,
-        }
-      );
+      await quizRepository.getRandomQuestionAnyLanguage({
+        excludedIds:
+          usedQuestionIds,
+      });
   }
 
   if (!question) {
@@ -368,6 +483,9 @@ async function prepareNextQuestion(
       "No active quiz questions available"
     );
   }
+
+  const now =
+    new Date().toISOString();
 
   const nextMetadata = {
     ...metadata,
@@ -399,6 +517,9 @@ async function prepareNextQuestion(
 
     processing:
       false,
+
+    lastActivityAt:
+      now,
   };
 
   const updatedSession =
@@ -458,6 +579,9 @@ async function registerPoll(
   const metadata =
     session.metadata || {};
 
+  const now =
+    new Date().toISOString();
+
   const updatedMetadata = {
     ...metadata,
 
@@ -475,10 +599,13 @@ async function registerPoll(
 
     pollSentAt:
       sentAt ||
-      new Date().toISOString(),
+      now,
 
     processing:
       false,
+
+    lastActivityAt:
+      now,
   };
 
   return gameRepository.updateSession(
@@ -527,6 +654,13 @@ async function findActiveQuizByUser(
   if (!userId) {
     return null;
   }
+
+  /*
+   * ابتدا مسابقه‌های قدیمی را پاک می‌کنیم.
+   */
+  await cleanupStaleQuizForUser(
+    userId
+  );
 
   const pool =
     getPool();
@@ -619,7 +753,8 @@ async function getDailyQuizCreditReward(
   const remaining =
     Math.max(
       0,
-      Number(dailyCreditCap) - used
+      Number(dailyCreditCap) -
+        used
     );
 
   return remaining;
@@ -629,6 +764,7 @@ async function processAnswer({
   sessionId,
   selectedOption = null,
   timedOut = false,
+  expectedPollId = null,
 }) {
   const pool =
     getPool();
@@ -654,7 +790,6 @@ async function processAnswer({
 
       return {
         handled: false,
-
         reason:
           "SESSION_NOT_FOUND",
       };
@@ -669,7 +804,6 @@ async function processAnswer({
 
       return {
         handled: false,
-
         reason:
           "SESSION_NOT_ACTIVE",
       };
@@ -681,6 +815,26 @@ async function processAnswer({
     const currentPollId =
       metadata.currentPollId;
 
+    /*
+     * اگر Timeout مربوط به Poll قدیمی باشد،
+     * نباید سؤال فعلی را ببندد.
+     */
+    if (
+      expectedPollId !== null &&
+      String(currentPollId) !==
+        String(expectedPollId)
+    ) {
+      await client.query(
+        "ROLLBACK"
+      );
+
+      return {
+        handled: false,
+        reason:
+          "STALE_TIMEOUT",
+      };
+    }
+
     const questionId =
       Number(
         metadata.currentQuestionId
@@ -689,8 +843,8 @@ async function processAnswer({
     const round =
       Number(
         metadata.currentRound ||
-        session.current_round ||
-        1
+          session.current_round ||
+          1
       );
 
     if (
@@ -703,7 +857,6 @@ async function processAnswer({
 
       return {
         handled: false,
-
         reason:
           "NO_ACTIVE_QUESTION",
       };
@@ -796,7 +949,6 @@ async function processAnswer({
         responseTimeMs =
           Math.max(
             0,
-
             Date.now() -
               sentAt.getTime()
           );
@@ -1010,6 +1162,9 @@ async function processAnswer({
 
       processing:
         false,
+
+      lastActivityAt:
+        new Date().toISOString(),
     };
 
     if (finished) {
@@ -1155,6 +1310,9 @@ async function processPollAnswer({
 
     timedOut:
       false,
+
+    expectedPollId:
+      pollId,
   });
 }
 
@@ -1220,7 +1378,9 @@ async function processTimeout(
   }
 
   if (
-    String(metadata.currentPollId) !==
+    String(
+      metadata.currentPollId
+    ) !==
     String(expectedPollId)
   ) {
     return {
@@ -1239,6 +1399,9 @@ async function processTimeout(
 
     timedOut:
       true,
+
+    expectedPollId:
+      expectedPollId,
   });
 }
 
@@ -1272,4 +1435,6 @@ module.exports = {
   processTimeout,
 
   cancelQuiz,
+
+  cleanupStaleQuizForUser,
 };
