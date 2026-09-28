@@ -1,16 +1,27 @@
 const userRepository = require("../repositories/user.repository");
 
-const { downloadInstagram } = require("../services/instagram.service");
-const { sendFileToUser } = require("../services/delivery.service");
+const {
+  downloadInstagram,
+} = require("../services/instagram.service");
+
+const {
+  sendFileToUser,
+} = require("../services/delivery.service");
+
 const {
   markSending,
   markCompleted,
   markFailed,
 } = require("../services/download.service");
-const { deleteFile } = require("../services/file.service");
+
+const {
+  deleteFile,
+} = require("../services/file.service");
+
 const {
   consumeCredit,
   releaseCredit,
+  shouldConsumeCredit,
 } = require("../services/credit.service");
 
 async function processJob(job) {
@@ -18,18 +29,28 @@ async function processJob(job) {
     throw new Error("Valid job is required");
   }
 
-  const jobLabel = job.job_id || job.id;
+  const jobLabel =
+    job.job_id || job.id;
 
-  console.log(`Worker started job: ${jobLabel}`);
+  console.log(
+    `Worker started job: ${jobLabel}`
+  );
 
   let downloadedFilePath = null;
   let creditConsumed = false;
+  let consumeCreditForJob = true;
 
   try {
+    consumeCreditForJob =
+      await shouldConsumeCredit(
+        job.user_id
+      );
+
     let result;
 
     if (job.platform === "instagram") {
-      result = await downloadInstagram(job);
+      result =
+        await downloadInstagram(job);
     } else {
       throw new Error(
         `Unsupported platform: ${job.platform}`
@@ -38,15 +59,18 @@ async function processJob(job) {
 
     if (!result?.success) {
       throw new Error(
-        result?.reason || "Download failed"
+        result?.reason ||
+          "Download failed"
       );
     }
 
-    downloadedFilePath = result.filePath;
+    downloadedFilePath =
+      result.filePath;
 
-    const user = await userRepository.findById(
-      job.user_id
-    );
+    const user =
+      await userRepository.findById(
+        job.user_id
+      );
 
     if (!user) {
       throw new Error(
@@ -57,23 +81,42 @@ async function processJob(job) {
     await markSending(job.id);
 
     const caption =
-      result.caption && result.caption.trim()
+      result.caption &&
+      result.caption.trim()
         ? result.caption.trim()
         : "🤖 Zeka";
 
     await sendFileToUser({
-      telegramUserId: user.telegram_user_id,
-      filePath: result.filePath,
+      telegramUserId:
+        user.telegram_user_id,
+      filePath:
+        result.filePath,
       caption,
-      contentType: result.contentType,
+      contentType:
+        result.contentType,
     });
 
-    await consumeCredit(job.id);
-    creditConsumed = true;
+    if (consumeCreditForJob) {
+      await consumeCredit(
+        job.id
+      );
 
-    await markCompleted(job.id, {
-      finalCost: result.finalCost ?? job.reserved_cost ?? null,
-    });
+      creditConsumed = true;
+    }
+
+    await markCompleted(
+      job.id,
+      {
+        finalCost:
+          consumeCreditForJob
+            ? (
+                result.finalCost ??
+                job.reserved_cost ??
+                null
+              )
+            : 0,
+      }
+    );
 
     console.log(
       `Worker completed job: ${jobLabel}`
@@ -82,6 +125,8 @@ async function processJob(job) {
     return {
       success: true,
       delivered: true,
+      creditConsumed:
+        consumeCreditForJob,
       jobId: jobLabel,
     };
   } catch (error) {
@@ -90,9 +135,14 @@ async function processJob(job) {
       error
     );
 
-    if (!creditConsumed) {
+    if (
+      consumeCreditForJob &&
+      !creditConsumed
+    ) {
       try {
-        await releaseCredit(job.id);
+        await releaseCredit(
+          job.id
+        );
       } catch (releaseError) {
         console.error(
           `Failed to release credit for job: ${jobLabel}`,
@@ -118,7 +168,9 @@ async function processJob(job) {
   } finally {
     if (downloadedFilePath) {
       try {
-        await deleteFile(downloadedFilePath);
+        await deleteFile(
+          downloadedFilePath
+        );
       } catch (cleanupError) {
         console.error(
           `Failed to cleanup downloaded file for job: ${jobLabel}`,
