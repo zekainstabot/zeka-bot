@@ -806,20 +806,12 @@ function createBot() {
   // =========================
 
   register(async () => {
-    for (
-      const timer of quizTimers.values()
-    ) {
-      clearTimeout(timer);
-    }
+  cleanupQuizTimers();
 
-    quizTimers.clear();
-
-    if (bot) {
-      await bot.stop(
-        "shutdown"
-      );
-    }
-  });
+  if (bot) {
+    await bot.stop("shutdown");
+  }
+});
 
   register(async () => {
     await close();
