@@ -1,7 +1,7 @@
 const { Telegraf, Markup } = require("telegraf");
 
 const config = require("./config/app");
-const { close, getClient } = require("./database/client");
+const { close } = require("./database/client");
 const { register, shutdown } = require("./core/shutdown");
 const { getOrCreateUser } = require("./services/user.service");
 const { getAccountSummary } = require("./services/account.service");
