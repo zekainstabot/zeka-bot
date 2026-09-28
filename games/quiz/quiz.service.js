@@ -1,23 +1,36 @@
 const { getPool } = require("../../database/pool");
+
 const gameService = require("../game.service");
 const gameSettingsService = require("../game-settings.service");
+
 const gameRepository = require("../../repositories/game.repository");
+const quizRepository = require("../../repositories/quiz.repository");
+
+const creditService = require("../../services/credit.service");
 const rewardService = require("../../services/reward.service");
 
 const QUIZ_GAME_KEY = "quiz_general";
+
 const DEFAULT_TIME_LIMIT = 10;
 const DEFAULT_QUESTION_COUNT = 10;
 const DEFAULT_REWARD_CREDIT = 0.5;
 const DEFAULT_REWARD_XP = 1;
 
 function normalizeOption(option) {
-  if (option === null || option === undefined) {
+  if (
+    option === null ||
+    option === undefined
+  ) {
     return null;
   }
 
-  const value = String(option).trim().toUpperCase();
+  const value = String(option)
+    .trim()
+    .toUpperCase();
 
-  if (!["A", "B", "C", "D"].includes(value)) {
+  if (
+    !["A", "B", "C", "D"].includes(value)
+  ) {
     return null;
   }
 
@@ -25,38 +38,46 @@ function normalizeOption(option) {
 }
 
 function optionIndexToLetter(index) {
-  const numericIndex = Number(index);
+  const value = Number(index);
 
   if (
-    !Number.isInteger(numericIndex) ||
-    numericIndex < 0 ||
-    numericIndex > 3
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > 3
   ) {
     return null;
   }
 
-  return ["A", "B", "C", "D"][numericIndex];
+  return ["A", "B", "C", "D"][value];
 }
 
 function getRewardValue(value) {
-  if (!value || typeof value !== "object") {
+  if (
+    !value ||
+    typeof value !== "object"
+  ) {
     return {
       credit: DEFAULT_REWARD_CREDIT,
       xp: DEFAULT_REWARD_XP,
     };
   }
 
-  const credit = Number(value.credit);
-  const xp = Number(value.xp);
+  const credit =
+    Number(value.credit);
+
+  const xp =
+    Number(value.xp);
 
   return {
     credit:
-      Number.isFinite(credit) && credit >= 0
+      Number.isFinite(credit) &&
+      credit >= 0
         ? credit
         : DEFAULT_REWARD_CREDIT,
 
     xp:
-      Number.isInteger(xp) && xp >= 0
+      Number.isInteger(xp) &&
+      xp >= 0
         ? xp
         : DEFAULT_REWARD_XP,
   };
@@ -74,7 +95,9 @@ async function getQuizConfig() {
     );
 
   if (!enabled) {
-    throw new Error("Quiz is disabled");
+    throw new Error(
+      "Quiz is disabled"
+    );
   }
 
   const questionCount =
@@ -87,8 +110,10 @@ async function getQuizConfig() {
       gameType.id,
       "quiz_reward",
       {
-        credit: DEFAULT_REWARD_CREDIT,
-        xp: DEFAULT_REWARD_XP,
+        credit:
+          DEFAULT_REWARD_CREDIT,
+        xp:
+          DEFAULT_REWARD_XP,
       }
     );
 
@@ -97,7 +122,8 @@ async function getQuizConfig() {
       gameType.id,
       "quiz_time_limit",
       {
-        seconds: DEFAULT_TIME_LIMIT,
+        seconds:
+          DEFAULT_TIME_LIMIT,
       }
     );
 
@@ -112,215 +138,28 @@ async function getQuizConfig() {
     timeLimit < 5 ||
     timeLimit > 60
   ) {
-    timeLimit = DEFAULT_TIME_LIMIT;
+    timeLimit =
+      DEFAULT_TIME_LIMIT;
   }
 
   return {
     gameType,
+
     questionCount:
-      Number.isInteger(questionCount) &&
+      Number.isInteger(
+        questionCount
+      ) &&
       questionCount > 0
         ? questionCount
         : DEFAULT_QUESTION_COUNT,
 
     reward:
-      getRewardValue(rewardSetting),
+      getRewardValue(
+        rewardSetting
+      ),
 
     timeLimit,
   };
-}
-
-async function getRandomQuestion({
-  languageCode = "fa",
-  usedQuestionIds = [],
-}) {
-  const pool = getPool();
-
-  const safeIds = Array.isArray(
-    usedQuestionIds
-  )
-    ? usedQuestionIds
-        .map(Number)
-        .filter(
-          (id) =>
-            Number.isSafeInteger(id) &&
-            id > 0
-        )
-    : [];
-
-  const values = [languageCode];
-
-  let excludeSql = "";
-
-  if (safeIds.length > 0) {
-    const placeholders = safeIds.map(
-      (_, index) =>
-        `$${index + 2}`
-    );
-
-    excludeSql = `
-      AND id NOT IN (${placeholders.join(", ")})
-    `;
-
-    values.push(...safeIds);
-  }
-
-  let result = await pool.query(
-    `
-      SELECT
-        id,
-        language_code,
-        category,
-        difficulty,
-        question_text,
-        option_a,
-        option_b,
-        option_c,
-        option_d,
-        correct_option,
-        explanation
-      FROM quiz_questions
-      WHERE status = 'ACTIVE'
-        AND language_code = $1
-        ${excludeSql}
-      ORDER BY RANDOM()
-      LIMIT 1
-    `,
-    values
-  );
-
-  if (result.rows[0]) {
-    return result.rows[0];
-  }
-
-  /*
-   * اگر سؤال فارسی کافی نبود، از هر سؤال فعال استفاده می‌کنیم.
-   * این باعث نمی‌شود مسابقه صرفاً به خاطر کمبود سؤال فارسی خراب شود.
-   */
-  if (safeIds.length > 0) {
-    result = await pool.query(
-      `
-        SELECT
-          id,
-          language_code,
-          category,
-          difficulty,
-          question_text,
-          option_a,
-          option_b,
-          option_c,
-          option_d,
-          correct_option,
-          explanation
-        FROM quiz_questions
-        WHERE status = 'ACTIVE'
-          AND id NOT IN (
-            ${safeIds
-              .map(
-                (_, index) =>
-                  `$${index + 1}`
-              )
-              .join(", ")}
-          )
-        ORDER BY RANDOM()
-        LIMIT 1
-      `,
-      safeIds
-    );
-  } else {
-    result = await pool.query(
-      `
-        SELECT
-          id,
-          language_code,
-          category,
-          difficulty,
-          question_text,
-          option_a,
-          option_b,
-          option_c,
-          option_d,
-          correct_option,
-          explanation
-        FROM quiz_questions
-        WHERE status = 'ACTIVE'
-        ORDER BY RANDOM()
-        LIMIT 1
-      `
-    );
-  }
-
-  return result.rows[0] || null;
-}
-
-async function createPlayer(
-  sessionId,
-  userId,
-  client = null
-) {
-  const db = client || getPool();
-
-  const queryClient =
-    client || db;
-
-  const result =
-    await queryClient.query(
-      `
-        INSERT INTO game_session_players (
-          session_id,
-          user_id,
-          player_number,
-          status,
-          reserved_cost
-        )
-        VALUES (
-          $1,
-          $2,
-          1,
-          'ACTIVE',
-          0
-        )
-        ON CONFLICT (
-          session_id,
-          user_id
-        )
-        DO UPDATE SET
-          status = 'ACTIVE'
-        RETURNING *
-      `,
-      [
-        sessionId,
-        userId,
-      ]
-    );
-
-  return result.rows[0];
-}
-
-async function getPlayer(
-  sessionId,
-  userId,
-  client = null
-) {
-  const db =
-    client || getPool();
-
-  const result =
-    await db.query(
-      `
-        SELECT *
-        FROM game_session_players
-        WHERE session_id = $1
-          AND user_id = $2
-        LIMIT 1
-      `,
-      [
-        sessionId,
-        userId,
-      ]
-    );
-
-  return result.rows[0] || null;
 }
 
 async function startQuiz({
@@ -344,28 +183,54 @@ async function startQuiz({
   const session =
     await gameService.startGame({
       userId,
-      gameKey: QUIZ_GAME_KEY,
+      gameKey:
+        QUIZ_GAME_KEY,
       cost,
       totalRounds:
         config.questionCount,
       metadata: {
-        game: QUIZ_GAME_KEY,
+        game:
+          QUIZ_GAME_KEY,
+
         languageCode,
-        usedQuestionIds: [],
-        currentPollId: null,
-        currentQuestionId: null,
+
         currentRound: 0,
-        pollChatId: null,
-        pollMessageId: null,
-        pollSentAt: null,
+
+        currentQuestionId:
+          null,
+
+        currentPollId:
+          null,
+
+        pollChatId:
+          null,
+
+        pollMessageId:
+          null,
+
+        pollSentAt:
+          null,
+
+        usedQuestionIds:
+          [],
+
+        processing:
+          false,
       },
     });
 
   try {
-    await createPlayer(
-      session.id,
-      userId
-    );
+    await quizRepository.createPlayer({
+      sessionId:
+        session.id,
+
+      userId,
+
+      playerNumber: 1,
+
+      reservedCost:
+        cost,
+    });
 
     return {
       session,
@@ -392,9 +257,6 @@ async function prepareNextQuestion(
   sessionId,
   languageCode = "fa"
 ) {
-  const config =
-    await getQuizConfig();
-
   const session =
     await gameService.getGameSession(
       sessionId
@@ -415,6 +277,9 @@ async function prepareNextQuestion(
     };
   }
 
+  const config =
+    await getQuizConfig();
+
   const metadata =
     session.metadata || {};
 
@@ -426,12 +291,18 @@ async function prepareNextQuestion(
       : [];
 
   const nextRound =
-    Number(session.current_round || 0) +
-    1;
+    Number(
+      session.current_round || 0
+    ) + 1;
+
+  const totalRounds =
+    Number(
+      session.total_rounds ||
+      config.questionCount
+    );
 
   if (
-    nextRound >
-    Number(session.total_rounds || config.questionCount)
+    nextRound > totalRounds
   ) {
     return {
       finished: true,
@@ -439,11 +310,24 @@ async function prepareNextQuestion(
     };
   }
 
-  const question =
-    await getRandomQuestion({
-      languageCode,
-      usedQuestionIds,
-    });
+  let question =
+    await quizRepository.getRandomQuestion(
+      {
+        languageCode,
+        excludedIds:
+          usedQuestionIds,
+      }
+    );
+
+  if (!question) {
+    question =
+      await quizRepository.getRandomQuestionAnyLanguage(
+        {
+          excludedIds:
+            usedQuestionIds,
+        }
+      );
+  }
 
   if (!question) {
     throw new Error(
@@ -451,40 +335,62 @@ async function prepareNextQuestion(
     );
   }
 
-  const updatedUsedIds = [
-    ...usedQuestionIds,
-    Number(question.id),
-  ];
-
   const nextMetadata = {
     ...metadata,
+
     languageCode,
-    usedQuestionIds:
-      updatedUsedIds,
-    currentRound: nextRound,
-    currentPollId: null,
+
+    currentRound:
+      nextRound,
+
     currentQuestionId:
       Number(question.id),
-    pollChatId: null,
-    pollMessageId: null,
-    pollSentAt: null,
+
+    currentPollId:
+      null,
+
+    pollChatId:
+      null,
+
+    pollMessageId:
+      null,
+
+    pollSentAt:
+      null,
+
+    usedQuestionIds: [
+      ...usedQuestionIds,
+      Number(question.id),
+    ],
+
+    processing:
+      false,
   };
 
   const updatedSession =
     await gameRepository.updateSession(
       session.id,
       {
-        current_round: nextRound,
-        metadata: nextMetadata,
+        current_round:
+          nextRound,
+
+        metadata:
+          nextMetadata,
       }
     );
 
   return {
     finished: false,
-    session: updatedSession,
+
+    session:
+      updatedSession,
+
     question,
+
     config,
-    round: nextRound,
+
+    round:
+      nextRound,
   };
 }
 
@@ -498,6 +404,12 @@ async function registerPoll(
     sentAt,
   }
 ) {
+  if (!pollId) {
+    throw new Error(
+      "Poll ID is required"
+    );
+  }
+
   const session =
     await gameService.getGameSession(
       sessionId
@@ -514,23 +426,32 @@ async function registerPoll(
 
   const updatedMetadata = {
     ...metadata,
+
     currentPollId:
       String(pollId),
+
     currentQuestionId:
       Number(questionId),
+
     pollChatId:
       Number(chatId),
+
     pollMessageId:
       Number(messageId),
+
     pollSentAt:
       sentAt ||
       new Date().toISOString(),
+
+    processing:
+      false,
   };
 
   return gameRepository.updateSession(
     sessionId,
     {
-      metadata: updatedMetadata,
+      metadata:
+        updatedMetadata,
     }
   );
 }
@@ -542,7 +463,8 @@ async function findSessionByPollId(
     return null;
   }
 
-  const pool = getPool();
+  const pool =
+    getPool();
 
   const result =
     await pool.query(
@@ -554,40 +476,74 @@ async function findSessionByPollId(
         ORDER BY id DESC
         LIMIT 1
       `,
-      [String(pollId)]
+      [
+        String(pollId),
+      ]
     );
 
-  return result.rows[0] || null;
+  return (
+    result.rows[0] ||
+    null
+  );
 }
 
-async function recordAnswer({
-  pollId,
-  telegramUserId,
-  selectedOption,
+async function findActiveQuizByUser(
+  userId
+) {
+  if (!userId) {
+    return null;
+  }
+
+  const pool =
+    getPool();
+
+  const result =
+    await pool.query(
+      `
+        SELECT
+          gs.*
+        FROM game_sessions gs
+        INNER JOIN game_types gt
+          ON gt.id = gs.game_type_id
+        WHERE gs.user_id = $1
+          AND gs.status = 'ACTIVE'
+          AND gt.game_key = $2
+        ORDER BY gs.id DESC
+        LIMIT 1
+      `,
+      [
+        userId,
+        QUIZ_GAME_KEY,
+      ]
+    );
+
+  return (
+    result.rows[0] ||
+    null
+  );
+}
+
+async function processAnswer({
+  sessionId,
+  selectedOption = null,
+  timedOut = false,
 }) {
-  const pool = getPool();
-  const client = await pool.connect();
+  const pool =
+    getPool();
+
+  const client =
+    await pool.connect();
 
   try {
     await client.query(
       "BEGIN"
     );
 
-    const sessionResult =
-      await client.query(
-        `
-          SELECT *
-          FROM game_sessions
-          WHERE status = 'ACTIVE'
-            AND metadata->>'currentPollId' = $1
-          LIMIT 1
-          FOR UPDATE
-        `,
-        [String(pollId)]
-      );
-
     const session =
-      sessionResult.rows[0];
+      await gameRepository.findSessionByIdForUpdate(
+        sessionId,
+        client
+      );
 
     if (!session) {
       await client.query(
@@ -596,28 +552,13 @@ async function recordAnswer({
 
       return {
         handled: false,
-        reason: "SESSION_NOT_FOUND",
+        reason:
+          "SESSION_NOT_FOUND",
       };
     }
 
-    const userResult =
-      await client.query(
-        `
-          SELECT id
-          FROM users
-          WHERE telegram_user_id = $1
-          LIMIT 1
-        `,
-        [telegramUserId]
-      );
-
-    const user =
-      userResult.rows[0];
-
     if (
-      !user ||
-      Number(user.id) !==
-        Number(session.user_id)
+      session.status !== "ACTIVE"
     ) {
       await client.query(
         "ROLLBACK"
@@ -625,12 +566,21 @@ async function recordAnswer({
 
       return {
         handled: false,
-        reason: "USER_MISMATCH",
+        reason:
+          "SESSION_NOT_ACTIVE",
       };
     }
 
     const metadata =
       session.metadata || {};
+
+    const currentPollId =
+      metadata.currentPollId;
+
+    const questionId =
+      Number(
+        metadata.currentQuestionId
+      );
 
     const round =
       Number(
@@ -639,15 +589,25 @@ async function recordAnswer({
         1
       );
 
-    const questionId =
-      Number(
-        metadata.currentQuestionId
+    if (
+      !currentPollId ||
+      !questionId
+    ) {
+      await client.query(
+        "ROLLBACK"
       );
 
+      return {
+        handled: false,
+        reason:
+          "NO_ACTIVE_QUESTION",
+      };
+    }
+
     const player =
-      await getPlayer(
+      await quizRepository.getPlayer(
         session.id,
-        user.id,
+        session.user_id,
         client
       );
 
@@ -657,74 +617,32 @@ async function recordAnswer({
       );
     }
 
-    const existingResult =
-      await client.query(
-        `
-          SELECT *
-          FROM game_answers
-          WHERE player_id = $1
-            AND round_number = $2
-          LIMIT 1
-        `,
-        [
-          player.id,
-          round,
-        ]
+    const existingAnswer =
+      await quizRepository.getAnswerByRound(
+        player.id,
+        round,
+        client
       );
 
-    if (
-      existingResult.rows[0]
-    ) {
+    if (existingAnswer) {
       await client.query(
-        "COMMIT"
+        "ROLLBACK"
       );
 
       return {
         handled: false,
-        reason: "ALREADY_ANSWERED",
-        session,
+        reason:
+          "ALREADY_ANSWERED",
         answer:
-          existingResult.rows[0],
+          existingAnswer,
       };
     }
 
-    const sentAt =
-      metadata.pollSentAt
-        ? new Date(
-            metadata.pollSentAt
-          )
-        : null;
-
-    const responseTime =
-      sentAt &&
-      !Number.isNaN(
-        sentAt.getTime()
-      )
-        ? Math.max(
-            0,
-            Date.now() -
-              sentAt.getTime()
-          )
-        : null;
-
-    const normalizedOption =
-      normalizeOption(
-        selectedOption
-      );
-
-    const questionResult =
-      await client.query(
-        `
-          SELECT *
-          FROM quiz_questions
-          WHERE id = $1
-          LIMIT 1
-        `,
-        [questionId]
-      );
-
     const question =
-      questionResult.rows[0];
+      await quizRepository.getQuestionById(
+        questionId,
+        client
+      );
 
     if (!question) {
       throw new Error(
@@ -732,12 +650,50 @@ async function recordAnswer({
       );
     }
 
+    let normalizedOption =
+      normalizeOption(
+        selectedOption
+      );
+
+    if (timedOut) {
+      normalizedOption =
+        null;
+    }
+
+    const correctOption =
+      normalizeOption(
+        question.correct_option
+      );
+
     const isCorrect =
       normalizedOption !== null &&
       normalizedOption ===
-        String(
-          question.correct_option
-        ).toUpperCase();
+        correctOption;
+
+    let responseTimeMs =
+      null;
+
+    if (
+      metadata.pollSentAt
+    ) {
+      const sentAt =
+        new Date(
+          metadata.pollSentAt
+        );
+
+      if (
+        !Number.isNaN(
+          sentAt.getTime()
+        )
+      ) {
+        responseTimeMs =
+          Math.max(
+            0,
+            Date.now() -
+              sentAt.getTime()
+          );
+      }
+    }
 
     const config =
       await getQuizConfig();
@@ -750,179 +706,221 @@ async function recordAnswer({
             xp: 0,
           };
 
-    const answerResult =
-      await client.query(
-        `
-          INSERT INTO game_answers (
-            session_id,
-            player_id,
-            question_id,
-            round_number,
-            selected_option,
-            is_correct,
-            response_time_ms,
-            credit_reward,
-            xp_reward,
-            metadata
-          )
-          VALUES (
-            $1, $2, $3, $4, $5,
-            $6, $7, $8, $9, $10::JSONB
-          )
-          RETURNING *
-        `,
-        [
-          session.id,
-          player.id,
-          question.id,
-          round,
-          normalizedOption,
-          isCorrect,
-          responseTime,
-          reward.credit,
-          reward.xp,
-          JSON.stringify({
-            timedOut:
-              normalizedOption ===
-              null,
-          }),
-        ]
-      );
-
     const answer =
-      answerResult.rows[0];
-
-    if (isCorrect) {
-      await rewardService.grantRewardInTransaction({
-        userId: user.id,
-        rewardType:
-          "QUIZ_CORRECT",
-        sourceType:
-          "GAME_ANSWER",
-        sourceId:
-          answer.id,
-        creditAmount:
-          reward.credit,
-        xpAmount:
-          reward.xp,
-        metadata: {
-          game:
-            QUIZ_GAME_KEY,
+      await quizRepository.createAnswer(
+        {
           sessionId:
             session.id,
+
+          playerId:
+            player.id,
+
           questionId:
             question.id,
-          round,
+
+          roundNumber:
+            round,
+
+          selectedOption:
+            normalizedOption,
+
+          isCorrect,
+
+          responseTimeMs,
+
+          creditReward:
+            reward.credit,
+
+          xpReward:
+            reward.xp,
+
+          metadata: {
+            pollId:
+              String(
+                currentPollId
+              ),
+
+            timedOut:
+              Boolean(
+                timedOut
+              ),
+          },
         },
-        client,
-      });
+        client
+      );
+
+    if (!answer) {
+      await client.query(
+        "ROLLBACK"
+      );
+
+      return {
+        handled: false,
+        reason:
+          "ANSWER_ALREADY_EXISTS",
+      };
     }
 
-    const nextScore =
+    if (isCorrect) {
+      await rewardService.grantRewardInTransaction(
+        {
+          userId:
+            session.user_id,
+
+          rewardType:
+            "QUIZ_CORRECT",
+
+          sourceType:
+            "GAME_ANSWER",
+
+          sourceId:
+            answer.id,
+
+          creditAmount:
+            reward.credit,
+
+          xpAmount:
+            reward.xp,
+
+          metadata: {
+            game:
+              QUIZ_GAME_KEY,
+
+            sessionId:
+              session.id,
+
+            questionId:
+              question.id,
+
+            round,
+          },
+
+          client,
+        }
+      );
+    }
+
+    const oldScore =
       Number(
         player.score || 0
-      ) +
-      (isCorrect ? 1 : 0);
+      );
 
-    const nextCreditReward =
+    const oldCreditReward =
       Number(
         player.credit_reward || 0
-      ) +
-      Number(reward.credit || 0);
+      );
 
-    const nextXp =
+    const oldXp =
       Number(
         player.xp_earned || 0
-      ) +
-      Number(reward.xp || 0);
+      );
 
-    await client.query(
-      `
-        UPDATE game_session_players
-        SET
-          score = $2,
-          credit_reward = $3,
-          xp_earned = $4,
-          updated_at = NOW()
-        WHERE id = $1
-      `,
-      [
-        player.id,
-        nextScore,
-        nextCreditReward,
-        nextXp,
-      ]
+    const newScore =
+      oldScore +
+      (isCorrect ? 1 : 0);
+
+    const newCreditReward =
+      oldCreditReward +
+      Number(
+        reward.credit || 0
+      );
+
+    const newXp =
+      oldXp +
+      Number(
+        reward.xp || 0
+      );
+
+    await quizRepository.updatePlayerStats(
+      player.id,
+      {
+        score:
+          newScore,
+
+        creditReward:
+          newCreditReward,
+
+        xpEarned:
+          newXp,
+      },
+      client
     );
 
-    const isLastRound =
-      round >=
+    const totalRounds =
       Number(
         session.total_rounds
       );
 
-    let completedSession =
-      null;
+    const finished =
+      round >= totalRounds;
 
-    if (isLastRound) {
-      await client.query(
-        `
-          UPDATE game_sessions
-          SET
-            status = 'COMPLETED',
-            result = $2::JSONB,
-            completed_at = NOW(),
-            updated_at = NOW()
-          WHERE id = $1
-        `,
-        [
-          session.id,
-          JSON.stringify({
-            score: nextScore,
-            totalRounds:
-              session.total_rounds,
-            creditReward:
-              nextCreditReward,
-            xpReward:
-              nextXp,
-          }),
-        ]
-      );
+    const nextMetadata = {
+      ...metadata,
 
-      completedSession =
-        await gameRepository.findSessionById(
-          session.id,
-          client
-        );
+      currentPollId:
+        null,
 
+      currentQuestionId:
+        null,
+
+      pollChatId:
+        null,
+
+      pollMessageId:
+        null,
+
+      pollSentAt:
+        null,
+
+      processing:
+        false,
+    };
+
+    if (finished) {
       /*
-       * هزینه رزرو شده را مصرف می‌کنیم.
-       * اینجا عمداً داخل همین تراکنش انجام نمی‌دهیم،
-       * چون تابع موجود خودش تراکنش مستقل دارد.
+       * اینجا فقط وضعیت session را COMPLETED می‌کنیم.
+       * مصرف credit بعد از COMMIT انجام می‌شود
+       * تا تراکنش پاسخ و reward با هم اتمیک بمانند.
        */
-    } else {
-      const nextMetadata = {
-        ...metadata,
-        currentPollId: null,
-        currentQuestionId: null,
-        pollChatId: null,
-        pollMessageId: null,
-        pollSentAt: null,
-      };
 
-      await client.query(
-        `
-          UPDATE game_sessions
-          SET
-            metadata = $2::JSONB,
-            updated_at = NOW()
-          WHERE id = $1
-        `,
-        [
-          session.id,
-          JSON.stringify(
-            nextMetadata
-          ),
-        ]
+      await gameRepository.updateSession(
+        session.id,
+        {
+          status:
+            "COMPLETED",
+
+          current_round:
+            totalRounds,
+
+          result: {
+            score:
+              newScore,
+
+            totalRounds,
+
+            creditReward:
+              newCreditReward,
+
+            xpReward:
+              newXp,
+          },
+
+          metadata:
+            nextMetadata,
+
+          completed_at:
+            new Date(),
+        },
+        client
+      );
+    } else {
+      await gameRepository.updateSession(
+        session.id,
+        {
+          metadata:
+            nextMetadata,
+        },
+        client
       );
     }
 
@@ -930,43 +928,60 @@ async function recordAnswer({
       "COMMIT"
     );
 
-    if (isLastRound) {
+    /*
+     * هزینه بازی قبلاً رزرو شده.
+     * فقط بعد از آخرین سؤال مصرف می‌شود.
+     */
+    if (finished) {
       try {
-        await gameService.completeGame(
-          session.id,
-          {
-            score: nextScore,
-            totalRounds:
-              session.total_rounds,
-            creditReward:
-              nextCreditReward,
-            xpReward:
-              nextXp,
-          }
+        await creditService.consumeGameCredit(
+          session.id
         );
-      } catch (completeError) {
+      } catch (error) {
         console.error(
-          `Failed to consume final quiz cost for session ${session.id}:`,
-          completeError
+          `Failed to consume quiz credit for session ${session.id}:`,
+          error
         );
+
+        /*
+         * اگر مصرف اعتبار شکست بخورد،
+         * session دیگر دوباره بازی نمی‌شود.
+         * خطا فقط لاگ می‌شود تا reward دوباره داده نشود.
+         */
       }
     }
 
     return {
       handled: true,
-      correct: isCorrect,
+
+      correct:
+        isCorrect,
+
       timedOut:
-        normalizedOption === null,
+        Boolean(
+          timedOut
+        ),
+
       reward,
+
       answer,
-      session:
-        completedSession ||
-        session,
-      finished:
-        isLastRound,
-      score: nextScore,
-      totalRounds:
-        session.total_rounds,
+
+      question,
+
+      sessionId:
+        session.id,
+
+      finished,
+
+      score:
+        newScore,
+
+      totalRounds,
+
+      nextRound:
+        finished
+          ? null
+          : round + 1,
     };
   } catch (error) {
     await client.query(
@@ -979,9 +994,66 @@ async function recordAnswer({
   }
 }
 
-async function timeoutCurrentQuestion(
+async function processPollAnswer({
+  pollId,
+  optionIndex,
+}) {
+  if (!pollId) {
+    return {
+      handled: false,
+      reason:
+        "POLL_ID_MISSING",
+    };
+  }
+
+  const session =
+    await findSessionByPollId(
+      pollId
+    );
+
+  if (!session) {
+    return {
+      handled: false,
+      reason:
+        "SESSION_NOT_FOUND",
+    };
+  }
+
+  const selectedOption =
+    optionIndexToLetter(
+      optionIndex
+    );
+
+  if (!selectedOption) {
+    return {
+      handled: false,
+      reason:
+        "INVALID_OPTION",
+    };
+  }
+
+  return processAnswer({
+    sessionId:
+      session.id,
+
+    selectedOption,
+
+    timedOut:
+      false,
+  });
+}
+
+async function processTimeout(
   sessionId
 ) {
+  if (!sessionId) {
+    return {
+      handled: false,
+      reason:
+        "SESSION_ID_MISSING",
+    };
+  }
+
   const session =
     await gameService.getGameSession(
       sessionId
@@ -990,39 +1062,73 @@ async function timeoutCurrentQuestion(
   if (!session) {
     return {
       handled: false,
-      reason: "SESSION_NOT_FOUND",
+      reason:
+        "SESSION_NOT_FOUND",
+    };
+  }
+
+  if (
+    session.status !== "ACTIVE"
+  ) {
+    return {
+      handled: false,
+      reason:
+        "SESSION_NOT_ACTIVE",
     };
   }
 
   const metadata =
     session.metadata || {};
 
-  if (!metadata.currentPollId) {
+  if (
+    !metadata.currentPollId
+  ) {
     return {
       handled: false,
-      reason: "NO_ACTIVE_POLL",
+      reason:
+        "NO_ACTIVE_POLL",
     };
   }
 
-  return recordAnswer({
-    pollId:
-      metadata.currentPollId,
-    telegramUserId:
-      null,
-    selectedOption: null,
-    allowSystemTimeout: true,
+  return processAnswer({
     sessionId,
+
+    selectedOption:
+      null,
+
+    timedOut:
+      true,
   });
+}
+
+async function cancelQuiz(
+  sessionId,
+  reason = "Quiz cancelled"
+) {
+  return gameService.cancelGame(
+    sessionId,
+    reason
+  );
 }
 
 module.exports = {
   QUIZ_GAME_KEY,
+
   getQuizConfig,
-  getRandomQuestion,
+
   startQuiz,
+
   prepareNextQuestion,
+
   registerPoll,
+
   findSessionByPollId,
-  recordAnswer,
-  timeoutCurrentQuestion,
+
+  findActiveQuizByUser,
+
+  processPollAnswer,
+
+  processTimeout,
+
+  cancelQuiz,
 };
