@@ -116,9 +116,10 @@ function createBot() {
   ) {
     await clearQuizTimer(sessionId);
 
-    const session = await gameService.getGameSession(
-      sessionId
-    );
+    const session =
+      await gameService.getGameSession(
+        sessionId
+      );
 
     if (!session) {
       return;
@@ -133,32 +134,39 @@ function createBot() {
       return;
     }
 
-    const score = Number(result.score || 0);
+    const score =
+      Number(result.score || 0);
 
-    const totalRounds = Number(
-      result.totalRounds ||
+    const totalRounds =
+      Number(
+        result.totalRounds ||
         session.total_rounds ||
         0
-    );
+      );
 
-    const creditReward = Number(
-      result.reward?.credit || 0
-    );
+    const creditReward =
+      Number(
+        result.reward?.credit || 0
+      );
 
-    const xpReward = Number(
-      result.reward?.xp || 0
-    );
+    const xpReward =
+      Number(
+        result.reward?.xp || 0
+      );
 
     let message =
       "🏁 مسابقه تمام شد!\n\n" +
       `🎯 امتیاز: ${score} از ${totalRounds}\n\n`;
 
     if (result.correct) {
-      message += "✅ سؤال آخر را درست جواب دادی!\n";
+      message +=
+        "✅ سؤال آخر را درست جواب دادی!\n";
     } else if (result.timedOut) {
-      message += "⏰ زمان سؤال آخر تمام شد.\n";
+      message +=
+        "⏰ زمان سؤال آخر تمام شد.\n";
     } else {
-      message += "❌ سؤال آخر را اشتباه جواب دادی.\n";
+      message +=
+        "❌ سؤال آخر را اشتباه جواب دادی.\n";
     }
 
     if (creditReward > 0) {
@@ -180,6 +188,7 @@ function createBot() {
 
   async function scheduleQuizTimeout(
     sessionId,
+    pollId,
     seconds
   ) {
     await clearQuizTimer(sessionId);
@@ -189,6 +198,9 @@ function createBot() {
       Number(seconds) > 0
         ? Number(seconds)
         : 10;
+
+    const expectedPollId =
+      String(pollId);
 
     const timer = setTimeout(
       async () => {
@@ -204,7 +216,8 @@ function createBot() {
 
           if (
             !beforeSession ||
-            beforeSession.status !== "ACTIVE"
+            beforeSession.status !==
+              "ACTIVE"
           ) {
             return;
           }
@@ -216,7 +229,8 @@ function createBot() {
 
           const result =
             await processTimeout(
-              sessionId
+              sessionId,
+              expectedPollId
             );
 
           if (
@@ -236,7 +250,9 @@ function createBot() {
             );
           }
 
-          if (result.finished) {
+          if (
+            result.finished
+          ) {
             await sendQuizFinishedMessage(
               sessionId,
               result
@@ -267,11 +283,12 @@ function createBot() {
   function getCorrectOptionIndex(
     correctOption
   ) {
-    const normalized = String(
-      correctOption || ""
-    )
-      .trim()
-      .toUpperCase();
+    const normalized =
+      String(
+        correctOption || ""
+      )
+        .trim()
+        .toUpperCase();
 
     const index = [
       "A",
@@ -380,11 +397,16 @@ function createBot() {
         options,
         {
           type: "quiz",
-          is_anonymous: false,
+
+          is_anonymous:
+            false,
+
           correct_option_id:
             correctOptionIndex,
+
           open_period:
             config.timeLimit,
+
           allows_multiple_answers:
             false,
         }
@@ -412,6 +434,7 @@ function createBot() {
 
     await scheduleQuizTimeout(
       sessionId,
+      poll.poll.id,
       config.timeLimit
     );
   }
@@ -1379,7 +1402,9 @@ function createBot() {
   // =========================
 
   register(async () => {
-    for (const timer of quizTimers.values()) {
+    for (
+      const timer of quizTimers.values()
+    ) {
       clearTimeout(timer);
     }
 
