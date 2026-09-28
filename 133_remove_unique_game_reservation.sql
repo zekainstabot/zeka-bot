@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_credit_reservations_active_game_session;
