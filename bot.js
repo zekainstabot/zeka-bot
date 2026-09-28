@@ -54,7 +54,7 @@ const accountMenu = Markup.keyboard([
 
 const gamesMenu = Markup.keyboard([
   ["🎡 گردونه شانس", "🧠 مسابقه"],
-  ["🔙 بازگشت"],
+  ["❌ لغو مسابقه", "🔙 بازگشت"],
 ])
   .resize()
   .persistent();
