@@ -110,6 +110,28 @@ function createBot() {
     }
   }
 
+  async function cancelUserActiveQuiz(userId) {
+  if (!userId) {
+    return null;
+  }
+
+  const activeQuiz =
+    await findActiveQuizByUser(userId);
+
+  if (!activeQuiz) {
+    return null;
+  }
+
+  await clearQuizTimer(
+    activeQuiz.id
+  );
+
+  return gameService.cancelGame(
+    activeQuiz.id,
+    "Cancelled by user"
+  );
+}
+
   async function sendQuizFinishedMessage(
     sessionId,
     result
