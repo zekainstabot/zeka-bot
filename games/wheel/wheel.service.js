@@ -46,22 +46,90 @@ function validateSegments(segments) {
   return true;
 }
 
-function selectWeightedSegment(segments) {
+function selectWeightedSegment(
+  segments,
+  diceValue = null
+) {
+  let pool = segments;
+
+  if (diceValue !== null) {
+    const numericDiceValue = Number(diceValue);
+
+    if (
+      !Number.isInteger(numericDiceValue) ||
+      numericDiceValue < 1 ||
+      numericDiceValue > 6
+    ) {
+      throw new Error(
+        `Invalid Telegram dice value: ${diceValue}`
+      );
+    }
+
+    /*
+     * Telegram dice:
+     *
+     * 1, 2, 3 = 50% پوچ
+     * 4, 5, 6 = 50% برد
+     */
+
+    pool =
+      numericDiceValue <= 3
+        ? segments.filter(
+            (segment) =>
+              String(
+                segment.result_type
+              ).toUpperCase() === "BLANK"
+          )
+        : segments.filter(
+            (segment) =>
+              String(
+                segment.result_type
+              ).toUpperCase() !== "BLANK"
+          );
+
+    if (pool.length === 0) {
+      throw new Error(
+        `No wheel segments available for dice result: ${numericDiceValue}`
+      );
+    }
+  }
+
+  const totalProbability =
+    pool.reduce(
+      (total, segment) =>
+        total +
+        normalizeProbability(
+          segment.probability
+        ),
+      0
+    );
+
+  if (totalProbability <= 0) {
+    throw new Error(
+      "Wheel segment probability pool is empty"
+    );
+  }
+
   const random =
-    Math.random() * MAX_PROBABILITY_TOTAL;
+    Math.random() * totalProbability;
 
   let cumulativeProbability = 0;
 
-  for (const segment of segments) {
+  for (const segment of pool) {
     cumulativeProbability +=
-      normalizeProbability(segment.probability);
+      normalizeProbability(
+        segment.probability
+      );
 
-    if (random < cumulativeProbability) {
+    if (
+      random <
+      cumulativeProbability
+    ) {
       return segment;
     }
   }
 
-  return segments[segments.length - 1];
+  return pool[pool.length - 1];
 }
 
 function buildWheelReward(
@@ -200,9 +268,12 @@ async function getWheelSegments() {
 async function startSpin({
   userId,
   metadata = {},
+  diceValue = null,
 }) {
   if (!userId) {
-    throw new Error("User ID is required");
+    throw new Error(
+      "User ID is required"
+    );
   }
 
   const gameType =
@@ -230,7 +301,10 @@ async function startSpin({
 
   try {
     const selectedSegment =
-      selectWeightedSegment(segments);
+      selectWeightedSegment(
+        segments,
+        diceValue
+      );
 
     const result = {
       segment_id:
