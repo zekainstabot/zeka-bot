@@ -394,10 +394,6 @@ async function updatePlayerStats(
     );
   }
 
-  fields.push(
-    "updated_at = NOW()"
-  );
-
   const result = await db.query(
     `
       UPDATE game_session_players
