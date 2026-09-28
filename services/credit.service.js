@@ -2,6 +2,20 @@ const creditRepository = require("../repositories/credit.repository");
 const creditReservationRepository = require("../repositories/credit.reservation.repository");
 const creditLedgerRepository = require("../repositories/credit.ledger.repository");
 const { getPool } = require("../database/pool");
+const {
+  isActivePro,
+} = require("./pro.service");
+
+async function shouldConsumeCredit(userId) {
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  const isPro =
+    await isActivePro(userId);
+
+  return !isPro;
+}
 
 async function reserveCredit({
   userId,
@@ -792,4 +806,5 @@ module.exports = {
   releaseGameCredit,
   releaseGameCreditInTransaction,
   getBalance,
+  shouldConsumeCredit,
 };
