@@ -25,8 +25,6 @@ const {
   cleanupQuizTimers,
 } = require("./games/quiz/quiz.handler");
 
-const gameService = require("./games/game.service");
-
 let bot = null;
 
 const mainMenu = Markup.keyboard([
