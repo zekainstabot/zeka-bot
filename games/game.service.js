@@ -1,39 +1,125 @@
 const creditService = require("../services/credit.service");
 const rewardService = require("../services/reward.service");
+const gameSettingsService = require("./game-settings.service");
 const gameRepository = require("../repositories/game.repository");
+const { getPool } = require("../database/pool");
+
+function generateSessionKey(gameKey, userId) {
+  return `${gameKey}_${userId}_${Date.now()}_${Math.random()
+    .toString(36)
+    .slice(2, 10)}`;
+}
+
+async function getGameType(gameKey) {
+  if (!gameKey) {
+    throw new Error("Game key is required");
+  }
+
+  const gameType =
+    await gameSettingsService.getGameTypeByKey(
+      gameKey
+    );
+
+  if (!gameType) {
+    throw new Error(
+      `Game type not found: ${gameKey}`
+    );
+  }
+
+  return gameType;
+}
+
+async function getGameSession(sessionId) {
+  if (!sessionId) {
+    throw new Error("Game session ID is required");
+  }
+
+  return gameRepository.findSessionById(
+    sessionId
+  );
+}
 
 async function startGame({
   userId,
-  gameTypeId,
-  cost,
+  gameTypeId = null,
+  gameKey = null,
+  cost = null,
+  totalRounds = 1,
   metadata = {},
 }) {
-  const session = await gameRepository.createSession({
-    userId,
-    gameTypeId,
-    status: "WAITING",
-    cost,
-    metadata,
-  });
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  let gameType = null;
+
+  if (gameKey) {
+    gameType = await getGameType(gameKey);
+    gameTypeId = gameType.id;
+  }
+
+  if (!gameTypeId) {
+    throw new Error("Game type ID is required");
+  }
+
+  let entryCost = Number(cost);
+
+  if (
+    !Number.isFinite(entryCost) ||
+    entryCost <= 0
+  ) {
+    if (gameType) {
+      entryCost = Number(
+        gameType.entry_cost || 1
+      );
+    } else {
+      entryCost = 1;
+    }
+  }
+
+  const sessionKey = generateSessionKey(
+    gameKey || `game_${gameTypeId}`,
+    userId
+  );
+
+  const session =
+    await gameRepository.createSession({
+      sessionKey,
+      gameTypeId,
+      userId,
+      status: "WAITING",
+      entryCost,
+      reservedCost: 0,
+      currentRound: 0,
+      totalRounds,
+      metadata,
+    });
 
   try {
     await creditService.reserveGameCredit({
       userId,
-      amount: cost,
+      amount: entryCost,
       gameSessionId: session.id,
     });
 
-    const activeSession = await gameRepository.updateSessionStatus(
-      session.id,
-      "ACTIVE"
-    );
+    const activeSession =
+      await gameRepository.updateSession(
+        session.id,
+        {
+          status: "ACTIVE",
+          reserved_cost: entryCost,
+          started_at: new Date(),
+        }
+      );
 
     return activeSession;
   } catch (error) {
     try {
-      await gameRepository.updateSessionStatus(
+      await gameRepository.updateSession(
         session.id,
-        "FAILED"
+        {
+          status: "FAILED",
+        }
       );
     } catch (statusError) {
       console.error(
@@ -46,11 +132,41 @@ async function startGame({
   }
 }
 
-async function completeGame({
-  sessionId,
-  reward,
-}) {
-  const client = await gameRepository.getClient();
+async function completeGame(
+  sessionOrOptions,
+  result = null,
+  reward = null
+) {
+  let sessionId;
+  let gameResult;
+  let gameReward;
+
+  if (
+    sessionOrOptions &&
+    typeof sessionOrOptions === "object"
+  ) {
+    sessionId =
+      sessionOrOptions.sessionId;
+
+    gameResult =
+      sessionOrOptions.result || null;
+
+    gameReward =
+      sessionOrOptions.reward || null;
+  } else {
+    sessionId = sessionOrOptions;
+    gameResult = result;
+    gameReward = reward;
+  }
+
+  if (!sessionId) {
+    throw new Error(
+      "Game session ID is required"
+    );
+  }
+
+  const pool = getPool();
+  const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
@@ -62,10 +178,14 @@ async function completeGame({
       );
 
     if (!session) {
-      throw new Error("Game session not found");
+      throw new Error(
+        "Game session not found"
+      );
     }
 
-    if (session.status === "COMPLETED") {
+    if (
+      session.status === "COMPLETED"
+    ) {
       await client.query("COMMIT");
       return session;
     }
@@ -79,23 +199,43 @@ async function completeGame({
       );
     }
 
-    await creditService.consumeGameCredit({
-      gameSessionId: session.id,
-      client,
-    });
+    await creditService.consumeGameCreditInTransaction(
+      session.id,
+      client
+    );
 
-    await rewardService.grantRewardInTransaction({
-      userId: session.user_id,
-      reward,
-      sourceType: "GAME",
-      sourceId: session.id,
-      client,
-    });
+    if (gameReward) {
+      await rewardService.grantRewardInTransaction({
+        userId: session.user_id,
+        rewardType:
+          gameReward.rewardType,
+        sourceType:
+          gameReward.sourceType || "GAME",
+        sourceId:
+          gameReward.sourceId ||
+          session.id,
+        creditAmount:
+          gameReward.creditAmount || 0,
+        xpAmount:
+          gameReward.xpAmount || 0,
+        proDays:
+          gameReward.proDays || 0,
+        metadata:
+          gameReward.metadata || {},
+        client,
+      });
+    }
 
     const completedSession =
-      await gameRepository.updateSessionStatus(
+      await gameRepository.updateSession(
         session.id,
-        "COMPLETED",
+        {
+          status: "COMPLETED",
+          result: gameResult || {},
+          current_round:
+            session.total_rounds || 1,
+          completed_at: new Date(),
+        },
         client
       );
 
@@ -110,8 +250,18 @@ async function completeGame({
   }
 }
 
-async function cancelGame(sessionId) {
-  const client = await gameRepository.getClient();
+async function cancelGame(
+  sessionId,
+  reason = null
+) {
+  if (!sessionId) {
+    throw new Error(
+      "Game session ID is required"
+    );
+  }
+
+  const pool = getPool();
+  const client = await pool.connect();
 
   try {
     await client.query("BEGIN");
@@ -123,29 +273,44 @@ async function cancelGame(sessionId) {
       );
 
     if (!session) {
-      throw new Error("Game session not found");
+      throw new Error(
+        "Game session not found"
+      );
     }
 
-    if (session.status === "CANCELLED") {
+    if (
+      session.status === "CANCELLED"
+    ) {
       await client.query("COMMIT");
       return session;
     }
 
-    if (session.status === "COMPLETED") {
+    if (
+      session.status === "COMPLETED"
+    ) {
       throw new Error(
         "Cannot cancel completed game session"
       );
     }
 
-    await creditService.releaseGameCredit({
-      gameSessionId: session.id,
-      client,
-    });
+    await creditService.releaseGameCreditInTransaction(
+      session.id,
+      client
+    );
+
+    const metadata = {
+      ...(session.metadata || {}),
+      cancellation_reason:
+        reason || "Game cancelled",
+    };
 
     const cancelledSession =
-      await gameRepository.updateSessionStatus(
+      await gameRepository.updateSession(
         session.id,
-        "CANCELLED",
+        {
+          status: "CANCELLED",
+          metadata,
+        },
         client
       );
 
@@ -161,6 +326,8 @@ async function cancelGame(sessionId) {
 }
 
 module.exports = {
+  getGameType,
+  getGameSession,
   startGame,
   completeGame,
   cancelGame,
