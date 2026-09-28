@@ -12,8 +12,9 @@ const {
 const {
   setBot: setDeliveryBot,
 } = require("./services/delivery.service");
+
 const {
-  handleAdminCommand,
+  createAdminHandler,
 } = require("./handlers/admin.handler");
 
 const {
@@ -68,6 +69,12 @@ function createBot() {
     bot,
     gamesMenu,
   });
+
+  // =========================
+  // ADMIN
+  // =========================
+
+  createAdminHandler(bot);
 
   // =========================
   // START
@@ -247,7 +254,9 @@ function createBot() {
           `💳 اعتبار خریداری‌شده: ${
             credits.purchased || 0
           }\n` +
-          `➕ سایر اعتبارها: ${credits.other || 0}\n\n` +
+          `➕ سایر اعتبارها: ${
+            credits.other || 0
+          }\n\n` +
           `💰 مجموع اعتبار: ${account.credit}\n\n` +
           "ℹ️ مصرف اعتبار طبق اولویت سیستم زکا انجام می‌شود.",
         accountMenu
@@ -327,12 +336,17 @@ function createBot() {
           `🏆 سطح: ${account.level}\n` +
           `✨ XP: ${account.xp}\n` +
           `⭐ زکا پرو: ${
-            account.isPro ? "فعال" : "فعال نیست"
+            account.isPro
+              ? "فعال"
+              : "فعال نیست"
           }`,
         accountMenu
       );
     } catch (error) {
-      console.error("Account information failed:", error);
+      console.error(
+        "Account information failed:",
+        error
+      );
 
       await ctx.reply(
         "❌ دریافت اطلاعات حساب انجام نشد.\nلطفاً دوباره تلاش کنید.",
@@ -365,7 +379,9 @@ function createBot() {
       if (Number(account.credit || 0) < 1) {
         await ctx.reply(
           "❌ برای گردونه حداقل 1 اعتبار لازم داری.\n\n" +
-            `💳 اعتبار فعلی: ${account.credit || 0}`,
+            `💳 اعتبار فعلی: ${
+              account.credit || 0
+            }`,
           gamesMenu
         );
 
@@ -381,9 +397,10 @@ function createBot() {
         gamesMenu
       );
 
-      const diceMessage = await ctx.replyWithDice({
-        emoji: "🎲",
-      });
+      const diceMessage =
+        await ctx.replyWithDice({
+          emoji: "🎲",
+        });
 
       const diceValue = Number(
         diceMessage?.dice?.value || 0
@@ -394,7 +411,9 @@ function createBot() {
         diceValue < 1 ||
         diceValue > 6
       ) {
-        throw new Error("Invalid Telegram dice result");
+        throw new Error(
+          "Invalid Telegram dice result"
+        );
       }
 
       await new Promise((resolve) => {
@@ -412,11 +431,17 @@ function createBot() {
         "🎡 نتیجه گردونه\n\n" +
         `🎲 عدد تاس: ${diceValue}\n\n`;
 
-      if (prize.result_type === "CREDIT") {
+      if (
+        prize.result_type === "CREDIT"
+      ) {
         message += `🎉 جایزه: +${prize.credit_amount} اعتبار\n`;
-      } else if (prize.result_type === "XP") {
+      } else if (
+        prize.result_type === "XP"
+      ) {
         message += `🎉 جایزه: +${prize.xp_amount} XP\n`;
-      } else if (prize.result_type === "PRO") {
+      } else if (
+        prize.result_type === "PRO"
+      ) {
         message += `🎉 جایزه: +${prize.pro_days} روز زکا پرو\n`;
       } else {
         message +=
@@ -424,16 +449,25 @@ function createBot() {
           "دوباره شانس خودت را امتحان کن.";
       }
 
-      message += "\n\n💳 هزینه: 1 اعتبار";
+      message +=
+        "\n\n💳 هزینه: 1 اعتبار";
 
-      await ctx.reply(message, gamesMenu);
+      await ctx.reply(
+        message,
+        gamesMenu
+      );
     } catch (error) {
-      console.error("Wheel spin failed:", error);
+      console.error(
+        "Wheel spin failed:",
+        error
+      );
 
       if (
         error &&
-        (error.message === "Insufficient credit" ||
-          error.code === "INSUFFICIENT_CREDIT")
+        (error.message ===
+          "Insufficient credit" ||
+          error.code ===
+            "INSUFFICIENT_CREDIT")
       ) {
         await ctx.reply(
           "❌ اعتبار کافی برای چرخاندن گردونه نداری.",
@@ -462,19 +496,17 @@ function createBot() {
   });
 
   // =========================
-  // ADMIN
-  // =========================
-
-  bot.command("admin", handleAdminCommand);
-
-  // =========================
   // TEXT / DOWNLOAD REQUEST
   // =========================
 
   bot.on("text", async (ctx) => {
-    const text = ctx.message.text.trim();
+    const text =
+      ctx.message.text.trim();
 
-    if (!text || text.startsWith("/")) {
+    if (
+      !text ||
+      text.startsWith("/")
+    ) {
       return;
     }
 
@@ -494,6 +526,13 @@ function createBot() {
       "🌐 زبان",
       "👤 اطلاعات حساب",
       "🔙 بازگشت",
+
+      // ADMIN
+      "🧠 مدیریت مسابقه",
+      "➕ افزودن سؤال",
+      "🔙 پنل مدیریت",
+      "🔙 خروج از پنل مدیریت",
+      "❌ لغو",
     ];
 
     if (menuButtons.includes(text)) {
@@ -501,8 +540,13 @@ function createBot() {
     }
 
     try {
-      const user = await getOrCreateUser(ctx.from);
-      const parsed = parseUrl(text);
+      const user =
+        await getOrCreateUser(
+          ctx.from
+        );
+
+      const parsed =
+        parseUrl(text);
 
       if (!parsed.valid) {
         await ctx.reply(
@@ -524,15 +568,19 @@ function createBot() {
         return;
       }
 
-      const result = await createDownloadRequest({
-        userId: user.id,
-        platform: parsed.platform,
-        originalUrl: text,
-        normalizedUrl: parsed.url,
-        contentType: parsed.contentType,
-      });
+      const result =
+        await createDownloadRequest({
+          userId: user.id,
+          platform: parsed.platform,
+          originalUrl: text,
+          normalizedUrl: parsed.url,
+          contentType:
+            parsed.contentType,
+        });
 
-      const request = result.request;
+      const request =
+        result.request;
+
       const job = result.job;
 
       await ctx.reply(
@@ -551,7 +599,8 @@ function createBot() {
 
       if (
         error &&
-        error.code === "DUPLICATE_ACTIVE_REQUEST"
+        error.code ===
+          "DUPLICATE_ACTIVE_REQUEST"
       ) {
         await ctx.reply(
           "⏳ این لینک در حال حاضر در صف پردازش است.\n\n" +
@@ -564,7 +613,8 @@ function createBot() {
 
       if (
         error &&
-        error.code === "PLATFORM_DISABLED"
+        error.code ===
+          "PLATFORM_DISABLED"
       ) {
         await ctx.reply(
           `⚠️ دانلود از ${
@@ -592,7 +642,9 @@ function createBot() {
     cleanupQuizTimers();
 
     if (bot) {
-      await bot.stop("shutdown");
+      await bot.stop(
+        "shutdown"
+      );
     }
   });
 
@@ -607,24 +659,33 @@ function createBot() {
 // PROCESS SIGNALS
 // =========================
 
-process.once("SIGINT", async () => {
-  await shutdown("SIGINT");
-});
+process.once(
+  "SIGINT",
+  async () => {
+    await shutdown("SIGINT");
+  }
+);
 
-process.once("SIGTERM", async () => {
-  await shutdown("SIGTERM");
-});
+process.once(
+  "SIGTERM",
+  async () => {
+    await shutdown("SIGTERM");
+  }
+);
 
 // =========================
 // START BOT
 // =========================
 
 async function startBot() {
-  const telegramBot = createBot();
+  const telegramBot =
+    createBot();
 
   await telegramBot.launch();
 
-  console.log("Telegram bot started.");
+  console.log(
+    "Telegram bot started."
+  );
 }
 
 module.exports = {
