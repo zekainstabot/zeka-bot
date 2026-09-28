@@ -66,6 +66,11 @@ function createBot() {
 
   setDeliveryBot(bot);
 
+  createQuizHandler({
+  bot,
+  gamesMenu,
+});
+
   // =========================
   // START
   // =========================
