@@ -29,8 +29,6 @@ const gameService = require("./games/game.service");
 
 let bot = null;
 
-const quizTimers = new Map();
-
 const mainMenu = Markup.keyboard([
   ["📥 دانلود", "👤 حساب من"],
   ["🎁 هدایا", "⭐ زکا پرو"],
