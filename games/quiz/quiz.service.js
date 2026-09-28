@@ -183,18 +183,23 @@ async function startQuiz({
   const session =
     await gameService.startGame({
       userId,
+
       gameKey:
         QUIZ_GAME_KEY,
+
       cost,
+
       totalRounds:
         config.questionCount,
+
       metadata: {
         game:
           QUIZ_GAME_KEY,
 
         languageCode,
 
-        currentRound: 0,
+        currentRound:
+          0,
 
         currentQuestionId:
           null,
@@ -226,7 +231,8 @@ async function startQuiz({
 
       userId,
 
-      playerNumber: 1,
+      playerNumber:
+        1,
 
       reservedCost:
         cost,
@@ -314,6 +320,7 @@ async function prepareNextQuestion(
     await quizRepository.getRandomQuestion(
       {
         languageCode,
+
         excludedIds:
           usedQuestionIds,
       }
@@ -552,6 +559,7 @@ async function processAnswer({
 
       return {
         handled: false,
+
         reason:
           "SESSION_NOT_FOUND",
       };
@@ -566,6 +574,7 @@ async function processAnswer({
 
       return {
         handled: false,
+
         reason:
           "SESSION_NOT_ACTIVE",
       };
@@ -599,6 +608,7 @@ async function processAnswer({
 
       return {
         handled: false,
+
         reason:
           "NO_ACTIVE_QUESTION",
       };
@@ -631,8 +641,10 @@ async function processAnswer({
 
       return {
         handled: false,
+
         reason:
           "ALREADY_ANSWERED",
+
         answer:
           existingAnswer,
       };
@@ -689,6 +701,7 @@ async function processAnswer({
         responseTimeMs =
           Math.max(
             0,
+
             Date.now() -
               sentAt.getTime()
           );
@@ -756,6 +769,7 @@ async function processAnswer({
 
       return {
         handled: false,
+
         reason:
           "ANSWER_ALREADY_EXISTS",
       };
@@ -878,10 +892,18 @@ async function processAnswer({
 
     if (finished) {
       /*
-       * اینجا فقط وضعیت session را COMPLETED می‌کنیم.
-       * مصرف credit بعد از COMMIT انجام می‌شود
-       * تا تراکنش پاسخ و reward با هم اتمیک بمانند.
+       * هزینه بازی باید قبل از COMMIT و داخل
+       * همین تراکنش مصرف شود.
+       *
+       * بنابراین:
+       * پاسخ آخر + reward + مصرف credit +
+       * تکمیل session
+       * همگی اتمیک هستند.
        */
+      await creditService.consumeGameCreditInTransaction(
+        session.id,
+        client
+      );
 
       await gameRepository.updateSession(
         session.id,
@@ -927,29 +949,6 @@ async function processAnswer({
     await client.query(
       "COMMIT"
     );
-
-    /*
-     * هزینه بازی قبلاً رزرو شده.
-     * فقط بعد از آخرین سؤال مصرف می‌شود.
-     */
-    if (finished) {
-      try {
-        await creditService.consumeGameCredit(
-          session.id
-        );
-      } catch (error) {
-        console.error(
-          `Failed to consume quiz credit for session ${session.id}:`,
-          error
-        );
-
-        /*
-         * اگر مصرف اعتبار شکست بخورد،
-         * session دیگر دوباره بازی نمی‌شود.
-         * خطا فقط لاگ می‌شود تا reward دوباره داده نشود.
-         */
-      }
-    }
 
     return {
       handled: true,
@@ -1001,6 +1000,7 @@ async function processPollAnswer({
   if (!pollId) {
     return {
       handled: false,
+
       reason:
         "POLL_ID_MISSING",
     };
@@ -1014,6 +1014,7 @@ async function processPollAnswer({
   if (!session) {
     return {
       handled: false,
+
       reason:
         "SESSION_NOT_FOUND",
     };
@@ -1027,6 +1028,7 @@ async function processPollAnswer({
   if (!selectedOption) {
     return {
       handled: false,
+
       reason:
         "INVALID_OPTION",
     };
@@ -1049,6 +1051,7 @@ async function processTimeout(
   if (!sessionId) {
     return {
       handled: false,
+
       reason:
         "SESSION_ID_MISSING",
     };
@@ -1062,6 +1065,7 @@ async function processTimeout(
   if (!session) {
     return {
       handled: false,
+
       reason:
         "SESSION_NOT_FOUND",
     };
@@ -1072,6 +1076,7 @@ async function processTimeout(
   ) {
     return {
       handled: false,
+
       reason:
         "SESSION_NOT_ACTIVE",
     };
@@ -1085,6 +1090,7 @@ async function processTimeout(
   ) {
     return {
       handled: false,
+
       reason:
         "NO_ACTIVE_POLL",
     };
