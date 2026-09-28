@@ -11,10 +11,32 @@ const {
   createAdminQuizHandler,
 } = require("./admin-quiz.handler");
 
-const adminMenu = Markup.keyboard([
-  ["🧠 مدیریت مسابقه"],
-  ["🔙 خروج از پنل مدیریت"],
-]).resize();
+const {
+  createAdminProHandler,
+} = require("./admin-pro.handler");
+
+function buildAdminMenu(admin) {
+  const buttons = [
+    ["🧠 مدیریت مسابقه"],
+  ];
+
+  if (
+    admin?.role_key ===
+    "super_admin"
+  ) {
+    buttons.push([
+      "💎 مدیریت Pro",
+    ]);
+  }
+
+  buttons.push([
+    "🔙 خروج از پنل مدیریت",
+  ]);
+
+  return Markup.keyboard(
+    buttons
+  ).resize();
+}
 
 async function handleAdminCommand(ctx) {
   try {
@@ -62,7 +84,7 @@ async function handleAdminCommand(ctx) {
         `🔑 سطح دسترسی: ${admin.role_key}\n\n` +
         `📋 دسترسی‌ها:\n${permissionText}\n\n` +
         `از منوی زیر بخش موردنظر را انتخاب کنید.`,
-      adminMenu
+      buildAdminMenu(admin)
     );
   } catch (error) {
     console.error(
@@ -160,8 +182,72 @@ async function handleBackToAdmin(ctx) {
 
   await ctx.reply(
     "🛠️ پنل مدیریت",
-    adminMenu
+    buildAdminMenu(admin)
   );
+}
+
+async function handleProAdminMenu(ctx) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    const admin =
+      await getAdminByTelegramId(
+        telegramUserId
+      );
+
+    if (
+      !admin ||
+      !admin.is_active
+    ) {
+      await ctx.reply(
+        "⛔ شما دسترسی به پنل مدیریت ندارید."
+      );
+
+      return;
+    }
+
+    if (
+      admin.role_key !==
+      "super_admin"
+    ) {
+      await ctx.reply(
+        "⛔ فقط Super Admin به مدیریت Pro دسترسی دارد."
+      );
+
+      return;
+    }
+
+    await ctx.reply(
+      "💎 مدیریت Pro\n\n" +
+        "عملیات موردنظر را انتخاب کنید.",
+      Markup.keyboard([
+        [
+          "⭐ فعال‌سازی Pro",
+          "⏳ تمدید Pro",
+        ],
+        [
+          "🟢 روشن کردن Pro",
+          "🔴 خاموش کردن Pro",
+        ],
+        ["❌ لغو Pro"],
+        ["🔙 پنل مدیریت"],
+      ]).resize()
+    );
+  } catch (error) {
+    console.error(
+      "Pro admin menu failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ باز کردن مدیریت Pro انجام نشد."
+    );
+  }
 }
 
 function createAdminHandler(bot) {
@@ -176,6 +262,11 @@ function createAdminHandler(bot) {
   );
 
   bot.hears(
+    "💎 مدیریت Pro",
+    handleProAdminMenu
+  );
+
+  bot.hears(
     "🔙 پنل مدیریت",
     handleBackToAdmin
   );
@@ -186,6 +277,8 @@ function createAdminHandler(bot) {
   );
 
   createAdminQuizHandler(bot);
+
+  createAdminProHandler(bot);
 }
 
 module.exports = {
