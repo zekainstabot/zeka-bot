@@ -1,6 +1,6 @@
 const creditService = require("../services/credit.service");
 const rewardService = require("../services/reward.service");
-const gameRepository = require("./game.repository");
+const gameRepository = require("../repositories/game.repository");
 
 async function startGame({
   userId,
