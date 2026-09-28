@@ -111,26 +111,26 @@ function createBot() {
   }
 
   async function cancelUserActiveQuiz(userId) {
-  if (!userId) {
-    return null;
+    if (!userId) {
+      return null;
+    }
+
+    const activeQuiz =
+      await findActiveQuizByUser(userId);
+
+    if (!activeQuiz) {
+      return null;
+    }
+
+    await clearQuizTimer(
+      activeQuiz.id
+    );
+
+    return gameService.cancelGame(
+      activeQuiz.id,
+      "Cancelled by user"
+    );
   }
-
-  const activeQuiz =
-    await findActiveQuizByUser(userId);
-
-  if (!activeQuiz) {
-    return null;
-  }
-
-  await clearQuizTimer(
-    activeQuiz.id
-  );
-
-  return gameService.cancelGame(
-    activeQuiz.id,
-    "Cancelled by user"
-  );
-}
 
   async function sendQuizFinishedMessage(
     sessionId,
@@ -1143,6 +1143,126 @@ function createBot() {
       }
     }
   );
+    // =========================
+  // QUIZ CANCEL
+  // =========================
+
+  bot.hears(
+    "❌ لغو مسابقه",
+    async (ctx) => {
+      try {
+        const user =
+          await getOrCreateUser(
+            ctx.from
+          );
+
+        const activeQuiz =
+          await findActiveQuizByUser(
+            user.id
+          );
+
+        if (!activeQuiz) {
+          await ctx.reply(
+            "ℹ️ مسابقه فعالی نداری.",
+            gamesMenu
+          );
+
+          return;
+        }
+
+        await ctx.reply(
+          "⚠️ یک مسابقه فعال داری.\n\n" +
+            "اگر لغوش کنی، مسابقه فعلی متوقف می‌شود و می‌توانی مسابقه جدید شروع کنی.\n\n" +
+            "آیا مطمئنی؟",
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback(
+                "✅ بله، لغو کن",
+                "quiz_cancel_confirm"
+              ),
+              Markup.button.callback(
+                "↩️ برگرد",
+                "quiz_cancel_back"
+              ),
+            ],
+          ])
+        );
+      } catch (error) {
+        console.error(
+          "Quiz cancel menu failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ بررسی مسابقه انجام نشد.",
+          gamesMenu
+        );
+      }
+    }
+  );
+
+  bot.action(
+    "quiz_cancel_confirm",
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        const user =
+          await getOrCreateUser(
+            ctx.from
+          );
+
+        const cancelled =
+          await cancelUserActiveQuiz(
+            user.id
+          );
+
+        if (!cancelled) {
+          await ctx.editMessageText(
+            "ℹ️ مسابقه فعالی برای لغو وجود ندارد."
+          );
+
+          return;
+        }
+
+        await ctx.editMessageText(
+          "✅ مسابقه قبلی لغو شد.\n\n" +
+            "حالا می‌توانی یک مسابقه جدید شروع کنی."
+        );
+
+        await ctx.reply(
+          "🎮 منوی مینی‌گیم‌ها",
+          gamesMenu
+        );
+      } catch (error) {
+        console.error(
+          "Quiz cancellation failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ لغو مسابقه انجام نشد. دوباره تلاش کن.",
+          gamesMenu
+        );
+      }
+    }
+  );
+
+  bot.action(
+    "quiz_cancel_back",
+    async (ctx) => {
+      await ctx.answerCbQuery();
+
+      try {
+        await ctx.deleteMessage();
+      } catch (_) {}
+
+      await ctx.reply(
+        "🎮 منوی مینی‌گیم‌ها",
+        gamesMenu
+      );
+    }
+  );
 
   // =========================
   // QUIZ POLL ANSWER
@@ -1293,6 +1413,7 @@ function createBot() {
         "🎮 مینی‌گیم‌ها",
         "🎡 گردونه شانس",
         "🧠 مسابقه",
+        "❌ لغو مسابقه",
         "🛠 امکانات ویژه",
         "📚 راهنما",
         "📊 اعتبار من",
@@ -1418,8 +1539,7 @@ function createBot() {
       }
     }
   );
-
-  // =========================
+    // =========================
   // SHUTDOWN
   // =========================
 
