@@ -1,9 +1,12 @@
 const jobRepository = require("../repositories/job.repository");
 const queueManager = require("./manager");
+
 const {
   reserveCredit,
   releaseCredit,
+  shouldConsumeCredit,
 } = require("../services/credit.service");
+
 const {
   createDailyCreditsForUser,
 } = require("../services/daily-credit.service");
@@ -26,10 +29,17 @@ async function createAndQueueJob({
     throw new Error("Request original URL is required");
   }
 
-  const estimatedCost = Number(request.estimated_cost);
+  const estimatedCost = Number(
+    request.estimated_cost
+  );
 
-  if (!Number.isFinite(estimatedCost) || estimatedCost <= 0) {
-    throw new Error("Valid request estimated cost is required");
+  if (
+    !Number.isFinite(estimatedCost) ||
+    estimatedCost <= 0
+  ) {
+    throw new Error(
+      "Valid request estimated cost is required"
+    );
   }
 
   const job = await jobRepository.create({
@@ -48,36 +58,54 @@ async function createAndQueueJob({
   let creditReserved = false;
 
   try {
-    await createDailyCreditsForUser(request.user_id);
-
-    await reserveCredit({
-      userId: request.user_id,
-      amount: estimatedCost,
-      requestId: request.id,
-      jobId: job.id,
-    });
-
-    creditReserved = true;
-
-    const updatedJob = await jobRepository.update(
-      job.id,
-      {
-        reserved_cost: estimatedCost,
-      }
+    await createDailyCreditsForUser(
+      request.user_id
     );
 
-    queueManager.add(updatedJob || job);
+    const consumeCredit =
+      await shouldConsumeCredit(
+        request.user_id
+      );
+
+    if (consumeCredit) {
+      await reserveCredit({
+        userId: request.user_id,
+        amount: estimatedCost,
+        requestId: request.id,
+        jobId: job.id,
+      });
+
+      creditReserved = true;
+    }
+
+    const updatedJob =
+      await jobRepository.update(
+        job.id,
+        {
+          reserved_cost: consumeCredit
+            ? estimatedCost
+            : 0,
+        }
+      );
+
+    queueManager.add(
+      updatedJob || job
+    );
 
     return updatedJob || job;
   } catch (error) {
     console.error(
-      `Failed to queue job: ${job.job_id || job.id}`,
+      `Failed to queue job: ${
+        job.job_id || job.id
+      }`,
       error
     );
 
     if (creditReserved) {
       try {
-        await releaseCredit(job.id);
+        await releaseCredit(
+          job.id
+        );
       } catch (releaseError) {
         console.error(
           `Failed to release credit for job: ${
