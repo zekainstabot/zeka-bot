@@ -21,13 +21,9 @@ const {
 } = require("./games/wheel/wheel.service");
 
 const {
-  startQuiz,
-  prepareNextQuestion,
-  registerPoll,
-  processPollAnswer,
-  processTimeout,
-  findActiveQuizByUser,
-} = require("./games/quiz/quiz.service");
+  createQuizHandler,
+  cleanupQuizTimers,
+} = require("./games/quiz/quiz.handler");
 
 const gameService = require("./games/game.service");
 
