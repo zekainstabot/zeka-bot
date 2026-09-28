@@ -891,15 +891,6 @@ async function processAnswer({
     };
 
     if (finished) {
-      /*
-       * هزینه بازی باید قبل از COMMIT و داخل
-       * همین تراکنش مصرف شود.
-       *
-       * بنابراین:
-       * پاسخ آخر + reward + مصرف credit +
-       * تکمیل session
-       * همگی اتمیک هستند.
-       */
       await creditService.consumeGameCreditInTransaction(
         session.id,
         client
@@ -1046,7 +1037,8 @@ async function processPollAnswer({
 }
 
 async function processTimeout(
-  sessionId
+  sessionId,
+  expectedPollId
 ) {
   if (!sessionId) {
     return {
@@ -1054,6 +1046,15 @@ async function processTimeout(
 
       reason:
         "SESSION_ID_MISSING",
+    };
+  }
+
+  if (!expectedPollId) {
+    return {
+      handled: false,
+
+      reason:
+        "POLL_ID_MISSING",
     };
   }
 
@@ -1093,6 +1094,18 @@ async function processTimeout(
 
       reason:
         "NO_ACTIVE_POLL",
+    };
+  }
+
+  if (
+    String(metadata.currentPollId) !==
+    String(expectedPollId)
+  ) {
+    return {
+      handled: false,
+
+      reason:
+        "STALE_TIMEOUT",
     };
   }
 
