@@ -52,6 +52,18 @@ function clearQuizTimer(sessionId) {
   }
 }
 
+function clearQuizResultTimer(sessionId) {
+  const key = String(sessionId);
+  const resultTimer = quizResultTimers.get(key);
+
+  if (resultTimer) {
+    clearTimeout(resultTimer.timer);
+    quizResultTimers.delete(key);
+  }
+
+  return resultTimer || null;
+}
+
 function shuffleQuizOptions(question) {
   const options = [
     {
