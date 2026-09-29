@@ -1,5 +1,7 @@
 const adminService = require("./admin.service");
-const adminQuizRepository = require("../repositories/admin-quiz.repository");
+const adminQuizRepository = require(
+  "../repositories/admin-quiz.repository"
+);
 
 const QUIZ_MANAGE_PERMISSION =
   "games.quiz.manage";
@@ -116,6 +118,48 @@ async function getQuestionById(
   return question;
 }
 
+async function listQuestions(
+  telegramUserId,
+  {
+    search = "",
+    status = "ALL",
+    category = null,
+    limit = 10,
+    offset = 0,
+  } = {}
+) {
+  await requireQuizPermission(
+    telegramUserId
+  );
+
+  return adminQuizRepository.listQuestions({
+    search,
+    status,
+    category,
+    limit,
+    offset,
+  });
+}
+
+async function countQuestions(
+  telegramUserId,
+  {
+    search = "",
+    status = "ALL",
+    category = null,
+  } = {}
+) {
+  await requireQuizPermission(
+    telegramUserId
+  );
+
+  return adminQuizRepository.countQuestions({
+    search,
+    status,
+    category,
+  });
+}
+
 async function updateQuestion({
   telegramUserId,
   questionId,
@@ -165,10 +209,53 @@ async function updateQuestion({
   });
 }
 
+async function updateQuestionStatus({
+  telegramUserId,
+  questionId,
+  status,
+}) {
+  const admin =
+    await requireQuizPermission(
+      telegramUserId
+    );
+
+  const question =
+    await adminQuizRepository.getQuestionById(
+      questionId
+    );
+
+  if (!question) {
+    const error = new Error(
+      "Question not found"
+    );
+
+    error.code =
+      "QUESTION_NOT_FOUND";
+
+    throw error;
+  }
+
+  return adminQuizRepository.updateQuestionStatus({
+    questionId,
+    status,
+    updatedBy: admin.user_id,
+  });
+}
+
 module.exports = {
   requireQuizPermission,
+
   createQuestion,
+
   countActiveQuestions,
+
   getQuestionById,
+
+  listQuestions,
+
+  countQuestions,
+
   updateQuestion,
+
+  updateQuestionStatus,
 };
