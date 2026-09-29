@@ -229,6 +229,9 @@ async function startQuiz({
         pollMessageId:
           null,
 
+        pollReportMessageId:
+  null,
+
         pollSentAt:
           null,
 
