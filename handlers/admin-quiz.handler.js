@@ -16,6 +16,7 @@ const CANCEL_TEXT = "❌ لغو";
 
 const quizAdminMenu = Markup.keyboard([
   ["➕ افزودن سؤال"],
+  ["📚 بانک سؤالات"],
   ["🚨 گزارش‌های سؤالات"],
   ["🔙 پنل مدیریت"],
 ]).resize();
