@@ -702,9 +702,10 @@ function createQuizHandler({
         }
 
         const result =
-          await cancelUserActiveQuiz(
-            user.id
-          );
+  await cancelUserActiveQuiz(
+    bot,
+    user.id
+  );
 
         if (!result) {
           await ctx.editMessageText(
