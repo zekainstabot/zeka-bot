@@ -127,7 +127,18 @@ async function cancelUserActiveQuiz(userId) {
   }
 
   clearQuizTimer(session.id);
-  quizNextLocks.delete(String(session.id));
+
+const resultTimer = clearQuizResultTimer(session.id);
+
+if (resultTimer) {
+  await deleteQuizMessage(
+    bot,
+    resultTimer.chatId,
+    resultTimer.messageId
+  );
+}
+
+quizNextLocks.delete(String(session.id));
 
   return gameService.cancelGame(
     session.id,
