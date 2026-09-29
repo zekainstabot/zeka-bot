@@ -546,7 +546,6 @@ async function prepareNextQuestion(
 async function registerPoll(
   sessionId,
   {
-   {
   pollId,
   chatId,
   messageId,
