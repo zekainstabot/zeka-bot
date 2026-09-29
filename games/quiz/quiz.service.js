@@ -1164,13 +1164,16 @@ async function processAnswer({
         null,
 
       pollChatId:
-        null,
+  null,
 
-      pollMessageId:
-        null,
+pollMessageId:
+  null,
 
-      pollSentAt:
-        null,
+pollReportMessageId:
+  null,
+
+pollSentAt:
+  null,
 
       processing:
         false,
