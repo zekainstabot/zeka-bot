@@ -460,7 +460,7 @@ async function handleReportResolve(
   }
 }
 
-async function handleReportEdit(
+async function startEditQuestion(
   ctx,
   reportId
 ) {
@@ -492,39 +492,63 @@ async function handleReportEdit(
       return;
     }
 
-    await ctx.editMessageText(
+    if (
+      report.status !==
+      "PENDING"
+    ) {
+      await ctx.editMessageText(
+        "ℹ️ این گزارش قبلاً بررسی شده و دیگر قابل ویرایش از این بخش نیست."
+      );
+
+      return;
+    }
+
+    setState(telegramUserId, {
+      mode: "EDIT",
+      step: "question",
+      reportId: report.id,
+      questionId:
+        report.question_id,
+      data: {
+        questionText:
+          report.question_text,
+        optionA:
+          report.option_a,
+        optionB:
+          report.option_b,
+        optionC:
+          report.option_c,
+        optionD:
+          report.option_d,
+        correctOption:
+          report.correct_option,
+        category:
+          report.category || "",
+        difficulty:
+          report.difficulty || "MEDIUM",
+        explanation:
+          report.explanation || null,
+      },
+    });
+
+    await ctx.reply(
       "✏️ اصلاح سؤال\n\n" +
-        `🆔 سؤال: ${report.question_id}\n\n` +
-        "سیستم ویرایش سؤال در مرحله بعد اضافه می‌شود.\n\n" +
-        "فعلاً می‌توانی گزارش را تأیید یا رد کنی.",
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            "✅ تأیید گزارش",
-            `quiz_admin_report_resolve:${report.id}:RESOLVED`
-          ),
-          Markup.button.callback(
-            "❌ رد گزارش",
-            `quiz_admin_report_resolve:${report.id}:REJECTED`
-          ),
-        ],
-        [
-          Markup.button.callback(
-            "🔙 برگشت",
-            `quiz_admin_report_view:${report.id}`
-          ),
-        ],
-      ])
+        `🆔 شناسه سؤال: ${report.question_id}\n\n` +
+        "📝 متن جدید سؤال را ارسال کنید.\n\n" +
+        "مقدار فعلی:\n" +
+        `${report.question_text}\n\n` +
+        "برای لغو، «❌ لغو» را بزنید.",
+      cancelMenu
     );
   } catch (error) {
     console.error(
-      "Edit quiz report failed:",
+      "Start edit quiz question failed:",
       error
     );
 
     try {
       await ctx.answerCbQuery(
-        "❌ باز کردن اصلاح سؤال انجام نشد.",
+        "❌ شروع ویرایش سؤال انجام نشد.",
         {
           show_alert: true,
         }
@@ -547,6 +571,7 @@ async function startAddQuestion(ctx) {
     );
 
     setState(telegramUserId, {
+      mode: "ADD",
       step: "question",
       data: {},
     });
@@ -577,6 +602,598 @@ async function startAddQuestion(ctx) {
     await ctx.reply(
       "❌ شروع افزودن سؤال انجام نشد."
     );
+  }
+}
+
+async function handleAddQuestionStep(
+  ctx,
+  telegramUserId,
+  state,
+  text
+) {
+  switch (state.step) {
+    case "question": {
+      state.data.questionText =
+        text;
+
+      state.step = "optionA";
+
+      await ctx.reply(
+        "🅰️ گزینه A را ارسال کنید.",
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "optionA": {
+      state.data.optionA =
+        text;
+
+      state.step = "optionB";
+
+      await ctx.reply(
+        "🅱️ گزینه B را ارسال کنید.",
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "optionB": {
+      state.data.optionB =
+        text;
+
+      state.step = "optionC";
+
+      await ctx.reply(
+        "©️ گزینه C را ارسال کنید.",
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "optionC": {
+      state.data.optionC =
+        text;
+
+      state.step = "optionD";
+
+      await ctx.reply(
+        "🅳 گزینه D را ارسال کنید.",
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "optionD": {
+      state.data.optionD =
+        text;
+
+      state.step =
+        "correctOption";
+
+      await ctx.reply(
+        "✅ کدام گزینه پاسخ صحیح است؟",
+        Markup.keyboard([
+          ["A", "B"],
+          ["C", "D"],
+          [CANCEL_TEXT],
+        ]).resize()
+      );
+
+      return;
+    }
+
+    case "correctOption": {
+      const correctOption =
+        text.toUpperCase();
+
+      if (
+        ![
+          "A",
+          "B",
+          "C",
+          "D",
+        ].includes(correctOption)
+      ) {
+        await ctx.reply(
+          "❌ فقط یکی از گزینه‌های A، B، C یا D را انتخاب کنید."
+        );
+
+        return;
+      }
+
+      state.data.correctOption =
+        correctOption;
+
+      state.step = "category";
+
+      await ctx.reply(
+        "🏷️ دسته‌بندی سؤال را ارسال کنید.\n\n" +
+          "مثال: عمومی، فناوری، تاریخ، جغرافیا",
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "category": {
+      state.data.category =
+        text;
+
+      state.step = "difficulty";
+
+      await ctx.reply(
+        "🎯 سطح سختی سؤال را انتخاب کنید.",
+        Markup.keyboard([
+          ["EASY", "MEDIUM"],
+          ["HARD"],
+          [CANCEL_TEXT],
+        ]).resize()
+      );
+
+      return;
+    }
+
+    case "difficulty": {
+      const difficulty =
+        text.toUpperCase();
+
+      if (
+        ![
+          "EASY",
+          "MEDIUM",
+          "HARD",
+        ].includes(difficulty)
+      ) {
+        await ctx.reply(
+          "❌ سطح سختی باید یکی از این موارد باشد:\n\n" +
+            "EASY\n" +
+            "MEDIUM\n" +
+            "HARD"
+        );
+
+        return;
+      }
+
+      state.data.difficulty =
+        difficulty;
+
+      state.step = "explanation";
+
+      await ctx.reply(
+        "💡 توضیح پاسخ را ارسال کنید.\n\n" +
+          "اگر توضیح نمی‌خواهید، فقط «-» ارسال کنید.",
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "explanation": {
+      state.data.explanation =
+        text === "-"
+          ? null
+          : text;
+
+      state.step = "confirm";
+
+      const data =
+        state.data;
+
+      await ctx.reply(
+        "📋 پیش‌نمایش سؤال\n\n" +
+          `❓ ${data.questionText}\n\n` +
+          `🅰️ ${data.optionA}\n` +
+          `🅱️ ${data.optionB}\n` +
+          `©️ ${data.optionC}\n` +
+          `🅳 ${data.optionD}\n\n` +
+          `✅ پاسخ صحیح: ${data.correctOption}\n` +
+          `🏷️ دسته‌بندی: ${data.category}\n` +
+          `🎯 سختی: ${data.difficulty}\n` +
+          `💡 توضیح: ${
+            data.explanation ||
+            "ندارد"
+          }\n\n` +
+          "آیا سؤال ثبت شود؟",
+        Markup.keyboard([
+          ["✅ ثبت سؤال"],
+          ["❌ لغو"],
+        ]).resize()
+      );
+
+      return;
+    }
+
+    case "confirm": {
+      if (
+        text !==
+        "✅ ثبت سؤال"
+      ) {
+        await ctx.reply(
+          "برای ثبت سؤال روی «✅ ثبت سؤال» بزنید یا «❌ لغو» را انتخاب کنید."
+        );
+
+        return;
+      }
+
+      const data =
+        state.data;
+
+      const question =
+        await adminQuizService.createQuestion({
+          telegramUserId,
+          languageCode:
+            "fa",
+          category:
+            data.category,
+          difficulty:
+            data.difficulty,
+          questionText:
+            data.questionText,
+          optionA:
+            data.optionA,
+          optionB:
+            data.optionB,
+          optionC:
+            data.optionC,
+          optionD:
+            data.optionD,
+          correctOption:
+            data.correctOption,
+          explanation:
+            data.explanation,
+        });
+
+      clearState(
+        telegramUserId
+      );
+
+      const total =
+        await adminQuizService.countActiveQuestions(
+          telegramUserId
+        );
+
+      await ctx.reply(
+        "✅ سؤال با موفقیت ثبت شد.\n\n" +
+          `🆔 شناسه سؤال: ${question.id}\n` +
+          `📊 تعداد سؤالات فعال: ${total}`,
+        quizAdminMenu
+      );
+
+      return;
+    }
+
+    default: {
+      clearState(
+        telegramUserId
+      );
+
+      await ctx.reply(
+        "⚠️ وضعیت افزودن سؤال نامعتبر بود و از ابتدا پاک شد.",
+        quizAdminMenu
+      );
+
+      return;
+    }
+  }
+}
+
+async function handleEditQuestionStep(
+  ctx,
+  telegramUserId,
+  state,
+  text
+) {
+  switch (state.step) {
+    case "question": {
+      state.data.questionText =
+        text;
+
+      state.step = "optionA";
+
+      await ctx.reply(
+        "🅰️ گزینه A جدید را ارسال کنید.\n\n" +
+          `مقدار فعلی:\n${state.data.optionA}`,
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "optionA": {
+      state.data.optionA =
+        text;
+
+      state.step = "optionB";
+
+      await ctx.reply(
+        "🅱️ گزینه B جدید را ارسال کنید.\n\n" +
+          `مقدار فعلی:\n${state.data.optionB}`,
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "optionB": {
+      state.data.optionB =
+        text;
+
+      state.step = "optionC";
+
+      await ctx.reply(
+        "©️ گزینه C جدید را ارسال کنید.\n\n" +
+          `مقدار فعلی:\n${state.data.optionC}`,
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "optionC": {
+      state.data.optionC =
+        text;
+
+      state.step = "optionD";
+
+      await ctx.reply(
+        "🅳 گزینه D جدید را ارسال کنید.\n\n" +
+          `مقدار فعلی:\n${state.data.optionD}`,
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "optionD": {
+      state.data.optionD =
+        text;
+
+      state.step =
+        "correctOption";
+
+      await ctx.reply(
+        "✅ پاسخ صحیح را انتخاب کنید.\n\n" +
+          `مقدار فعلی: ${state.data.correctOption}`,
+        Markup.keyboard([
+          ["A", "B"],
+          ["C", "D"],
+          [CANCEL_TEXT],
+        ]).resize()
+      );
+
+      return;
+    }
+
+    case "correctOption": {
+      const correctOption =
+        text.toUpperCase();
+
+      if (
+        ![
+          "A",
+          "B",
+          "C",
+          "D",
+        ].includes(correctOption)
+      ) {
+        await ctx.reply(
+          "❌ فقط A، B، C یا D را انتخاب کنید."
+        );
+
+        return;
+      }
+
+      state.data.correctOption =
+        correctOption;
+
+      state.step = "category";
+
+      await ctx.reply(
+        "🏷️ دسته‌بندی جدید را ارسال کنید.\n\n" +
+          `مقدار فعلی: ${state.data.category}`,
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "category": {
+      state.data.category =
+        text;
+
+      state.step = "difficulty";
+
+      await ctx.reply(
+        "🎯 سطح سختی جدید را انتخاب کنید.\n\n" +
+          `مقدار فعلی: ${state.data.difficulty}`,
+        Markup.keyboard([
+          ["EASY", "MEDIUM"],
+          ["HARD"],
+          [CANCEL_TEXT],
+        ]).resize()
+      );
+
+      return;
+    }
+
+    case "difficulty": {
+      const difficulty =
+        text.toUpperCase();
+
+      if (
+        ![
+          "EASY",
+          "MEDIUM",
+          "HARD",
+        ].includes(difficulty)
+      ) {
+        await ctx.reply(
+          "❌ سطح سختی باید یکی از این موارد باشد:\n\n" +
+            "EASY\n" +
+            "MEDIUM\n" +
+            "HARD"
+        );
+
+        return;
+      }
+
+      state.data.difficulty =
+        difficulty;
+
+      state.step = "explanation";
+
+      await ctx.reply(
+        "💡 توضیح جدید را ارسال کنید.\n\n" +
+          "برای حذف توضیح، «-» بفرستید.\n\n" +
+          `مقدار فعلی: ${
+            state.data.explanation ||
+            "ندارد"
+          }`,
+        cancelMenu
+      );
+
+      return;
+    }
+
+    case "explanation": {
+      state.data.explanation =
+        text === "-"
+          ? null
+          : text;
+
+      state.step = "confirm";
+
+      const data =
+        state.data;
+
+      await ctx.reply(
+        "📋 پیش‌نمایش اصلاحات\n\n" +
+          `🆔 سؤال: ${state.questionId}\n\n` +
+          `❓ ${data.questionText}\n\n` +
+          `🅰️ ${data.optionA}\n` +
+          `🅱️ ${data.optionB}\n` +
+          `©️ ${data.optionC}\n` +
+          `🅳 ${data.optionD}\n\n` +
+          `✅ پاسخ صحیح: ${data.correctOption}\n` +
+          `🏷️ دسته‌بندی: ${data.category}\n` +
+          `🎯 سختی: ${data.difficulty}\n` +
+          `💡 توضیح: ${
+            data.explanation ||
+            "ندارد"
+          }\n\n` +
+          "آیا این اصلاحات ذخیره شوند؟",
+        Markup.keyboard([
+          ["💾 ذخیره اصلاحات"],
+          ["❌ لغو"],
+        ]).resize()
+      );
+
+      return;
+    }
+
+    case "confirm": {
+      if (
+        text !==
+        "💾 ذخیره اصلاحات"
+      ) {
+        await ctx.reply(
+          "برای ذخیره روی «💾 ذخیره اصلاحات» بزنید یا «❌ لغو» را انتخاب کنید."
+        );
+
+        return;
+      }
+
+      const data =
+        state.data;
+
+      const updated =
+        await adminQuizService.updateQuestion({
+          telegramUserId,
+          questionId:
+            state.questionId,
+          category:
+            data.category,
+          difficulty:
+            data.difficulty,
+          questionText:
+            data.questionText,
+          optionA:
+            data.optionA,
+          optionB:
+            data.optionB,
+          optionC:
+            data.optionC,
+          optionD:
+            data.optionD,
+          correctOption:
+            data.correctOption,
+          explanation:
+            data.explanation,
+        });
+
+      const reportId =
+        state.reportId;
+
+      clearState(
+        telegramUserId
+      );
+
+      if (!updated) {
+        await ctx.reply(
+          "❌ سؤال پیدا نشد یا اصلاحات ذخیره نشد.",
+          quizAdminMenu
+        );
+
+        return;
+      }
+
+      await ctx.reply(
+        "✅ سؤال با موفقیت اصلاح شد.\n\n" +
+          `🆔 سؤال: ${updated.id}\n` +
+          `📋 گزارش مرتبط: ${reportId}\n\n` +
+          "⚠️ گزارش هنوز بسته نشده است.",
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "✅ بستن گزارش",
+              `quiz_admin_report_resolve:${reportId}:RESOLVED`
+            ),
+          ],
+          [
+            Markup.button.callback(
+              "👀 مشاهده گزارش",
+              `quiz_admin_report_view:${reportId}`
+            ),
+          ],
+          [
+            Markup.button.callback(
+              "🚨 گزارش‌های بعدی",
+              "quiz_admin_reports:0"
+            ),
+          ],
+        ])
+      );
+
+      return;
+    }
+
+    default: {
+      clearState(
+        telegramUserId
+      );
+
+      await ctx.reply(
+        "⚠️ وضعیت ویرایش نامعتبر بود و فرایند لغو شد.",
+        quizAdminMenu
+      );
+
+      return;
+    }
   }
 }
 
@@ -612,10 +1229,17 @@ async function handleAdminQuizText(
     text === CANCEL_TEXT ||
     text === "/cancel"
   ) {
-    clearState(telegramUserId);
+    const wasEditing =
+      state.mode === "EDIT";
+
+    clearState(
+      telegramUserId
+    );
 
     await ctx.reply(
-      "❌ افزودن سؤال لغو شد.",
+      wasEditing
+        ? "❌ اصلاح سؤال لغو شد."
+        : "❌ افزودن سؤال لغو شد.",
       quizAdminMenu
     );
 
@@ -623,274 +1247,26 @@ async function handleAdminQuizText(
   }
 
   try {
-    switch (state.step) {
-      case "question": {
-        state.data.questionText =
-          text;
+    if (
+      state.mode ===
+      "EDIT"
+    ) {
+      await handleEditQuestionStep(
+        ctx,
+        telegramUserId,
+        state,
+        text
+      );
 
-        state.step = "optionA";
-
-        await ctx.reply(
-          "🅰️ گزینه A را ارسال کنید.",
-          cancelMenu
-        );
-
-        return;
-      }
-
-      case "optionA": {
-        state.data.optionA =
-          text;
-
-        state.step = "optionB";
-
-        await ctx.reply(
-          "🅱️ گزینه B را ارسال کنید.",
-          cancelMenu
-        );
-
-        return;
-      }
-
-      case "optionB": {
-        state.data.optionB =
-          text;
-
-        state.step = "optionC";
-
-        await ctx.reply(
-          "©️ گزینه C را ارسال کنید.",
-          cancelMenu
-        );
-
-        return;
-      }
-
-      case "optionC": {
-        state.data.optionC =
-          text;
-
-        state.step = "optionD";
-
-        await ctx.reply(
-          "🅳 گزینه D را ارسال کنید.",
-          cancelMenu
-        );
-
-        return;
-      }
-
-      case "optionD": {
-        state.data.optionD =
-          text;
-
-        state.step = "correctOption";
-
-        await ctx.reply(
-          "✅ کدام گزینه پاسخ صحیح است؟",
-          Markup.keyboard([
-            ["A", "B"],
-            ["C", "D"],
-            [CANCEL_TEXT],
-          ]).resize()
-        );
-
-        return;
-      }
-
-      case "correctOption": {
-        const correctOption =
-          text.toUpperCase();
-
-        if (
-          ![
-            "A",
-            "B",
-            "C",
-            "D",
-          ].includes(correctOption)
-        ) {
-          await ctx.reply(
-            "❌ فقط یکی از گزینه‌های A، B، C یا D را انتخاب کنید."
-          );
-
-          return;
-        }
-
-        state.data.correctOption =
-          correctOption;
-
-        state.step = "category";
-
-        await ctx.reply(
-          "🏷️ دسته‌بندی سؤال را ارسال کنید.\n\n" +
-            "مثال: عمومی، فناوری، تاریخ، جغرافیا",
-          cancelMenu
-        );
-
-        return;
-      }
-
-      case "category": {
-        state.data.category =
-          text;
-
-        state.step = "difficulty";
-
-        await ctx.reply(
-          "🎯 سطح سختی سؤال را انتخاب کنید.",
-          Markup.keyboard([
-            ["EASY", "MEDIUM"],
-            ["HARD"],
-            [CANCEL_TEXT],
-          ]).resize()
-        );
-
-        return;
-      }
-
-      case "difficulty": {
-        const difficulty =
-          text.toUpperCase();
-
-        if (
-          ![
-            "EASY",
-            "MEDIUM",
-            "HARD",
-          ].includes(difficulty)
-        ) {
-          await ctx.reply(
-            "❌ سطح سختی باید یکی از این موارد باشد:\n\n" +
-              "EASY\n" +
-              "MEDIUM\n" +
-              "HARD"
-          );
-
-          return;
-        }
-
-        state.data.difficulty =
-          difficulty;
-
-        state.step = "explanation";
-
-        await ctx.reply(
-          "💡 توضیح پاسخ را ارسال کنید.\n\n" +
-            "اگر توضیح نمی‌خواهید، فقط «-» ارسال کنید.",
-          cancelMenu
-        );
-
-        return;
-      }
-
-      case "explanation": {
-        state.data.explanation =
-          text === "-"
-            ? null
-            : text;
-
-        state.step = "confirm";
-
-        const data =
-          state.data;
-
-        await ctx.reply(
-          "📋 پیش‌نمایش سؤال\n\n" +
-            `❓ ${data.questionText}\n\n` +
-            `🅰️ ${data.optionA}\n` +
-            `🅱️ ${data.optionB}\n` +
-            `©️ ${data.optionC}\n` +
-            `🅳 ${data.optionD}\n\n` +
-            `✅ پاسخ صحیح: ${data.correctOption}\n` +
-            `🏷️ دسته‌بندی: ${data.category}\n` +
-            `🎯 سختی: ${data.difficulty}\n` +
-            `💡 توضیح: ${
-              data.explanation ||
-              "ندارد"
-            }\n\n` +
-            "آیا سؤال ثبت شود؟",
-          Markup.keyboard([
-            ["✅ ثبت سؤال"],
-            ["❌ لغو"],
-          ]).resize()
-        );
-
-        return;
-      }
-
-      case "confirm": {
-        if (
-          text !==
-          "✅ ثبت سؤال"
-        ) {
-          await ctx.reply(
-            "برای ثبت سؤال روی «✅ ثبت سؤال» بزنید یا «❌ لغو» را انتخاب کنید."
-          );
-
-          return;
-        }
-
-        const data =
-          state.data;
-
-        const question =
-          await adminQuizService.createQuestion({
-            telegramUserId,
-            languageCode:
-              "fa",
-            category:
-              data.category,
-            difficulty:
-              data.difficulty,
-            questionText:
-              data.questionText,
-            optionA:
-              data.optionA,
-            optionB:
-              data.optionB,
-            optionC:
-              data.optionC,
-            optionD:
-              data.optionD,
-            correctOption:
-              data.correctOption,
-            explanation:
-              data.explanation,
-          });
-
-        clearState(
-          telegramUserId
-        );
-
-        const total =
-          await adminQuizService.countActiveQuestions(
-            telegramUserId
-          );
-
-        await ctx.reply(
-          "✅ سؤال با موفقیت ثبت شد.\n\n" +
-            `🆔 شناسه سؤال: ${question.id}\n` +
-            `📊 تعداد سؤالات فعال: ${total}`,
-          quizAdminMenu
-        );
-
-        return;
-      }
-
-      default: {
-        clearState(
-          telegramUserId
-        );
-
-        await ctx.reply(
-          "⚠️ وضعیت افزودن سؤال نامعتبر بود و از ابتدا پاک شد.",
-          quizAdminMenu
-        );
-
-        return;
-      }
+      return;
     }
+
+    await handleAddQuestionStep(
+      ctx,
+      telegramUserId,
+      state,
+      text
+    );
   } catch (error) {
     console.error(
       "Admin quiz handler failed:",
@@ -902,7 +1278,7 @@ async function handleAdminQuizText(
     );
 
     await ctx.reply(
-      "❌ هنگام ثبت سؤال خطایی رخ داد.\n\n" +
+      "❌ هنگام پردازش سؤال خطایی رخ داد.\n\n" +
         "فرایند لغو شد.",
       quizAdminMenu
     );
@@ -992,7 +1368,7 @@ function createAdminQuizHandler(bot) {
   bot.action(
     /^quiz_admin_report_edit:(\d+)$/,
     async (ctx) => {
-      await handleReportEdit(
+      await startEditQuestion(
         ctx,
         Number(ctx.match[1])
       );
