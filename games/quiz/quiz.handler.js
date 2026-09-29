@@ -1137,7 +1137,11 @@ await deleteQuizMessage(
     ])
   );
 
-setTimeout(async () => {
+const resultTimer = setTimeout(async () => {
+  quizResultTimers.delete(
+    String(result.sessionId)
+  );
+
   await deleteQuizMessage(
     bot,
     telegramUserId,
@@ -1154,6 +1158,15 @@ setTimeout(async () => {
     );
   });
 }, 3000);
+
+quizResultTimers.set(
+  String(result.sessionId),
+  {
+    timer: resultTimer,
+    chatId: telegramUserId,
+    messageId: resultMessage.message_id,
+  }
+);
       } catch (error) {
         console.error(
           "Quiz poll answer failed:",
