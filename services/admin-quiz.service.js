@@ -89,8 +89,86 @@ async function countActiveQuestions(
   return adminQuizRepository.countActiveQuestions();
 }
 
+async function getQuestionById(
+  telegramUserId,
+  questionId
+) {
+  await requireQuizPermission(
+    telegramUserId
+  );
+
+  const question =
+    await adminQuizRepository.getQuestionById(
+      questionId
+    );
+
+  if (!question) {
+    const error = new Error(
+      "Question not found"
+    );
+
+    error.code =
+      "QUESTION_NOT_FOUND";
+
+    throw error;
+  }
+
+  return question;
+}
+
+async function updateQuestion({
+  telegramUserId,
+  questionId,
+  category,
+  difficulty,
+  questionText,
+  optionA,
+  optionB,
+  optionC,
+  optionD,
+  correctOption,
+  explanation = null,
+}) {
+  const admin =
+    await requireQuizPermission(
+      telegramUserId
+    );
+
+  const question =
+    await adminQuizRepository.getQuestionById(
+      questionId
+    );
+
+  if (!question) {
+    const error = new Error(
+      "Question not found"
+    );
+
+    error.code =
+      "QUESTION_NOT_FOUND";
+
+    throw error;
+  }
+
+  return adminQuizRepository.updateQuestion({
+    questionId,
+    category,
+    difficulty,
+    questionText,
+    optionA,
+    optionB,
+    optionC,
+    optionD,
+    correctOption,
+    explanation,
+    updatedBy: admin.user_id,
+  });
+}
+
 module.exports = {
   requireQuizPermission,
   createQuestion,
   countActiveQuestions,
+  getQuestionById,
+  updateQuestion,
 };
