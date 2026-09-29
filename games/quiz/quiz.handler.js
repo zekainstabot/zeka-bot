@@ -447,7 +447,7 @@ await deleteQuizMessage(
                   error
                 );
               });
-            }, 1000);
+            }, 3000);
           } catch (error) {
             console.error(
               "Quiz timeout failed:",
