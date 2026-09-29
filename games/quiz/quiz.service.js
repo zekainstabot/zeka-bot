@@ -495,6 +495,9 @@ async function prepareNextQuestion(
     pollChatId:
       null,
 
+    pollReportMessageId:
+  null,
+
     pollMessageId:
       null,
 
