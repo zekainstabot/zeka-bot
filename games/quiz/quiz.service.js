@@ -546,13 +546,15 @@ async function prepareNextQuestion(
 async function registerPoll(
   sessionId,
   {
-    pollId,
-    chatId,
-    messageId,
-    questionId,
-    sentAt,
-    optionLetters,
-  }
+   {
+  pollId,
+  chatId,
+  messageId,
+  reportMessageId,
+  questionId,
+  sentAt,
+  optionLetters,
+}
 ) {
   if (!pollId) {
     throw new Error(
