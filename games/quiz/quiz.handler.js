@@ -397,6 +397,18 @@ await registerPoll(
               return;
             }
 
+            await deleteQuizMessage(
+  bot,
+  pollChatId,
+  pollMessageId
+);
+
+await deleteQuizMessage(
+  bot,
+  pollChatId,
+  pollReportMessageId
+);
+
             const currentSession =
               await gameService.getGameSession(
                 sessionId
