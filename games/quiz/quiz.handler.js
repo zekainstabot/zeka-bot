@@ -367,11 +367,28 @@ await registerPoll(
           );
 
           try {
-            const timeoutResult =
-              await processTimeout(
-                sessionId,
-                poll.poll.id
-              );
+  const pollSession =
+    await findSessionByPollId(
+      poll.poll.id
+    );
+
+  const pollMetadata =
+    pollSession?.metadata || {};
+
+  const pollChatId =
+    pollMetadata.pollChatId;
+
+  const pollMessageId =
+    pollMetadata.pollMessageId;
+
+  const pollReportMessageId =
+    pollMetadata.pollReportMessageId;
+
+  const timeoutResult =
+    await processTimeout(
+      sessionId,
+      poll.poll.id
+    );
 
             if (
               !timeoutResult ||
