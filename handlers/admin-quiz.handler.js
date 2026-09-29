@@ -14,6 +14,8 @@ const adminQuizStates = new Map();
 
 const CANCEL_TEXT = "❌ لغو";
 
+const BANK_PAGE_SIZE = 5;
+
 const quizAdminMenu = Markup.keyboard([
   ["➕ افزودن سؤال"],
   ["📚 بانک سؤالات"],
@@ -90,6 +92,10 @@ function formatQuestion(question) {
     `💡 توضیح: ${question.explanation || "ندارد"}`
   );
 }
+
+/* =========================================================
+   REPORTS
+========================================================= */
 
 function buildReportButtons(report) {
   return Markup.inlineKeyboard([
@@ -461,6 +467,790 @@ async function handleReportResolve(
   }
 }
 
+/* =========================================================
+   QUESTION BANK
+========================================================= */
+
+function getBankState(
+  telegramUserId
+) {
+  const state =
+    getState(telegramUserId);
+
+  if (
+    state &&
+    state.mode === "BANK"
+  ) {
+    return state;
+  }
+
+  return {
+    mode: "BANK",
+    offset: 0,
+    status: "ACTIVE",
+    search: "",
+  };
+}
+
+function buildBankButtons({
+  questions,
+  total,
+  offset,
+  status,
+}) {
+  const buttons = [];
+
+  for (const question of questions) {
+    buttons.push([
+      Markup.button.callback(
+        `👀 ${String(
+          question.question_text || ""
+        ).slice(0, 45)}`,
+        `quiz_admin_bank_view:${question.id}`
+      ),
+    ]);
+
+    buttons.push([
+      Markup.button.callback(
+        "✏️ اصلاح",
+        `quiz_admin_bank_edit:${question.id}`
+      ),
+      Markup.button.callback(
+        question.status === "ACTIVE"
+          ? "🔴 غیرفعال"
+          : "🟢 فعال",
+        `quiz_admin_bank_status:${question.id}:${question.status === "ACTIVE" ? "INACTIVE" : "ACTIVE"}`
+      ),
+    ]);
+  }
+
+  const navigation = [];
+
+  if (offset > 0) {
+    navigation.push(
+      Markup.button.callback(
+        "⬅️ قبلی",
+        `quiz_admin_bank:${Math.max(
+          0,
+          offset - BANK_PAGE_SIZE
+        )}`
+      )
+    );
+  }
+
+  if (
+    offset + questions.length <
+    total
+  ) {
+    navigation.push(
+      Markup.button.callback(
+        "➡️ بعدی",
+        `quiz_admin_bank:${
+          offset + BANK_PAGE_SIZE
+        }`
+      )
+    );
+  }
+
+  if (navigation.length > 0) {
+    buttons.push(navigation);
+  }
+
+  buttons.push([
+    Markup.button.callback(
+      "🔎 جستجوی سؤال",
+      "quiz_admin_bank_search"
+    ),
+  ]);
+
+  buttons.push([
+    Markup.button.callback(
+      status === "ACTIVE"
+        ? "📚 نمایش همه سؤالات"
+        : "🟢 فقط سؤالات فعال",
+      `quiz_admin_bank_filter:${
+        status === "ACTIVE"
+          ? "ALL"
+          : "ACTIVE"
+      }`
+    ),
+  ]);
+
+  buttons.push([
+    Markup.button.callback(
+      "🔄 بروزرسانی",
+      `quiz_admin_bank:${offset}`
+    ),
+  ]);
+
+  buttons.push([
+    Markup.button.callback(
+      "🔙 منوی مدیریت مسابقه",
+      "quiz_admin_bank_back"
+    ),
+  ]);
+
+  return Markup.inlineKeyboard(
+    buttons
+  );
+}
+
+async function sendQuestionBank(
+  ctx,
+  telegramUserId,
+  offset = 0
+) {
+  await adminQuizService.requireQuizPermission(
+    telegramUserId
+  );
+
+  const state =
+    getBankState(
+      telegramUserId
+    );
+
+  const safeOffset =
+    Math.max(
+      0,
+      Number(offset) || 0
+    );
+
+  const status =
+    state.status || "ACTIVE";
+
+  const search =
+    state.search || "";
+
+  const questions =
+    await adminQuizService.listQuestions(
+      telegramUserId,
+      {
+        search,
+        status,
+        category: null,
+        limit: BANK_PAGE_SIZE,
+        offset: safeOffset,
+      }
+    );
+
+  const total =
+    await adminQuizService.countQuestions(
+      telegramUserId,
+      {
+        search,
+        status,
+        category: null,
+      }
+    );
+
+  state.mode = "BANK";
+  state.offset = safeOffset;
+  state.status = status;
+  state.search = search;
+
+  setState(
+    telegramUserId,
+    state
+  );
+
+  if (
+    !questions ||
+    questions.length === 0
+  ) {
+    const searchText =
+      search
+        ? `\n\n🔎 جستجو: ${search}`
+        : "";
+
+    const text =
+      "📚 بانک سؤالات\n\n" +
+      "❌ هیچ سؤالی با این فیلتر پیدا نشد." +
+      searchText;
+
+    const buttons =
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "🔎 جستجوی سؤال",
+            "quiz_admin_bank_search"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "🔄 نمایش سؤالات فعال",
+            "quiz_admin_bank_filter:ACTIVE"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "🔙 منوی مدیریت مسابقه",
+            "quiz_admin_bank_back"
+          ),
+        ],
+      ]);
+
+    if (
+      ctx.callbackQuery &&
+      ctx.callbackQuery.message
+    ) {
+      await ctx.editMessageText(
+        text,
+        buttons
+      );
+    } else {
+      await ctx.reply(
+        text,
+        buttons
+      );
+    }
+
+    return;
+  }
+
+  let text =
+    "📚 بانک سؤالات\n\n";
+
+  text +=
+    `📊 تعداد: ${total}\n`;
+
+  text +=
+    `📌 فیلتر: ${
+      status === "ACTIVE"
+        ? "فعال"
+        : status === "INACTIVE"
+          ? "غیرفعال"
+          : "همه"
+    }\n`;
+
+  if (search) {
+    text +=
+      `🔎 جستجو: ${search}\n`;
+  }
+
+  text +=
+    `📄 نمایش ${safeOffset + 1} تا ${
+      Math.min(
+        safeOffset +
+          questions.length,
+        total
+      )
+    } از ${total}\n\n`;
+
+  for (
+    let i = 0;
+    i < questions.length;
+    i++
+  ) {
+    const question =
+      questions[i];
+
+    text +=
+      `${i + 1}. 🆔 ${
+        question.id
+      }\n`;
+
+    text +=
+      `❓ ${
+        String(
+          question.question_text || ""
+        ).slice(0, 100)
+      }\n`;
+
+    text +=
+      `📌 ${
+        question.status ===
+        "ACTIVE"
+          ? "🟢 فعال"
+          : "🔴 غیرفعال"
+      }`;
+
+    text +=
+      ` | 🎯 ${
+        question.difficulty ||
+        "نامشخص"
+      }\n\n`;
+  }
+
+  const buttons =
+    buildBankButtons({
+      questions,
+      total,
+      offset: safeOffset,
+      status,
+    });
+
+  if (
+    ctx.callbackQuery &&
+    ctx.callbackQuery.message
+  ) {
+    await ctx.editMessageText(
+      text,
+      buttons
+    );
+  } else {
+    await ctx.reply(
+      text,
+      buttons
+    );
+  }
+}
+
+async function handleQuestionBankMenu(
+  ctx
+) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    await adminQuizService.requireQuizPermission(
+      telegramUserId
+    );
+
+    setState(
+      telegramUserId,
+      {
+        mode: "BANK",
+        offset: 0,
+        status: "ACTIVE",
+        search: "",
+      }
+    );
+
+    await sendQuestionBank(
+      ctx,
+      telegramUserId,
+      0
+    );
+  } catch (error) {
+    console.error(
+      "Open quiz question bank failed:",
+      error
+    );
+
+    if (
+      error.code ===
+      "PERMISSION_DENIED"
+    ) {
+      await ctx.reply(
+        "⛔ شما دسترسی مدیریت بانک سؤالات را ندارید."
+      );
+
+      return;
+    }
+
+    await ctx.reply(
+      "❌ باز کردن بانک سؤالات انجام نشد."
+    );
+  }
+}
+
+async function handleBankSearchStart(
+  ctx
+) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    await adminQuizService.requireQuizPermission(
+      telegramUserId
+    );
+
+    setState(
+      telegramUserId,
+      {
+        mode: "BANK_SEARCH",
+        offset: 0,
+        status: "ACTIVE",
+        search: "",
+      }
+    );
+
+    await ctx.reply(
+      "🔎 جستجوی سؤال\n\n" +
+        "متن سؤال، بخشی از سؤال یا شناسه سؤال را ارسال کنید.\n\n" +
+        "مثال:\n" +
+        "تهران\n" +
+        "یا\n" +
+        "125\n\n" +
+        "برای لغو، «❌ لغو» را بزنید.",
+      cancelMenu
+    );
+  } catch (error) {
+    console.error(
+      "Start quiz bank search failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "❌ شروع جستجو انجام نشد.",
+        {
+          show_alert: true,
+        }
+      );
+    } catch {}
+  }
+}
+
+async function handleBankSearchText(
+  ctx,
+  telegramUserId,
+  text
+) {
+  await adminQuizService.requireQuizPermission(
+    telegramUserId
+  );
+
+  setState(
+    telegramUserId,
+    {
+      mode: "BANK",
+      offset: 0,
+      status: "ACTIVE",
+      search: text,
+    }
+  );
+
+  await sendQuestionBank(
+    ctx,
+    telegramUserId,
+    0
+  );
+}
+
+async function handleBankFilter(
+  ctx,
+  filter
+) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    await adminQuizService.requireQuizPermission(
+      telegramUserId
+    );
+
+    const state =
+      getBankState(
+        telegramUserId
+      );
+
+    state.mode = "BANK";
+    state.offset = 0;
+    state.status =
+      filter === "ALL"
+        ? "ALL"
+        : "ACTIVE";
+
+    setState(
+      telegramUserId,
+      state
+    );
+
+    await sendQuestionBank(
+      ctx,
+      telegramUserId,
+      0
+    );
+  } catch (error) {
+    console.error(
+      "Quiz bank filter failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "❌ تغییر فیلتر انجام نشد.",
+        {
+          show_alert: true,
+        }
+      );
+    } catch {}
+  }
+}
+
+async function handleBankView(
+  ctx,
+  questionId
+) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    const question =
+      await adminQuizService.getQuestionById(
+        telegramUserId,
+        questionId
+      );
+
+    if (!question) {
+      await ctx.editMessageText(
+        "❌ سؤال پیدا نشد."
+      );
+
+      return;
+    }
+
+    const text =
+      "👀 مشاهده سؤال\n\n" +
+      formatQuestion(
+        question
+      );
+
+    await ctx.editMessageText(
+      text,
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "✏️ اصلاح سؤال",
+            `quiz_admin_bank_edit:${question.id}`
+          ),
+        ],
+        [
+          Markup.button.callback(
+            question.status ===
+              "ACTIVE"
+              ? "🔴 غیرفعال کردن"
+              : "🟢 فعال کردن",
+            `quiz_admin_bank_status:${question.id}:${
+              question.status ===
+              "ACTIVE"
+                ? "INACTIVE"
+                : "ACTIVE"
+            }`
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "🔙 بانک سؤالات",
+            "quiz_admin_bank_back_list"
+          ),
+        ],
+      ])
+    );
+  } catch (error) {
+    console.error(
+      "View quiz bank question failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "❌ مشاهده سؤال انجام نشد.",
+        {
+          show_alert: true,
+        }
+      );
+    } catch {}
+  }
+}
+
+async function handleBankStatus(
+  ctx,
+  questionId,
+  status
+) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    const normalizedStatus =
+      String(status || "")
+        .trim()
+        .toUpperCase();
+
+    if (
+      ![
+        "ACTIVE",
+        "INACTIVE",
+      ].includes(normalizedStatus)
+    ) {
+      await ctx.answerCbQuery(
+        "❌ وضعیت نامعتبر است.",
+        {
+          show_alert: true,
+        }
+      );
+
+      return;
+    }
+
+    const updated =
+      await adminQuizService.updateQuestionStatus({
+        telegramUserId,
+        questionId,
+        status:
+          normalizedStatus,
+      });
+
+    if (!updated) {
+      await ctx.editMessageText(
+        "❌ تغییر وضعیت سؤال انجام نشد."
+      );
+
+      return;
+    }
+
+    await ctx.editMessageText(
+      normalizedStatus ===
+        "ACTIVE"
+        ? "🟢 سؤال فعال شد."
+        : "🔴 سؤال غیرفعال شد.",
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "👀 مشاهده سؤال",
+            `quiz_admin_bank_view:${questionId}`
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "🔙 بانک سؤالات",
+            "quiz_admin_bank_back_list"
+          ),
+        ],
+      ])
+    );
+  } catch (error) {
+    console.error(
+      "Change quiz question status failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "❌ تغییر وضعیت سؤال انجام نشد.",
+        {
+          show_alert: true,
+        }
+      );
+    } catch {}
+  }
+}
+
+/* =========================================================
+   DIRECT QUESTION EDIT
+========================================================= */
+
+async function startDirectEditQuestion(
+  ctx,
+  questionId
+) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    const question =
+      await adminQuizService.getQuestionById(
+        telegramUserId,
+        questionId
+      );
+
+    if (!question) {
+      await ctx.editMessageText(
+        "❌ سؤال پیدا نشد."
+      );
+
+      return;
+    }
+
+    setState(
+      telegramUserId,
+      {
+        mode: "EDIT_DIRECT",
+        step: "question",
+        questionId:
+          question.id,
+        data: {
+          questionText:
+            question.question_text,
+          optionA:
+            question.option_a,
+          optionB:
+            question.option_b,
+          optionC:
+            question.option_c,
+          optionD:
+            question.option_d,
+          correctOption:
+            question.correct_option,
+          category:
+            question.category ||
+            "",
+          difficulty:
+            question.difficulty ||
+            "MEDIUM",
+          explanation:
+            question.explanation ||
+            null,
+        },
+      }
+    );
+
+    await ctx.reply(
+      "✏️ اصلاح مستقیم سؤال\n\n" +
+        `🆔 شناسه سؤال: ${question.id}\n\n` +
+        "📝 متن جدید سؤال را ارسال کنید.\n\n" +
+        "مقدار فعلی:\n" +
+        `${question.question_text}\n\n` +
+        "برای لغو، «❌ لغو» را بزنید.",
+      cancelMenu
+    );
+  } catch (error) {
+    console.error(
+      "Start direct quiz question edit failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "❌ شروع اصلاح سؤال انجام نشد.",
+        {
+          show_alert: true,
+        }
+      );
+    } catch {}
+  }
+}
+
+/* =========================================================
+   REPORT-BASED EDIT
+========================================================= */
+
 async function startEditQuestion(
   ctx,
   reportId
@@ -504,33 +1294,40 @@ async function startEditQuestion(
       return;
     }
 
-    setState(telegramUserId, {
-      mode: "EDIT",
-      step: "question",
-      reportId: report.id,
-      questionId:
-        report.question_id,
-      data: {
-        questionText:
-          report.question_text,
-        optionA:
-          report.option_a,
-        optionB:
-          report.option_b,
-        optionC:
-          report.option_c,
-        optionD:
-          report.option_d,
-        correctOption:
-          report.correct_option,
-        category:
-          report.category || "",
-        difficulty:
-          report.difficulty || "MEDIUM",
-        explanation:
-          report.explanation || null,
-      },
-    });
+    setState(
+      telegramUserId,
+      {
+        mode: "EDIT",
+        step: "question",
+        reportId:
+          report.id,
+        questionId:
+          report.question_id,
+        data: {
+          questionText:
+            report.question_text,
+          optionA:
+            report.option_a,
+          optionB:
+            report.option_b,
+          optionC:
+            report.option_c,
+          optionD:
+            report.option_d,
+          correctOption:
+            report.correct_option,
+          category:
+            report.category ||
+            "",
+          difficulty:
+            report.difficulty ||
+            "MEDIUM",
+          explanation:
+            report.explanation ||
+            null,
+        },
+      }
+    );
 
     await ctx.reply(
       "✏️ اصلاح سؤال\n\n" +
@@ -558,7 +1355,13 @@ async function startEditQuestion(
   }
 }
 
-async function startAddQuestion(ctx) {
+/* =========================================================
+   ADD QUESTION
+========================================================= */
+
+async function startAddQuestion(
+  ctx
+) {
   const telegramUserId =
     ctx.from?.id;
 
@@ -571,11 +1374,14 @@ async function startAddQuestion(ctx) {
       telegramUserId
     );
 
-    setState(telegramUserId, {
-      mode: "ADD",
-      step: "question",
-      data: {},
-    });
+    setState(
+      telegramUserId,
+      {
+        mode: "ADD",
+        step: "question",
+        data: {},
+      }
+    );
 
     await ctx.reply(
       "➕ افزودن سؤال مسابقه\n\n" +
@@ -883,6 +1689,10 @@ async function handleAddQuestionStep(
   }
 }
 
+/* =========================================================
+   EDIT QUESTION
+========================================================= */
+
 async function handleEditQuestionStep(
   ctx,
   telegramUserId,
@@ -1137,6 +1947,9 @@ async function handleEditQuestionStep(
             data.explanation,
         });
 
+      const mode =
+        state.mode;
+
       const reportId =
         state.reportId;
 
@@ -1152,6 +1965,40 @@ async function handleEditQuestionStep(
 
         return;
       }
+
+      /* -----------------------------------------
+         DIRECT EDIT
+      ----------------------------------------- */
+
+      if (
+        mode ===
+        "EDIT_DIRECT"
+      ) {
+        await ctx.reply(
+          "✅ سؤال با موفقیت اصلاح شد.\n\n" +
+            `🆔 شناسه سؤال: ${updated.id}`,
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback(
+                "👀 مشاهده سؤال",
+                `quiz_admin_bank_view:${updated.id}`
+              ),
+            ],
+            [
+              Markup.button.callback(
+                "🔙 بانک سؤالات",
+                "quiz_admin_bank_back_list"
+              ),
+            ],
+          ])
+        );
+
+        return;
+      }
+
+      /* -----------------------------------------
+         REPORT EDIT
+      ----------------------------------------- */
 
       await ctx.reply(
         "✅ سؤال با موفقیت اصلاح شد.\n\n" +
@@ -1198,6 +2045,10 @@ async function handleEditQuestionStep(
   }
 }
 
+/* =========================================================
+   TEXT STATE HANDLER
+========================================================= */
+
 async function handleAdminQuizText(
   ctx,
   next
@@ -1231,11 +2082,25 @@ async function handleAdminQuizText(
     text === "/cancel"
   ) {
     const wasEditing =
-      state.mode === "EDIT";
+      state.mode === "EDIT" ||
+      state.mode === "EDIT_DIRECT";
+
+    const wasSearching =
+      state.mode ===
+      "BANK_SEARCH";
 
     clearState(
       telegramUserId
     );
+
+    if (wasSearching) {
+      await ctx.reply(
+        "❌ جستجو لغو شد.",
+        quizAdminMenu
+      );
+
+      return;
+    }
 
     await ctx.reply(
       wasEditing
@@ -1250,7 +2115,22 @@ async function handleAdminQuizText(
   try {
     if (
       state.mode ===
-      "EDIT"
+      "BANK_SEARCH"
+    ) {
+      await handleBankSearchText(
+        ctx,
+        telegramUserId,
+        text
+      );
+
+      return;
+    }
+
+    if (
+      state.mode ===
+        "EDIT" ||
+      state.mode ===
+        "EDIT_DIRECT"
     ) {
       await handleEditQuestionStep(
         ctx,
@@ -1286,11 +2166,179 @@ async function handleAdminQuizText(
   }
 }
 
+/* =========================================================
+   HANDLER REGISTRATION
+========================================================= */
+
 function createAdminQuizHandler(bot) {
+  /* ADD */
+
   bot.hears(
     "➕ افزودن سؤال",
     startAddQuestion
   );
+
+  /* QUESTION BANK */
+
+  bot.hears(
+    "📚 بانک سؤالات",
+    handleQuestionBankMenu
+  );
+
+  bot.action(
+    /^quiz_admin_bank:(\d+)$/,
+    async (ctx) => {
+      try {
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        await sendQuestionBank(
+          ctx,
+          telegramUserId,
+          Number(
+            ctx.match[1]
+          )
+        );
+      } catch (error) {
+        console.error(
+          "Quiz bank pagination failed:",
+          error
+        );
+
+        try {
+          await ctx.answerCbQuery(
+            "❌ دریافت بانک سؤالات انجام نشد.",
+            {
+              show_alert: true,
+            }
+          );
+        } catch {}
+      }
+    }
+  );
+
+  bot.action(
+    "quiz_admin_bank_search",
+    handleBankSearchStart
+  );
+
+  bot.action(
+    /^quiz_admin_bank_filter:(ACTIVE|ALL)$/,
+    async (ctx) => {
+      await handleBankFilter(
+        ctx,
+        ctx.match[1]
+      );
+    }
+  );
+
+  bot.action(
+    /^quiz_admin_bank_view:(\d+)$/,
+    async (ctx) => {
+      await handleBankView(
+        ctx,
+        Number(
+          ctx.match[1]
+        )
+      );
+    }
+  );
+
+  bot.action(
+    /^quiz_admin_bank_edit:(\d+)$/,
+    async (ctx) => {
+      await startDirectEditQuestion(
+        ctx,
+        Number(
+          ctx.match[1]
+        )
+      );
+    }
+  );
+
+  bot.action(
+    /^quiz_admin_bank_status:(\d+):(ACTIVE|INACTIVE)$/,
+    async (ctx) => {
+      await handleBankStatus(
+        ctx,
+        Number(
+          ctx.match[1]
+        ),
+        ctx.match[2]
+      );
+    }
+  );
+
+  bot.action(
+    "quiz_admin_bank_back_list",
+    async (ctx) => {
+      try {
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        const state =
+          getBankState(
+            telegramUserId
+          );
+
+        await sendQuestionBank(
+          ctx,
+          telegramUserId,
+          state.offset || 0
+        );
+      } catch (error) {
+        console.error(
+          "Back to quiz bank failed:",
+          error
+        );
+      }
+    }
+  );
+
+  bot.action(
+    "quiz_admin_bank_back",
+    async (ctx) => {
+      try {
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        clearState(
+          telegramUserId
+        );
+
+        await ctx.reply(
+          "🧠 مدیریت مسابقه\n\n" +
+            "بخش موردنظر را انتخاب کنید.",
+          quizAdminMenu
+        );
+      } catch (error) {
+        console.error(
+          "Quiz bank back failed:",
+          error
+        );
+      }
+    }
+  );
+
+  /* REPORTS */
 
   bot.hears(
     "🚨 گزارش‌های سؤالات",
@@ -1309,7 +2357,9 @@ function createAdminQuizHandler(bot) {
         }
 
         const offset =
-          Number(ctx.match[1]);
+          Number(
+            ctx.match[1]
+          );
 
         await ctx.answerCbQuery();
 
@@ -1361,7 +2411,9 @@ function createAdminQuizHandler(bot) {
     async (ctx) => {
       await handleReportView(
         ctx,
-        Number(ctx.match[1])
+        Number(
+          ctx.match[1]
+        )
       );
     }
   );
@@ -1371,7 +2423,9 @@ function createAdminQuizHandler(bot) {
     async (ctx) => {
       await startEditQuestion(
         ctx,
-        Number(ctx.match[1])
+        Number(
+          ctx.match[1]
+        )
       );
     }
   );
@@ -1381,11 +2435,15 @@ function createAdminQuizHandler(bot) {
     async (ctx) => {
       await handleReportResolve(
         ctx,
-        Number(ctx.match[1]),
+        Number(
+          ctx.match[1]
+        ),
         ctx.match[2]
       );
     }
   );
+
+  /* TEXT */
 
   bot.on(
     "text",
