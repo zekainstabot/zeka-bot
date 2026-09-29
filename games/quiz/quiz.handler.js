@@ -970,6 +970,23 @@ function createQuizHandler({
           return;
         }
 
+        const pollSession =
+  await findSessionByPollId(
+    pollId
+  );
+
+const pollMetadata =
+  pollSession?.metadata || {};
+
+const pollChatId =
+  pollMetadata.pollChatId;
+
+const pollMessageId =
+  pollMetadata.pollMessageId;
+
+const pollReportMessageId =
+  pollMetadata.pollReportMessageId;
+
         const result =
           await processPollAnswer({
             pollId,
