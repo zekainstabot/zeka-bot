@@ -1100,30 +1100,37 @@ await deleteQuizMessage(
             "🎁 برای این سؤال پاداشی دریافت نکردی.";
         }
 
-        await bot.telegram.sendMessage(
-          telegramUserId,
-          message,
-          Markup.inlineKeyboard([
-            [
-              Markup.button.callback(
-                "➡️ سؤال بعدی",
-                `quiz_next:${result.sessionId}`
-              ),
-            ],
-          ])
-        );
+        const resultMessage =
+  await bot.telegram.sendMessage(
+    telegramUserId,
+    message,
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback(
+          "➡️ سؤال بعدی",
+          `quiz_next:${result.sessionId}`
+        ),
+      ],
+    ])
+  );
 
-        setTimeout(() => {
-          sendNextQuizQuestion(
-            bot,
-            result.sessionId
-          ).catch((error) => {
-            console.error(
-              "Auto next quiz question failed:",
-              error
-            );
-          });
-        }, 1000);
+setTimeout(async () => {
+  await deleteQuizMessage(
+    bot,
+    telegramUserId,
+    resultMessage.message_id
+  );
+
+  sendNextQuizQuestion(
+    bot,
+    result.sessionId
+  ).catch((error) => {
+    console.error(
+      "Auto next quiz question failed:",
+      error
+    );
+  });
+}, 3000);
       } catch (error) {
         console.error(
           "Quiz poll answer failed:",
