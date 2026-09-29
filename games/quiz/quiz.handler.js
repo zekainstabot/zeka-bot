@@ -453,24 +453,31 @@ await deleteQuizMessage(
               return;
             }
 
-            await bot.telegram.sendMessage(
-              telegramId,
-              "⏰ زمان این سؤال تمام شد.\n\n" +
-                "❌ پاسخی ثبت نشد.\n\n" +
-                "➡️ سؤال بعدی در حال آماده‌سازی است..."
-            );
+            const timeoutMessage =
+  await bot.telegram.sendMessage(
+    telegramId,
+    "⏰ زمان این سؤال تمام شد.\n\n" +
+      "❌ پاسخی ثبت نشد.\n\n" +
+      "➡️ سؤال بعدی در حال آماده‌سازی است..."
+  );
 
-            setTimeout(() => {
-              sendNextQuizQuestion(
-                bot,
-                sessionId
-              ).catch((error) => {
-                console.error(
-                  "Auto next quiz question after timeout failed:",
-                  error
-                );
-              });
-            }, 3000);
+setTimeout(async () => {
+  await deleteQuizMessage(
+    bot,
+    telegramId,
+    timeoutMessage.message_id
+  );
+
+  sendNextQuizQuestion(
+    bot,
+    sessionId
+  ).catch((error) => {
+    console.error(
+      "Auto next quiz question after timeout failed:",
+      error
+    );
+  });
+}, 3000);
           } catch (error) {
             console.error(
               "Quiz timeout failed:",
