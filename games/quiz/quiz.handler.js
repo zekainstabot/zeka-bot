@@ -1002,6 +1002,18 @@ const pollReportMessageId =
           return;
         }
 
+        await deleteQuizMessage(
+  bot,
+  pollChatId,
+  pollMessageId
+);
+
+await deleteQuizMessage(
+  bot,
+  pollChatId,
+  pollReportMessageId
+);
+
         clearQuizTimer(
           result.sessionId
         );
