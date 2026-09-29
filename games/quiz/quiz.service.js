@@ -606,6 +606,11 @@ async function registerPoll(
     pollMessageId:
       Number(messageId),
 
+    pollReportMessageId:
+  reportMessageId
+    ? Number(reportMessageId)
+    : null,
+
     pollSentAt:
       sentAt ||
       now,
