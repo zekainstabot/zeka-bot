@@ -11,6 +11,7 @@ const {
 
 const gameService = require("../game.service");
 const userRepository = require("../../repositories/user.repository");
+const quizReportService = require("../../services/quiz-report.service");
 
 const quizTimers = new Map();
 const quizNextLocks = new Set();
@@ -297,6 +298,19 @@ async function sendNextQuizQuestion(
               option.letter
           ),
       }
+    );
+
+    await bot.telegram.sendMessage(
+      telegramUserId,
+      "اگر مشکلی در این سؤال می‌بینی، می‌توانی آن را گزارش کنی.",
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "🚨 گزارش سؤال",
+            `quiz_report:${question.id}`
+          ),
+        ],
+      ])
     );
 
     clearQuizTimer(sessionId);
@@ -731,6 +745,159 @@ function createQuizHandler({
     }
   );
 
+  bot.action(
+    /^quiz_report:(\d+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        const questionId =
+          Number(ctx.match[1]);
+
+        if (!questionId) {
+          return;
+        }
+
+        await ctx.editMessageText(
+          "🚨 دلیل گزارش سؤال را انتخاب کن:",
+          Markup.inlineKeyboard([
+            [
+              Markup.button.callback(
+                "❌ جواب صحیح اشتباه است",
+                `quiz_report_reason:${questionId}:WRONG_ANSWER`
+              ),
+            ],
+            [
+              Markup.button.callback(
+                "❓ متن سؤال مشکل دارد",
+                `quiz_report_reason:${questionId}:BAD_QUESTION`
+              ),
+            ],
+            [
+              Markup.button.callback(
+                "🅰️🅱️ گزینه‌ها مشکل دارند",
+                `quiz_report_reason:${questionId}:BAD_OPTIONS`
+              ),
+            ],
+            [
+              Markup.button.callback(
+                "🔄 سؤال تکراری است",
+                `quiz_report_reason:${questionId}:DUPLICATE`
+              ),
+            ],
+            [
+              Markup.button.callback(
+                "⚠️ سؤال مبهم/غیرقابل‌اعتماد است",
+                `quiz_report_reason:${questionId}:UNRELIABLE`
+              ),
+            ],
+            [
+              Markup.button.callback(
+                "📝 سایر",
+                `quiz_report_reason:${questionId}:OTHER`
+              ),
+            ],
+          ])
+        );
+      } catch (error) {
+        console.error(
+          "Quiz report menu failed:",
+          error
+        );
+
+        try {
+          await ctx.answerCbQuery(
+            "❌ نمایش گزینه‌های گزارش انجام نشد.",
+            {
+              show_alert: true,
+            }
+          );
+        } catch {}
+      }
+    }
+  );
+
+  bot.action(
+    /^quiz_report_reason:(\d+):([A-Z_]+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        const questionId =
+          Number(ctx.match[1]);
+
+        const reason =
+          String(ctx.match[2])
+            .trim()
+            .toUpperCase();
+
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (
+          !questionId ||
+          !telegramUserId
+        ) {
+          return;
+        }
+
+        const user =
+          await userRepository.findByTelegramId(
+            String(telegramUserId)
+          );
+
+        if (!user) {
+          await ctx.editMessageText(
+            "❌ کاربر پیدا نشد."
+          );
+
+          return;
+        }
+
+        const result =
+          await quizReportService.createReport({
+            questionId,
+            userId: user.id,
+            reason,
+          });
+
+        if (result.created) {
+          await ctx.editMessageText(
+            "✅ گزارش شما ثبت شد.\n\n" +
+              "ممنون که به بهتر شدن بانک سؤالات کمک می‌کنی."
+          );
+
+          return;
+        }
+
+        if (result.duplicate) {
+          await ctx.editMessageText(
+            "ℹ️ این سؤال را قبلاً گزارش کرده‌ای.\n\n" +
+              "گزارش قبلی هنوز در حال بررسی است."
+          );
+
+          return;
+        }
+
+        await ctx.editMessageText(
+          "❌ ثبت گزارش انجام نشد."
+        );
+      } catch (error) {
+        console.error(
+          "Quiz report submission failed:",
+          error
+        );
+
+        try {
+          await ctx.editMessageText(
+            "❌ ثبت گزارش انجام نشد.\n\n" +
+              "لطفاً بعداً دوباره تلاش کن."
+          );
+        } catch {}
+      }
+    }
+  );
+
   bot.on(
     "poll_answer",
     async (ctx) => {
@@ -833,12 +1000,10 @@ function createQuizHandler({
           message =
             "✅ درست بود!\n\n" +
             `💳 +${Number(
-              result.reward?.credit ||
-                0
+              result.reward?.credit || 0
             )} اعتبار\n` +
             `✨ +${Number(
-              result.reward?.xp ||
-                0
+              result.reward?.xp || 0
             )} XP`;
         } else {
           message =
