@@ -5,7 +5,8 @@ const {
   prepareNextQuestion,
   registerPoll,
   processPollAnswer,
-  processTimeout,
+    processTimeout,
+  findSessionByPollId,
   findActiveQuizByUser,
 } = require("./quiz.service");
 
