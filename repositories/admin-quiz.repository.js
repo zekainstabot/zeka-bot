@@ -103,6 +103,199 @@ async function getQuestionById(
   return result.rows[0] || null;
 }
 
+async function listQuestions({
+  search = "",
+  status = "ALL",
+  category = null,
+  limit = 10,
+  offset = 0,
+} = {}) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(
+      Number(limit) || 10,
+      50
+    )
+  );
+
+  const safeOffset = Math.max(
+    0,
+    Number(offset) || 0
+  );
+
+  const values = [];
+  const conditions = [];
+
+  if (
+    status &&
+    status !== "ALL"
+  ) {
+    values.push(
+      String(status)
+        .trim()
+        .toUpperCase()
+    );
+
+    conditions.push(
+      `qq.status = $${values.length}`
+    );
+  }
+
+  if (
+    category &&
+    String(category).trim()
+  ) {
+    values.push(
+      String(category).trim()
+    );
+
+    conditions.push(
+      `qq.category = $${values.length}`
+    );
+  }
+
+  if (
+    search &&
+    String(search).trim()
+  ) {
+    const searchValue =
+      `%${String(search).trim()}%`;
+
+    values.push(searchValue);
+
+    const index =
+      values.length;
+
+    conditions.push(`
+      (
+        qq.question_text ILIKE $${index}
+        OR qq.option_a ILIKE $${index}
+        OR qq.option_b ILIKE $${index}
+        OR qq.option_c ILIKE $${index}
+        OR qq.option_d ILIKE $${index}
+        OR CAST(qq.id AS TEXT) = $${index}
+      )
+    `);
+  }
+
+  const whereClause =
+    conditions.length > 0
+      ? `WHERE ${conditions.join(
+          " AND "
+        )}`
+      : "";
+
+  values.push(safeLimit);
+  const limitIndex =
+    values.length;
+
+  values.push(safeOffset);
+  const offsetIndex =
+    values.length;
+
+  const result = await db.query(
+    `
+      SELECT
+        qq.*
+      FROM quiz_questions qq
+      ${whereClause}
+      ORDER BY
+        qq.id DESC
+      LIMIT $${limitIndex}
+      OFFSET $${offsetIndex}
+    `,
+    values
+  );
+
+  return result.rows;
+}
+
+async function countQuestions({
+  search = "",
+  status = "ALL",
+  category = null,
+} = {}) {
+  const db = getClient();
+
+  const values = [];
+  const conditions = [];
+
+  if (
+    status &&
+    status !== "ALL"
+  ) {
+    values.push(
+      String(status)
+        .trim()
+        .toUpperCase()
+    );
+
+    conditions.push(
+      `qq.status = $${values.length}`
+    );
+  }
+
+  if (
+    category &&
+    String(category).trim()
+  ) {
+    values.push(
+      String(category).trim()
+    );
+
+    conditions.push(
+      `qq.category = $${values.length}`
+    );
+  }
+
+  if (
+    search &&
+    String(search).trim()
+  ) {
+    const searchValue =
+      `%${String(search).trim()}%`;
+
+    values.push(searchValue);
+
+    const index =
+      values.length;
+
+    conditions.push(`
+      (
+        qq.question_text ILIKE $${index}
+        OR qq.option_a ILIKE $${index}
+        OR qq.option_b ILIKE $${index}
+        OR qq.option_c ILIKE $${index}
+        OR qq.option_d ILIKE $${index}
+        OR CAST(qq.id AS TEXT) = $${index}
+      )
+    `);
+  }
+
+  const whereClause =
+    conditions.length > 0
+      ? `WHERE ${conditions.join(
+          " AND "
+        )}`
+      : "";
+
+  const result = await db.query(
+    `
+      SELECT
+        COUNT(*)::INTEGER AS count
+      FROM quiz_questions qq
+      ${whereClause}
+    `,
+    values
+  );
+
+  return Number(
+    result.rows[0]?.count || 0
+  );
+}
+
 async function updateQuestion({
   questionId,
   category,
@@ -154,9 +347,57 @@ async function updateQuestion({
   return result.rows[0] || null;
 }
 
+async function updateQuestionStatus({
+  questionId,
+  status,
+  updatedBy,
+}) {
+  const db = getClient();
+
+  const normalizedStatus =
+    String(status || "")
+      .trim()
+      .toUpperCase();
+
+  if (
+    ![
+      "ACTIVE",
+      "INACTIVE",
+    ].includes(
+      normalizedStatus
+    )
+  ) {
+    throw new Error(
+      "Invalid question status"
+    );
+  }
+
+  const result = await db.query(
+    `
+      UPDATE quiz_questions
+      SET
+        status = $2,
+        updated_by = $3,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [
+      questionId,
+      normalizedStatus,
+      updatedBy,
+    ]
+  );
+
+  return result.rows[0] || null;
+}
+
 module.exports = {
   createQuestion,
   countActiveQuestions,
   getQuestionById,
+  listQuestions,
+  countQuestions,
   updateQuestion,
+  updateQuestionStatus,
 };
