@@ -141,6 +141,7 @@ async function handleQuizAdminMenu(ctx) {
         "بخش موردنظر را انتخاب کنید.",
       Markup.keyboard([
         ["➕ افزودن سؤال"],
+        ["🚨 گزارش‌های سؤالات"],
         ["🔙 پنل مدیریت"],
       ]).resize()
     );
