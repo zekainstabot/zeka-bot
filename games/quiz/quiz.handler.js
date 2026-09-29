@@ -17,6 +17,32 @@ const quizReportService = require("../../services/quiz-report.service");
 const quizTimers = new Map();
 const quizNextLocks = new Set();
 
+async function deleteQuizMessage(
+  bot,
+  chatId,
+  messageId
+) {
+  if (
+    !bot ||
+    !chatId ||
+    !messageId
+  ) {
+    return;
+  }
+
+  try {
+    await bot.telegram.deleteMessage(
+      chatId,
+      messageId
+    );
+  } catch (error) {
+    console.error(
+      "Quiz message deletion failed:",
+      error
+    );
+  }
+}
+
 function clearQuizTimer(sessionId) {
   const timer = quizTimers.get(sessionId);
 
