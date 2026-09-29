@@ -344,19 +344,6 @@ await registerPoll(
   }
 );
 
-    await bot.telegram.sendMessage(
-      telegramUserId,
-      "اگر مشکلی در این سؤال می‌بینی، می‌توانی آن را گزارش کنی.",
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            "🚨 گزارش سؤال",
-            `quiz_report:${question.id}`
-          ),
-        ],
-      ])
-    );
-
     clearQuizTimer(sessionId);
 
     const timer =
