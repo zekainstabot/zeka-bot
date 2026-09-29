@@ -119,7 +119,7 @@ async function getTelegramUserIdByUserId(userId) {
     : null;
 }
 
-async function cancelUserActiveQuiz(userId) {
+async function cancelUserActiveQuiz(bot, userId) {
   const session = await findActiveQuizByUser(userId);
 
   if (!session) {
