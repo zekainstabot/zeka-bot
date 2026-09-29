@@ -11,7 +11,7 @@ const rewardService = require("../../services/reward.service");
 
 const QUIZ_GAME_KEY = "quiz_general";
 
-const DEFAULT_TIME_LIMIT = 10;
+const DEFAULT_TIME_LIMIT = 20;
 const DEFAULT_QUESTION_COUNT = 10;
 const DEFAULT_REWARD_CREDIT = 0.5;
 const DEFAULT_REWARD_XP = 1;
