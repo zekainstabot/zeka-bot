@@ -1202,6 +1202,13 @@ function cleanupQuizTimers() {
   }
 
   quizTimers.clear();
+
+  for (const resultTimer of quizResultTimers.values()) {
+    clearTimeout(resultTimer.timer);
+  }
+
+  quizResultTimers.clear();
+
   quizNextLocks.clear();
 }
 
