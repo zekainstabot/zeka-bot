@@ -301,31 +301,48 @@ async function sendNextQuizQuestion(
         }
       );
 
-    await registerPoll(
-      sessionId,
-      {
-        pollId:
-          poll.poll.id,
+    const reportMessage =
+  await bot.telegram.sendMessage(
+    telegramUserId,
+    "اگر مشکلی در این سؤال می‌بینی، می‌توانی آن را گزارش کنی.",
+    Markup.inlineKeyboard([
+      [
+        Markup.button.callback(
+          "🚨 گزارش سؤال",
+          `quiz_report:${question.id}`
+        ),
+      ],
+    ])
+  );
 
-        chatId:
-          poll.chat.id,
+await registerPoll(
+  sessionId,
+  {
+    pollId:
+      poll.poll.id,
 
-        messageId:
-          poll.message_id,
+    chatId:
+      poll.chat.id,
 
-        questionId:
-          question.id,
+    messageId:
+      poll.message_id,
 
-        sentAt:
-          new Date().toISOString(),
+    reportMessageId:
+      reportMessage.message_id,
 
-        optionLetters:
-          shuffledOptions.map(
-            (option) =>
-              option.letter
-          ),
-      }
-    );
+    questionId:
+      question.id,
+
+    sentAt:
+      new Date().toISOString(),
+
+    optionLetters:
+      shuffledOptions.map(
+        (option) =>
+          option.letter
+      ),
+  }
+);
 
     await bot.telegram.sendMessage(
       telegramUserId,
