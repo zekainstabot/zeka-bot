@@ -80,10 +80,83 @@ async function countActiveQuestions() {
     `
   );
 
-  return Number(result.rows[0]?.count || 0);
+  return Number(
+    result.rows[0]?.count || 0
+  );
+}
+
+async function getQuestionById(
+  questionId
+) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM quiz_questions
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [questionId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function updateQuestion({
+  questionId,
+  category,
+  difficulty,
+  questionText,
+  optionA,
+  optionB,
+  optionC,
+  optionD,
+  correctOption,
+  explanation = null,
+  updatedBy,
+}) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      UPDATE quiz_questions
+      SET
+        category = $2,
+        difficulty = $3,
+        question_text = $4,
+        option_a = $5,
+        option_b = $6,
+        option_c = $7,
+        option_d = $8,
+        correct_option = $9,
+        explanation = $10,
+        updated_by = $11,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [
+      questionId,
+      category,
+      difficulty,
+      questionText,
+      optionA,
+      optionB,
+      optionC,
+      optionD,
+      correctOption,
+      explanation,
+      updatedBy,
+    ]
+  );
+
+  return result.rows[0] || null;
 }
 
 module.exports = {
   createQuestion,
   countActiveQuestions,
+  getQuestionById,
+  updateQuestion,
 };
