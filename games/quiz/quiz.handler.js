@@ -15,8 +15,8 @@ const userRepository = require("../../repositories/user.repository");
 const quizReportService = require("../../services/quiz-report.service");
 
 const quizTimers = new Map();
+const quizResultTimers = new Map();
 const quizNextLocks = new Set();
-
 async function deleteQuizMessage(
   bot,
   chatId,
