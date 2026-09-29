@@ -13,6 +13,7 @@ const gameService = require("../game.service");
 const userRepository = require("../../repositories/user.repository");
 
 const quizTimers = new Map();
+const quizNextLocks = new Set();
 
 function clearQuizTimer(sessionId) {
   const timer = quizTimers.get(sessionId);
@@ -21,6 +22,45 @@ function clearQuizTimer(sessionId) {
     clearTimeout(timer);
     quizTimers.delete(sessionId);
   }
+}
+
+function shuffleQuizOptions(question) {
+  const options = [
+    {
+      letter: "A",
+      text: question.option_a,
+    },
+    {
+      letter: "B",
+      text: question.option_b,
+    },
+    {
+      letter: "C",
+      text: question.option_c,
+    },
+    {
+      letter: "D",
+      text: question.option_d,
+    },
+  ].filter(
+    (option) =>
+      option.text !== null &&
+      option.text !== undefined &&
+      option.text !== ""
+  );
+
+  for (let i = options.length - 1; i > 0; i--) {
+    const j = Math.floor(
+      Math.random() * (i + 1)
+    );
+
+    [options[i], options[j]] = [
+      options[j],
+      options[i],
+    ];
+  }
+
+  return options;
 }
 
 async function getTelegramUserIdByUserId(userId) {
@@ -47,46 +87,12 @@ async function cancelUserActiveQuiz(userId) {
   }
 
   clearQuizTimer(session.id);
+  quizNextLocks.delete(String(session.id));
 
   return gameService.cancelGame(
     session.id,
     "Cancelled by user"
   );
-}
-
-function getCorrectOptionIndex(question) {
-  const options = [
-    question.option_a,
-    question.option_b,
-    question.option_c,
-    question.option_d,
-  ].filter(
-    (option) =>
-      option !== null &&
-      option !== undefined &&
-      option !== ""
-  );
-
-  const correctOption = String(
-    question.correct_option || ""
-  )
-    .trim()
-    .toUpperCase();
-
-  const correctIndex = ["A", "B", "C", "D"].indexOf(
-    correctOption
-  );
-
-  if (
-    correctIndex < 0 ||
-    correctIndex >= options.length
-  ) {
-    throw new Error(
-      "Invalid quiz correct option"
-    );
-  }
-
-  return correctIndex;
 }
 
 async function sendQuizFinishedMessage(
@@ -95,6 +101,7 @@ async function sendQuizFinishedMessage(
   result
 ) {
   clearQuizTimer(sessionId);
+  quizNextLocks.delete(String(sessionId));
 
   const telegramUserId =
     await getTelegramUserIdByUserId(
@@ -148,190 +155,244 @@ async function sendNextQuizQuestion(
   bot,
   sessionId
 ) {
-  const session =
-    await gameService.getGameSession(
-      sessionId
-    );
+  const lockKey = String(sessionId);
 
-  if (
-    !session ||
-    session.status !== "ACTIVE"
-  ) {
+  if (quizNextLocks.has(lockKey)) {
     return;
   }
 
-  const languageCode =
-    session.metadata?.languageCode ||
-    "fa";
+  quizNextLocks.add(lockKey);
 
-  const prepared =
-    await prepareNextQuestion(
-      sessionId,
-      languageCode
-    );
-
-  if (!prepared) {
-    return;
-  }
-
-  if (prepared.finished) {
-    return;
-  }
-
-  const question =
-    prepared.question;
-
-  if (!question) {
-    throw new Error(
-      "Quiz question not found"
-    );
-  }
-
-  const options = [
-    question.option_a,
-    question.option_b,
-    question.option_c,
-    question.option_d,
-  ].filter(
-    (option) =>
-      option !== null &&
-      option !== undefined &&
-      option !== ""
-  );
-
-  if (options.length < 2) {
-    throw new Error(
-      "Quiz question must have at least two options"
-    );
-  }
-
-  const correctOptionId =
-    getCorrectOptionIndex(
-      question
-    );
-
-  const telegramUserId =
-    await getTelegramUserIdByUserId(
-      prepared.session.user_id
-    );
-
-  if (!telegramUserId) {
-    throw new Error(
-      "Telegram user ID not found for quiz"
-    );
-  }
-
-  const timeLimit = Math.max(
-    5,
-    Number(
-      prepared.config?.timeLimit || 10
-    )
-  );
-
-  const poll =
-    await bot.telegram.sendPoll(
-      telegramUserId,
-      `🧠 سؤال ${prepared.round} از ${prepared.session.total_rounds}\n\n${question.question_text}`,
-      options,
-      {
-        type: "quiz",
-        is_anonymous: false,
-        correct_option_id:
-          correctOptionId,
-        open_period: timeLimit,
-        allows_multiple_answers: false,
-      }
-    );
-
-  await registerPoll(
-    sessionId,
-    {
-      pollId: poll.poll.id,
-      chatId: poll.chat.id,
-      messageId: poll.message_id,
-      questionId: question.id,
-      sentAt:
-        new Date().toISOString(),
-    }
-  );
-
-  clearQuizTimer(sessionId);
-
-  const timer = setTimeout(
-    async () => {
-      quizTimers.delete(
+  try {
+    const session =
+      await gameService.getGameSession(
         sessionId
       );
 
-      try {
-        const timeoutResult =
-          await processTimeout(
-            sessionId,
-            poll.poll.id
-          );
+    if (
+      !session ||
+      session.status !== "ACTIVE"
+    ) {
+      return;
+    }
 
-        if (
-          !timeoutResult ||
-          !timeoutResult.handled
-        ) {
-          return;
+    const languageCode =
+      session.metadata?.languageCode ||
+      "fa";
+
+    const prepared =
+      await prepareNextQuestion(
+        sessionId,
+        languageCode
+      );
+
+    if (!prepared) {
+      return;
+    }
+
+    if (prepared.finished) {
+      return;
+    }
+
+    const question =
+      prepared.question;
+
+    if (!question) {
+      throw new Error(
+        "Quiz question not found"
+      );
+    }
+
+    const shuffledOptions =
+      shuffleQuizOptions(question);
+
+    const options =
+      shuffledOptions.map(
+        (option) =>
+          option.text
+      );
+
+    if (options.length < 2) {
+      throw new Error(
+        "Quiz question must have at least two options"
+      );
+    }
+
+    const correctLetter =
+      String(
+        question.correct_option || ""
+      )
+        .trim()
+        .toUpperCase();
+
+    const correctOptionId =
+      shuffledOptions.findIndex(
+        (option) =>
+          option.letter ===
+          correctLetter
+      );
+
+    if (correctOptionId < 0) {
+      throw new Error(
+        "Invalid quiz correct option"
+      );
+    }
+
+    const telegramUserId =
+      await getTelegramUserIdByUserId(
+        prepared.session.user_id
+      );
+
+    if (!telegramUserId) {
+      throw new Error(
+        "Telegram user ID not found for quiz"
+      );
+    }
+
+    const timeLimit = Math.max(
+      5,
+      Number(
+        prepared.config?.timeLimit || 10
+      )
+    );
+
+    const poll =
+      await bot.telegram.sendPoll(
+        telegramUserId,
+        `🧠 سؤال ${prepared.round} از ${prepared.session.total_rounds}\n\n${question.question_text}`,
+        options,
+        {
+          type: "quiz",
+          is_anonymous: false,
+          correct_option_id:
+            correctOptionId,
+          open_period:
+            timeLimit,
+          allows_multiple_answers:
+            false,
         }
+      );
 
-        const telegramId =
-          await getTelegramUserIdByUserId(
-            sessionId
-              ? (
-                  await gameService.getGameSession(
-                    sessionId
-                  )
-                )?.user_id
-              : null
-          );
+    await registerPoll(
+      sessionId,
+      {
+        pollId:
+          poll.poll.id,
 
-        if (!telegramId) {
-          return;
-        }
+        chatId:
+          poll.chat.id,
 
-        if (
-          timeoutResult.finished
-        ) {
-          await sendQuizFinishedMessage(
-            bot,
-            sessionId,
-            timeoutResult
-          );
+        messageId:
+          poll.message_id,
 
-          return;
-        }
+        questionId:
+          question.id,
 
-        await bot.telegram.sendMessage(
-          telegramId,
-          "⏰ زمان این سؤال تمام شد.\n\n" +
-            "❌ پاسخی ثبت نشد.\n\n" +
-            "➡️ برای ادامه، سؤال بعدی را بزن.",
-          Markup.inlineKeyboard([
-            [
-              Markup.button.callback(
-                "➡️ سؤال بعدی",
-                `quiz_next:${sessionId}`
-              ),
-            ],
-          ])
-        );
-      } catch (error) {
-        console.error(
-          "Quiz timeout failed:",
-          error
-        );
+        sentAt:
+          new Date().toISOString(),
+
+        optionLetters:
+          shuffledOptions.map(
+            (option) =>
+              option.letter
+          ),
       }
-    },
-    timeLimit * 1000
-  );
+    );
 
-  quizTimers.set(
-    sessionId,
-    timer
-  );
+    clearQuizTimer(sessionId);
+
+    const timer =
+      setTimeout(
+        async () => {
+          quizTimers.delete(
+            sessionId
+          );
+
+          try {
+            const timeoutResult =
+              await processTimeout(
+                sessionId,
+                poll.poll.id
+              );
+
+            if (
+              !timeoutResult ||
+              !timeoutResult.handled
+            ) {
+              return;
+            }
+
+            const currentSession =
+              await gameService.getGameSession(
+                sessionId
+              );
+
+            if (!currentSession) {
+              return;
+            }
+
+            const telegramId =
+              await getTelegramUserIdByUserId(
+                currentSession.user_id
+              );
+
+            if (!telegramId) {
+              return;
+            }
+
+            if (
+              timeoutResult.finished
+            ) {
+              await sendQuizFinishedMessage(
+                bot,
+                sessionId,
+                {
+                  ...timeoutResult,
+                  userId:
+                    currentSession.user_id,
+                }
+              );
+
+              return;
+            }
+
+            await bot.telegram.sendMessage(
+              telegramId,
+              "⏰ زمان این سؤال تمام شد.\n\n" +
+                "❌ پاسخی ثبت نشد.\n\n" +
+                "➡️ سؤال بعدی در حال آماده‌سازی است..."
+            );
+
+            setTimeout(() => {
+              sendNextQuizQuestion(
+                bot,
+                sessionId
+              ).catch((error) => {
+                console.error(
+                  "Auto next quiz question after timeout failed:",
+                  error
+                );
+              });
+            }, 1000);
+          } catch (error) {
+            console.error(
+              "Quiz timeout failed:",
+              error
+            );
+          }
+        },
+        timeLimit * 1000
+      );
+
+    quizTimers.set(
+      sessionId,
+      timer
+    );
+  } finally {
+    quizNextLocks.delete(
+      lockKey
+    );
+  }
 }
 
 function createQuizHandler({
@@ -391,26 +452,31 @@ function createQuizHandler({
 
         const result =
           await startQuiz({
-            userId: user.id,
+            userId:
+              user.id,
+
             languageCode,
           });
 
         const questionCount =
           Number(
             result.config
-              ?.questionCount || 10
+              ?.questionCount ||
+              10
           );
 
         const timeLimit =
           Number(
             result.config
-              ?.timeLimit || 10
+              ?.timeLimit ||
+              10
           );
 
         const cost =
           Number(
             result.session
-              ?.reserved_cost || 1
+              ?.reserved_cost ||
+              1
           );
 
         await ctx.reply(
@@ -572,7 +638,8 @@ function createQuizHandler({
           await ctx.answerCbQuery(
             "خطا در لغو مسابقه",
             {
-              show_alert: true,
+              show_alert:
+                true,
             }
           );
         } catch {}
@@ -614,7 +681,8 @@ function createQuizHandler({
 
         if (
           !session ||
-          session.status !== "ACTIVE"
+          session.status !==
+            "ACTIVE"
         ) {
           await ctx.reply(
             "ℹ️ این مسابقه دیگر فعال نیست."
@@ -623,19 +691,19 @@ function createQuizHandler({
           return;
         }
 
+        const user =
+          await userRepository.findByTelegramId(
+            String(
+              ctx.from.id
+            )
+          );
+
         if (
+          !user ||
           String(
             session.user_id
           ) !==
-          String(
-            (
-              await userRepository.findByTelegramId(
-                String(
-                  ctx.from.id
-                )
-              )
-            )?.id
-          )
+            String(user.id)
         ) {
           return;
         }
@@ -654,7 +722,8 @@ function createQuizHandler({
           await ctx.answerCbQuery(
             "❌ رفتن به سؤال بعدی انجام نشد.",
             {
-              show_alert: true,
+              show_alert:
+                true,
             }
           );
         } catch {}
@@ -693,6 +762,7 @@ function createQuizHandler({
         const result =
           await processPollAnswer({
             pollId,
+
             optionIndex:
               optionIds[0],
           });
@@ -736,7 +806,7 @@ function createQuizHandler({
           String(
             session.user_id
           ) !==
-          String(user.id)
+            String(user.id)
         ) {
           return;
         }
@@ -763,10 +833,12 @@ function createQuizHandler({
           message =
             "✅ درست بود!\n\n" +
             `💳 +${Number(
-              result.reward?.credit || 0
+              result.reward?.credit ||
+                0
             )} اعتبار\n` +
             `✨ +${Number(
-              result.reward?.xp || 0
+              result.reward?.xp ||
+                0
             )} XP`;
         } else {
           message =
@@ -786,6 +858,18 @@ function createQuizHandler({
             ],
           ])
         );
+
+        setTimeout(() => {
+          sendNextQuizQuestion(
+            bot,
+            result.sessionId
+          ).catch((error) => {
+            console.error(
+              "Auto next quiz question failed:",
+              error
+            );
+          });
+        }, 1000);
       } catch (error) {
         console.error(
           "Quiz poll answer failed:",
@@ -821,6 +905,7 @@ function cleanupQuizTimers() {
   }
 
   quizTimers.clear();
+  quizNextLocks.clear();
 }
 
 module.exports = {
