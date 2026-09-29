@@ -169,13 +169,6 @@ async function startQuiz({
     throw new Error("User ID is required");
   }
 
-  /*
-   * قبل از ساخت مسابقه جدید،
-   * مسابقه ACTIVE قبلی کاربر را بررسی می‌کنیم.
-   *
-   * اگر بیشتر از ۳۰ دقیقه بدون فعالیت مانده باشد،
-   * آن را خودکار لغو می‌کنیم تا Credit رزروشده هم آزاد شود.
-   */
   await cleanupStaleQuizForUser(userId);
 
   const activeQuiz =
@@ -225,6 +218,9 @@ async function startQuiz({
           null,
 
         currentPollId:
+          null,
+
+        pollOptionLetters:
           null,
 
         pollChatId:
@@ -282,14 +278,6 @@ async function startQuiz({
   }
 }
 
-/*
- * مسابقه‌های ACTIVE قدیمی را برای یک کاربر پیدا می‌کند.
- *
- * معیار:
- * - اگر currentPollId وجود داشته باشد، pollSentAt بررسی می‌شود.
- * - اگر pollSentAt وجود نداشته باشد، created_at بررسی می‌شود.
- * - اگر بیشتر از ۳۰ دقیقه گذشته باشد، مسابقه گیرکرده است.
- */
 async function cleanupStaleQuizForUser(userId) {
   if (!userId) {
     return null;
@@ -501,6 +489,9 @@ async function prepareNextQuestion(
     currentPollId:
       null,
 
+    pollOptionLetters:
+      null,
+
     pollChatId:
       null,
 
@@ -557,6 +548,7 @@ async function registerPoll(
     messageId,
     questionId,
     sentAt,
+    optionLetters,
   }
 ) {
   if (!pollId) {
@@ -582,6 +574,15 @@ async function registerPoll(
   const now =
     new Date().toISOString();
 
+  const normalizedOptionLetters =
+    Array.isArray(optionLetters)
+      ? optionLetters
+          .map((letter) =>
+            normalizeOption(letter)
+          )
+          .filter(Boolean)
+      : null;
+
   const updatedMetadata = {
     ...metadata,
 
@@ -590,6 +591,9 @@ async function registerPoll(
 
     currentQuestionId:
       Number(questionId),
+
+    pollOptionLetters:
+      normalizedOptionLetters,
 
     pollChatId:
       Number(chatId),
@@ -655,9 +659,6 @@ async function findActiveQuizByUser(
     return null;
   }
 
-  /*
-   * ابتدا مسابقه‌های قدیمی را پاک می‌کنیم.
-   */
   await cleanupStaleQuizForUser(
     userId
   );
@@ -815,10 +816,6 @@ async function processAnswer({
     const currentPollId =
       metadata.currentPollId;
 
-    /*
-     * اگر Timeout مربوط به Poll قدیمی باشد،
-     * نباید سؤال فعلی را ببندد.
-     */
     if (
       expectedPollId !== null &&
       String(currentPollId) !==
@@ -1151,6 +1148,9 @@ async function processAnswer({
       currentQuestionId:
         null,
 
+      pollOptionLetters:
+        null,
+
       pollChatId:
         null,
 
@@ -1288,10 +1288,45 @@ async function processPollAnswer({
     };
   }
 
-  const selectedOption =
-    optionIndexToLetter(
-      optionIndex
-    );
+  const metadata =
+    session.metadata || {};
+
+  let selectedOption =
+    null;
+
+  const pollOptionLetters =
+    Array.isArray(
+      metadata.pollOptionLetters
+    )
+      ? metadata.pollOptionLetters
+      : null;
+
+  if (
+    pollOptionLetters &&
+    Number.isInteger(
+      Number(optionIndex)
+    )
+  ) {
+    const index =
+      Number(optionIndex);
+
+    selectedOption =
+      normalizeOption(
+        pollOptionLetters[index]
+      );
+  }
+
+  /*
+   * سازگاری با Pollهای قدیمی:
+   * اگر mapping داخل metadata وجود نداشت،
+   * ترتیب عادی A/B/C/D استفاده می‌شود.
+   */
+  if (!selectedOption) {
+    selectedOption =
+      optionIndexToLetter(
+        optionIndex
+      );
+  }
 
   if (!selectedOption) {
     return {
