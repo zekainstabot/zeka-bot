@@ -760,6 +760,17 @@ function createQuizHandler({
         const sessionId =
           ctx.match[1];
 
+        const resultTimer =
+  clearQuizResultTimer(sessionId);
+
+if (resultTimer) {
+  await deleteQuizMessage(
+    bot,
+    resultTimer.chatId,
+    resultTimer.messageId
+  );
+}
+
         const session =
           await gameService.getGameSession(
             sessionId
