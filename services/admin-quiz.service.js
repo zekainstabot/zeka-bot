@@ -160,6 +160,17 @@ async function countQuestions(
   });
 }
 
+async function listCategories(
+  telegramUserId
+) {
+  await requireQuizPermission(
+    telegramUserId
+  );
+
+  return adminQuizRepository.listCategories();
+}
+
+
 async function updateQuestion({
   telegramUserId,
   questionId,
