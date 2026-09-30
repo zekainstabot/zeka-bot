@@ -10,66 +10,40 @@ const REPORT_REASONS = {
   OTHER: "OTHER",
 };
 
+function normalizeReason(reason) {
+  const value = String(reason || "")
+    .trim()
+    .toUpperCase();
+
+  if (!value) {
+    return null;
+  }
+
+  if (!Object.values(REPORT_REASONS).includes(value)) {
+    throw new Error("Invalid report reason");
+  }
+
+  return value;
+}
+
 async function createReport({
   questionId,
   userId,
   reason,
   details = null,
 }) {
-  if (!questionId) {
-    throw new Error(
-      "Question ID is required"
-    );
+  const normalizedReason = normalizeReason(reason);
+
+  if (!normalizedReason) {
+    throw new Error("Invalid report reason");
   }
 
-  if (!userId) {
-    throw new Error(
-      "User ID is required"
-    );
-  }
-
-  const normalizedReason =
-    String(reason || "")
-      .trim()
-      .toUpperCase();
-
-  if (
-    !Object.values(
-      REPORT_REASONS
-    ).includes(
-      normalizedReason
-    )
-  ) {
-    throw new Error(
-      "Invalid report reason"
-    );
-  }
-
-  const report =
-    await quizReportRepository.createReport(
-      {
-        questionId,
-        userId,
-        reason:
-          normalizedReason,
-        details:
-          details || null,
-      }
-    );
-
-  if (!report) {
-    return {
-      created: false,
-      duplicate: true,
-      report: null,
-    };
-  }
-
-  return {
-    created: true,
-    duplicate: false,
-    report,
-  };
+  return quizReportRepository.createReport({
+    questionId,
+    userId,
+    reason: normalizedReason,
+    details,
+  });
 }
 
 async function listPendingReports(
@@ -80,19 +54,41 @@ async function listPendingReports(
     telegramUserId
   );
 
-  return quizReportRepository.listPendingReports(
-    options
+  const normalizedReason = normalizeReason(
+    options.reason
   );
+
+  return quizReportRepository.listPendingReports({
+    ...options,
+    reason: normalizedReason,
+  });
 }
 
 async function countPendingReports(
+  telegramUserId,
+  options = {}
+) {
+  await adminQuizService.requireQuizPermission(
+    telegramUserId
+  );
+
+  const normalizedReason = normalizeReason(
+    options.reason
+  );
+
+  return quizReportRepository.countPendingReports({
+    reason: normalizedReason,
+  });
+}
+
+async function countPendingReportsByReason(
   telegramUserId
 ) {
   await adminQuizService.requireQuizPermission(
     telegramUserId
   );
 
-  return quizReportRepository.countPendingReports();
+  return quizReportRepository.countPendingReportsByReason();
 }
 
 async function getReportById(
@@ -119,19 +115,17 @@ async function resolveReport(
       telegramUserId
     );
 
-  const normalizedStatus =
-    String(status || "")
-      .trim()
-      .toUpperCase();
+  const allowedStatuses = [
+    "RESOLVED",
+    "REJECTED",
+  ];
 
-  if (
-    !["RESOLVED", "REJECTED"].includes(
-      normalizedStatus
-    )
-  ) {
-    throw new Error(
-      "Invalid report status"
-    );
+  const normalizedStatus = String(status)
+    .trim()
+    .toUpperCase();
+
+  if (!allowedStatuses.includes(normalizedStatus)) {
+    throw new Error("Invalid report status");
   }
 
   return quizReportRepository.resolveReport(
@@ -144,14 +138,10 @@ async function resolveReport(
 
 module.exports = {
   REPORT_REASONS,
-
   createReport,
-
   listPendingReports,
-
   countPendingReports,
-
+  countPendingReportsByReason,
   getReportById,
-
   resolveReport,
 };
