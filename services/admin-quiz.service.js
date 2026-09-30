@@ -133,13 +133,12 @@ async function listQuestions(
   );
 
   return adminQuizRepository.listQuestions({
-    search,
-    status,
-    category,
-    limit,
-    offset,
-  });
-}
+  search,
+  status,
+  categoryId,
+  limit,
+  offset,
+});
 
 async function countQuestions(
   telegramUserId,
