@@ -1,4 +1,4 @@
-const adminQuizService = require("./admin-quiz.service");
+const adminQuizService = require("../services/admin-quiz.service");
 const quizReportRepository = require("../repositories/quiz-report.repository");
 
 const REPORT_REASONS = {
