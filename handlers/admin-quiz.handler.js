@@ -640,7 +640,7 @@ function getBankState(
   offset: 0,
   status: "ACTIVE",
   search: "",
-  category: null,
+  categoryId: null,
 };
 }
 
