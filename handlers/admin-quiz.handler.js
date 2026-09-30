@@ -2582,46 +2582,7 @@ bot.action(
 
   bot.action(
   /^quiz_admin_reports:(\d+)$/,
-  async (ctx) => {
-    try {
-      const telegramUserId =
-        ctx.from?.id;
-
-      if (!telegramUserId) {
-        return;
-      }
-
-      const offset =
-        Number(
-          ctx.match[1]
-        );
-
-      await ctx.answerCbQuery();
-
-      const state =
-        getState(telegramUserId);
-
-      await sendPendingReports(
-        ctx,
-        telegramUserId,
-        offset,
-        state?.reason || null
-      );
-    } catch (error) {
-      console.error(
-        "Quiz admin reports pagination failed:",
-        error
-      );
-
-      try {
-        await ctx.answerCbQuery(
-          "❌ دریافت گزارش‌ها انجام نشد.",
-          {
-            show_alert: true,
-          }
-        );
-      } catch {}
-    }
+  
   }
 );
       try {
