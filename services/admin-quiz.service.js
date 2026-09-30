@@ -145,7 +145,7 @@ async function countQuestions(
   {
     search = "",
     status = "ALL",
-    category = null,
+    categoryId = null,
   } = {}
 ) {
   await requireQuizPermission(
