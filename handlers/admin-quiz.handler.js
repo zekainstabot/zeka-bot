@@ -781,8 +781,8 @@ async function sendQuestionBank(
   const search =
   state.search || "";
 
-const category =
-  state.category || null;
+const categoryId =
+  state.categoryId || null;
 
 const questions =
     await adminQuizService.listQuestions(
