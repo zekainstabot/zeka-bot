@@ -810,7 +810,7 @@ const questions =
   state.offset = safeOffset;
   state.status = status;
   state.search = search;
-  state.category = category;
+  state.categoryId = categoryId;
 
   setState(
     telegramUserId,
