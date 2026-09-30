@@ -170,7 +170,6 @@ async function listCategories(
   return adminQuizRepository.listCategories();
 }
 
-
 async function updateQuestion({
   telegramUserId,
   questionId,
