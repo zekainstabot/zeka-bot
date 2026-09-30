@@ -794,7 +794,7 @@ const questions =
       {
         search,
         status,
-        category: null,
+        category,
       }
     );
 
