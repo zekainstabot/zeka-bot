@@ -153,11 +153,10 @@ async function countQuestions(
   );
 
   return adminQuizRepository.countQuestions({
-    search,
-    status,
-    category,
-  });
-}
+  search,
+  status,
+  categoryId,
+});
 
 async function listCategories(
   telegramUserId
