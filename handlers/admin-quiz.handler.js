@@ -790,7 +790,7 @@ const questions =
       {
         search,
         status,
-        category,
+        categoryId,
         limit: BANK_PAGE_SIZE,
         offset: safeOffset,
       }
