@@ -2489,9 +2489,93 @@ function createAdminQuizHandler(bot) {
   /* REPORTS */
 
   bot.hears(
-    "🚨 گزارش‌های سؤالات",
-    handleReportsMenu
-  );
+  "🚨 گزارش‌های سؤالات",
+  handleReportsMenu
+);
+
+bot.action(
+  "quiz_admin_reports_filter",
+  handleReportsFilter
+);
+
+bot.action(
+  "quiz_admin_reports_all",
+  async (ctx) => {
+    try {
+      const telegramUserId =
+        ctx.from?.id;
+
+      if (!telegramUserId) {
+        return;
+      }
+
+      await ctx.answerCbQuery();
+
+      await sendPendingReports(
+        ctx,
+        telegramUserId,
+        0,
+        null
+      );
+    } catch (error) {
+      console.error(
+        "Show all quiz reports failed:",
+        error
+      );
+
+      try {
+        await ctx.answerCbQuery(
+          "❌ دریافت گزارش‌ها انجام نشد.",
+          {
+            show_alert: true,
+          }
+        );
+      } catch {}
+    }
+  }
+);
+
+bot.action(
+  /^quiz_admin_reports_filter_select:(ALL|WRONG_ANSWER|BAD_QUESTION|BAD_OPTIONS|DUPLICATE|UNRELIABLE|OTHER)$/,
+  async (ctx) => {
+    try {
+      const telegramUserId =
+        ctx.from?.id;
+
+      if (!telegramUserId) {
+        return;
+      }
+
+      await ctx.answerCbQuery();
+
+      const selected =
+        ctx.match[1];
+
+      await sendPendingReports(
+        ctx,
+        telegramUserId,
+        0,
+        selected === "ALL"
+          ? null
+          : selected
+      );
+    } catch (error) {
+      console.error(
+        "Select quiz report filter failed:",
+        error
+      );
+
+      try {
+        await ctx.answerCbQuery(
+          "❌ اعمال فیلتر انجام نشد.",
+          {
+            show_alert: true,
+          }
+        );
+      } catch {}
+    }
+  }
+);
 
   bot.action(
     /^quiz_admin_reports:(\d+)$/,
