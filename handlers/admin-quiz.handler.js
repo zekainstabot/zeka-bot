@@ -2577,8 +2577,15 @@ bot.action(
   }
 );
 
-  bot.action(
-    /^quiz_admin_reports:(\d+)$/,
+  const state =
+  getState(telegramUserId);
+
+await sendPendingReports(
+  ctx,
+  telegramUserId,
+  offset,
+  state?.reason || null
+);
     async (ctx) => {
       try {
         const telegramUserId =
