@@ -771,9 +771,12 @@ async function sendQuestionBank(
     state.status || "ACTIVE";
 
   const search =
-    state.search || "";
+  state.search || "";
 
-  const questions =
+const category =
+  state.category || null;
+
+const questions =
     await adminQuizService.listQuestions(
       telegramUserId,
       {
