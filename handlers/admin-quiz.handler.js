@@ -293,6 +293,8 @@ async function sendPendingReports(
     Markup.inlineKeyboard(buttons)
   );
 }
+
+async function handleReportsMenu(ctx) {
   try {
     const telegramUserId =
       ctx.from?.id;
