@@ -215,7 +215,7 @@ async function listQuestions({
 async function countQuestions({
   search = "",
   status = "ALL",
-  category = null,
+  categoryId = null,
 } = {}) {
   const db = getClient();
 
