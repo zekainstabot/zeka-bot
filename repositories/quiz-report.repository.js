@@ -1,5 +1,4 @@
-const adminQuizService = require("../services/admin-quiz.service");
-const quizReportRepository = require("../repositories/quiz-report.repository");
+const { getClient } = require("../database/client");
 
 const REPORT_REASONS = {
   WRONG_ANSWER: "WRONG_ANSWER",
@@ -19,8 +18,14 @@ function normalizeReason(reason) {
     return null;
   }
 
-  if (!Object.values(REPORT_REASONS).includes(value)) {
-    throw new Error("Invalid report reason");
+  if (
+    !Object.values(REPORT_REASONS).includes(
+      value
+    )
+  ) {
+    throw new Error(
+      "Invalid report reason"
+    );
   }
 
   return value;
@@ -32,108 +37,283 @@ async function createReport({
   reason,
   details = null,
 }) {
-  const normalizedReason = normalizeReason(reason);
+  const db = getClient();
+
+  const normalizedReason =
+    normalizeReason(reason);
 
   if (!normalizedReason) {
-    throw new Error("Invalid report reason");
+    throw new Error(
+      "Invalid report reason"
+    );
   }
 
-  return quizReportRepository.createReport({
-    questionId,
-    userId,
-    reason: normalizedReason,
-    details,
-  });
+  const result = await db.query(
+    `
+      INSERT INTO quiz_question_reports (
+        question_id,
+        user_id,
+        reason,
+        details
+      )
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT DO NOTHING
+      RETURNING *
+    `,
+    [
+      questionId,
+      userId,
+      normalizedReason,
+      details,
+    ]
+  );
+
+  return result.rows[0] || null;
 }
 
-async function listPendingReports(
-  telegramUserId,
-  options = {}
-) {
-  await adminQuizService.requireQuizPermission(
-    telegramUserId
+async function listPendingReports({
+  limit = 10,
+  offset = 0,
+  reason = null,
+} = {}) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(
+      Number(limit) || 10,
+      50
+    )
   );
 
-  const normalizedReason = normalizeReason(
-    options.reason
+  const safeOffset = Math.max(
+    0,
+    Number(offset) || 0
   );
 
-  return quizReportRepository.listPendingReports({
-    ...options,
-    reason: normalizedReason,
-  });
+  const normalizedReason =
+    normalizeReason(reason);
+
+  const params = [
+    safeLimit,
+    safeOffset,
+  ];
+
+  let reasonCondition = "";
+
+  if (normalizedReason) {
+    params.push(normalizedReason);
+
+    reasonCondition =
+      `AND r.reason = $${params.length}`;
+  }
+
+  const result = await db.query(
+    `
+      SELECT
+        r.*,
+
+        qq.question_text,
+        qq.option_a,
+        qq.option_b,
+        qq.option_c,
+        qq.option_d,
+        qq.correct_option,
+        qq.explanation,
+        qq.category,
+        qq.difficulty,
+        qq.status AS question_status,
+
+        u.telegram_user_id,
+        u.username
+
+      FROM quiz_question_reports r
+
+      INNER JOIN quiz_questions qq
+        ON qq.id = r.question_id
+
+      INNER JOIN users u
+        ON u.id = r.user_id
+
+      WHERE r.status = 'PENDING'
+        ${reasonCondition}
+
+      ORDER BY
+        r.created_at ASC
+
+      LIMIT $1
+      OFFSET $2
+    `,
+    params
+  );
+
+  return result.rows;
 }
 
-async function countPendingReports(
-  telegramUserId,
-  options = {}
-) {
-  await adminQuizService.requireQuizPermission(
-    telegramUserId
+async function countPendingReports({
+  reason = null,
+} = {}) {
+  const db = getClient();
+
+  const normalizedReason =
+    normalizeReason(reason);
+
+  const params = [];
+  let reasonCondition = "";
+
+  if (normalizedReason) {
+    params.push(normalizedReason);
+
+    reasonCondition =
+      `AND reason = $${params.length}`;
+  }
+
+  const result = await db.query(
+    `
+      SELECT COUNT(*)::INTEGER AS count
+      FROM quiz_question_reports
+      WHERE status = 'PENDING'
+        ${reasonCondition}
+    `,
+    params
   );
 
-  const normalizedReason = normalizeReason(
-    options.reason
+  return Number(
+    result.rows[0]?.count || 0
   );
-
-  return quizReportRepository.countPendingReports({
-    reason: normalizedReason,
-  });
 }
 
-async function countPendingReportsByReason(
-  telegramUserId
-) {
-  await adminQuizService.requireQuizPermission(
-    telegramUserId
+async function countPendingReportsByReason() {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      WITH reasons(reason) AS (
+        VALUES
+          ('WRONG_ANSWER'),
+          ('BAD_QUESTION'),
+          ('BAD_OPTIONS'),
+          ('DUPLICATE'),
+          ('UNRELIABLE'),
+          ('OTHER')
+      )
+
+      SELECT
+        reasons.reason,
+        COUNT(r.id)::INTEGER AS count
+
+      FROM reasons
+
+      LEFT JOIN quiz_question_reports r
+        ON r.reason = reasons.reason
+        AND r.status = 'PENDING'
+
+      GROUP BY
+        reasons.reason
+
+      ORDER BY
+        reasons.reason
+    `
   );
 
-  return quizReportRepository.countPendingReportsByReason();
+  return result.rows;
 }
 
 async function getReportById(
-  telegramUserId,
   reportId
 ) {
-  await adminQuizService.requireQuizPermission(
-    telegramUserId
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        r.*,
+
+        qq.question_text,
+        qq.option_a,
+        qq.option_b,
+        qq.option_c,
+        qq.option_d,
+        qq.correct_option,
+        qq.explanation,
+        qq.category,
+        qq.difficulty,
+        qq.status AS question_status,
+
+        u.telegram_user_id,
+        u.username
+
+      FROM quiz_question_reports r
+
+      INNER JOIN quiz_questions qq
+        ON qq.id = r.question_id
+
+      INNER JOIN users u
+        ON u.id = r.user_id
+
+      WHERE r.id = $1
+
+      LIMIT 1
+    `,
+    [reportId]
   );
 
-  return quizReportRepository.getReportById(
-    reportId
-  );
+  return result.rows[0] || null;
 }
 
 async function resolveReport(
-  telegramUserId,
   reportId,
   status,
+  reviewedBy,
   adminNote = null
 ) {
-  const admin =
-    await adminQuizService.requireQuizPermission(
-      telegramUserId
-    );
+  const db = getClient();
 
   const allowedStatuses = [
     "RESOLVED",
     "REJECTED",
   ];
 
-  const normalizedStatus = String(status)
-    .trim()
-    .toUpperCase();
+  const normalizedStatus =
+    String(status)
+      .trim()
+      .toUpperCase();
 
-  if (!allowedStatuses.includes(normalizedStatus)) {
-    throw new Error("Invalid report status");
+  if (
+    !allowedStatuses.includes(
+      normalizedStatus
+    )
+  ) {
+    throw new Error(
+      "Invalid report status"
+    );
   }
 
-  return quizReportRepository.resolveReport(
-    reportId,
-    normalizedStatus,
-    admin.user_id,
-    adminNote
+  const result = await db.query(
+    `
+      UPDATE quiz_question_reports
+
+      SET
+        status = $2,
+        reviewed_by = $3,
+        reviewed_at = NOW(),
+        admin_note = $4,
+        updated_at = NOW()
+
+      WHERE id = $1
+        AND status = 'PENDING'
+
+      RETURNING *
+    `,
+    [
+      reportId,
+      normalizedStatus,
+      reviewedBy,
+      adminNote,
+    ]
   );
+
+  return result.rows[0] || null;
 }
 
 module.exports = {
