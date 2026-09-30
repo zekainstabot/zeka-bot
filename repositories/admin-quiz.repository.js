@@ -419,6 +419,7 @@ module.exports = {
   getQuestionById,
   listQuestions,
   countQuestions,
+listCategories,
   updateQuestion,
   updateQuestionStatus,
 };
