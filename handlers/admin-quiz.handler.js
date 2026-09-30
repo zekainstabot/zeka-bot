@@ -2428,14 +2428,14 @@ function createAdminQuizHandler(bot) {
       }
 
       const buttons =
-        categories.map(
-          (category) => [
-            Markup.button.callback(
-              `🏷️ ${category}`,
-              `quiz_admin_bank_category:${category}`
-            ),
-          ]
-        );
+  categories.map(
+    (category) => [
+      Markup.button.callback(
+        `🏷️ ${category.name_fa}`,
+        `quiz_admin_bank_category:${category.slug}`
+      ),
+    ]
+  );;
 
       bot.action(
   /^quiz_admin_bank_category:(.+)$/,
