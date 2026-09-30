@@ -717,6 +717,13 @@ function buildBankButtons({
   ]);
 
   buttons.push([
+  Markup.button.callback(
+    "🏷️ فیلتر دسته‌بندی",
+    "quiz_admin_bank_category_filter"
+  ),
+]);
+
+  buttons.push([
     Markup.button.callback(
       status === "ACTIVE"
         ? "📚 نمایش همه سؤالات"
