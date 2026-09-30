@@ -2432,7 +2432,7 @@ function createAdminQuizHandler(bot) {
     (category) => [
       Markup.button.callback(
         `🏷️ ${category.name_fa}`,
-        `quiz_admin_bank_category:${category.slug}`
+        `quiz_admin_bank_category:${category.id}`
       ),
     ]
   );;
