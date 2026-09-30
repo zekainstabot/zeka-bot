@@ -392,6 +392,27 @@ async function updateQuestionStatus({
   return result.rows[0] || null;
 }
 
+async function listCategories() {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT DISTINCT
+        TRIM(category) AS category
+      FROM quiz_questions
+      WHERE category IS NOT NULL
+        AND TRIM(category) <> ''
+      ORDER BY
+        TRIM(category) ASC
+    `
+  );
+
+  return result.rows
+    .map((row) => row.category)
+    .filter(Boolean);
+}
+
+
 module.exports = {
   createQuestion,
   countActiveQuestions,
