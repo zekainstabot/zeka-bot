@@ -2404,6 +2404,74 @@ function createAdminQuizHandler(bot) {
   );
 
   bot.action(
+  "quiz_admin_bank_category_filter",
+  async (ctx) => {
+    try {
+      await ctx.answerCbQuery();
+
+      const telegramUserId =
+        ctx.from.id;
+
+      const categories =
+        await adminQuizService.listCategories(
+          telegramUserId
+        );
+
+      if (
+        !categories ||
+        categories.length === 0
+      ) {
+        await ctx.reply(
+          "📚 هیچ دسته‌بندی‌ای پیدا نشد."
+        );
+        return;
+      }
+
+      const buttons =
+        categories.map(
+          (category) => [
+            Markup.button.callback(
+              `🏷️ ${category}`,
+              `quiz_admin_bank_category:${category}`
+            ),
+          ]
+        );
+
+      buttons.push([
+        Markup.button.callback(
+          "❌ حذف فیلتر دسته‌بندی",
+          "quiz_admin_bank_category:CLEAR"
+        ),
+      ]);
+
+      buttons.push([
+        Markup.button.callback(
+          "🔙 برگشت",
+          "quiz_admin_bank_back"
+        ),
+      ]);
+
+      await ctx.reply(
+        "🏷️ دسته‌بندی را انتخاب کن:",
+        Markup.inlineKeyboard(
+          buttons
+        )
+      );
+
+    } catch (error) {
+      console.error(
+        "quiz category filter error:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ دریافت دسته‌بندی‌ها انجام نشد."
+      );
+    }
+  }
+);
+
+  bot.action(
     /^quiz_admin_bank_view:(\d+)$/,
     async (ctx) => {
       await handleBankView(
