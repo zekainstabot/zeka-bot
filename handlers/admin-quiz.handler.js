@@ -649,6 +649,7 @@ function buildBankButtons({
   total,
   offset,
   status,
+  category
 }) {
   const buttons = [];
 
