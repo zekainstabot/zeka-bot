@@ -797,14 +797,14 @@ const questions =
     );
 
   const total =
-    await adminQuizService.countQuestions(
-      telegramUserId,
-      {
-        search,
-        status,
-        category,
-      }
-    );
+  await adminQuizService.countQuestions(
+    telegramUserId,
+    {
+      search,
+      status,
+      categoryId,
+    }
+  );
 
   state.mode = "BANK";
   state.offset = safeOffset;
