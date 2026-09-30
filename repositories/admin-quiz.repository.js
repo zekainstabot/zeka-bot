@@ -397,19 +397,18 @@ async function listCategories() {
 
   const result = await db.query(
     `
-      SELECT DISTINCT
-        TRIM(category) AS category
-      FROM quiz_questions
-      WHERE category IS NOT NULL
-        AND TRIM(category) <> ''
+      SELECT
+        id,
+        name_fa,
+        name_en,
+        slug
+      FROM quiz_categories
       ORDER BY
-        TRIM(category) ASC
+        name_fa ASC
     `
   );
 
-  return result.rows
-    .map((row) => row.category)
-    .filter(Boolean);
+  return result.rows;
 }
 
 
