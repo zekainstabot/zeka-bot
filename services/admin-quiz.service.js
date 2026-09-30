@@ -133,12 +133,13 @@ async function listQuestions(
   );
 
   return adminQuizRepository.listQuestions({
-  search,
-  status,
-  categoryId,
-  limit,
-  offset,
-});
+    search,
+    status,
+    categoryId,
+    limit,
+    offset,
+  });
+}
 
 async function countQuestions(
   telegramUserId,
@@ -153,10 +154,11 @@ async function countQuestions(
   );
 
   return adminQuizRepository.countQuestions({
-  search,
-  status,
-  categoryId,
-});
+    search,
+    status,
+    categoryId,
+  });
+}
 
 async function listCategories(
   telegramUserId
@@ -252,20 +254,12 @@ async function updateQuestionStatus({
 
 module.exports = {
   requireQuizPermission,
-
   createQuestion,
-
   countActiveQuestions,
-
   getQuestionById,
-
   listQuestions,
-
   countQuestions,
-
   listCategories,
-
   updateQuestion,
-
   updateQuestionStatus,
 };
