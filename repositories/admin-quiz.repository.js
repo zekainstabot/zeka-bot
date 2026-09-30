@@ -238,18 +238,17 @@ async function countQuestions({
   }
 
   if (
-    category &&
-    String(category).trim()
-  ) {
-    values.push(
-      String(category).trim()
-    );
+  categoryId &&
+  Number(categoryId)
+) {
+  values.push(
+    Number(categoryId)
+  );
 
-    conditions.push(
-      `qq.category = $${values.length}`
-    );
-  }
-
+  conditions.push(
+    `qq.category_id = $${values.length}`
+  );
+}
   if (
     search &&
     String(search).trim()
