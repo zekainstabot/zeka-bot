@@ -783,7 +783,6 @@ const questions =
         search,
         status,
         category,
-limit: BANK_PAGE_SIZE,
         limit: BANK_PAGE_SIZE,
         offset: safeOffset,
       }
