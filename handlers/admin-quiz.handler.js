@@ -2488,10 +2488,10 @@ function createAdminQuizHandler(bot) {
             telegramUserId
           );
 
-        state.category =
-          selectedCategory === "CLEAR"
-            ? null
-            : selectedCategory;
+        state.categoryId =
+  selectedCategory === "CLEAR"
+    ? null
+    : Number(selectedCategory);
 
         state.offset = 0;
 
