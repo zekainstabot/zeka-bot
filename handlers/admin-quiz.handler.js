@@ -636,11 +636,12 @@ function getBankState(
   }
 
   return {
-    mode: "BANK",
-    offset: 0,
-    status: "ACTIVE",
-    search: "",
-  };
+  mode: "BANK",
+  offset: 0,
+  status: "ACTIVE",
+  search: "",
+  category: null,
+};
 }
 
 function buildBankButtons({
