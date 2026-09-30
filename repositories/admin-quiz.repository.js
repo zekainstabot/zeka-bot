@@ -106,7 +106,7 @@ async function getQuestionById(
 async function listQuestions({
   search = "",
   status = "ALL",
-  category = null,
+  categoryId = null,
   limit = 10,
   offset = 0,
 } = {}) {
