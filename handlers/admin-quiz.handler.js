@@ -516,10 +516,13 @@ async function handleReportResolve(
       return;
     }
 
-    const normalizedStatus =
-      String(status || "")
-        .trim()
-        .toUpperCase();
+   const state =
+  getState(telegramUserId);
+
+const normalizedStatus =
+  String(status || "")
+    .trim()
+    .toUpperCase();
 
     if (
       ![
