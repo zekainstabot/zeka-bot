@@ -934,6 +934,7 @@ const questions =
       total,
       offset: safeOffset,
       status,
+      category,
     });
 
   if (
