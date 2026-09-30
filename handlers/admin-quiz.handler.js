@@ -127,10 +127,31 @@ function buildReportButtons(report) {
 async function sendPendingReports(
   ctx,
   telegramUserId,
-  offset = 0
+  offset = 0,
+  reason = null
 ) {
   await adminQuizService.requireQuizPermission(
     telegramUserId
+  );
+
+  const safeOffset = Math.max(
+    0,
+    Number(offset) || 0
+  );
+
+  const state = getState(telegramUserId) || {
+    mode: "REPORTS",
+    offset: 0,
+    reason: null,
+  };
+
+  state.mode = "REPORTS";
+  state.offset = safeOffset;
+  state.reason = reason || null;
+
+  setState(
+    telegramUserId,
+    state
   );
 
   const reports =
@@ -138,13 +159,17 @@ async function sendPendingReports(
       telegramUserId,
       {
         limit: 1,
-        offset,
+        offset: safeOffset,
+        reason: state.reason,
       }
     );
 
   const total =
     await quizReportService.countPendingReports(
-      telegramUserId
+      telegramUserId,
+      {
+        reason: state.reason,
+      }
     );
 
   if (
@@ -153,8 +178,27 @@ async function sendPendingReports(
   ) {
     await ctx.reply(
       "🚨 گزارش‌های سؤالات\n\n" +
-        "✅ هیچ گزارش در انتظاری وجود ندارد.",
-      quizAdminMenu
+        "✅ هیچ گزارش در انتظاری با این فیلتر وجود ندارد.",
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "🔎 فیلتر بر اساس دلیل",
+            "quiz_admin_reports_filter"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "📊 نمایش همه گزارش‌ها",
+            "quiz_admin_reports_all"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "🔙 منوی مدیریت مسابقه",
+            "quiz_admin_reports_back"
+          ),
+        ],
+      ])
     );
 
     return;
@@ -166,9 +210,7 @@ async function sendPendingReports(
     report.username
       ? `@${report.username}`
       : report.telegram_user_id
-        ? String(
-            report.telegram_user_id
-          )
+        ? String(report.telegram_user_id)
         : "نامشخص";
 
   const createdAt =
@@ -183,30 +225,25 @@ async function sendPendingReports(
     `📋 گزارش: ${report.id}\n` +
     `👤 گزارش‌دهنده: ${reporter}\n` +
     `🕐 زمان: ${createdAt}\n` +
-    `⚠️ دلیل: ${formatReportReason(
-      report.reason
-    )}\n\n` +
+    `⚠️ دلیل: ${formatReportReason(report.reason)}\n\n` +
     formatQuestion(report);
 
   const buttons = [];
 
-  if (offset > 0) {
+  if (safeOffset > 0) {
     buttons.push([
       Markup.button.callback(
         "⬅️ قبلی",
-        `quiz_admin_reports:${Math.max(
-          0,
-          offset - 1
-        )}`
+        `quiz_admin_reports:${safeOffset - 1}`
       ),
     ]);
   }
 
-  if (offset + 1 < total) {
+  if (safeOffset + 1 < total) {
     buttons.push([
       Markup.button.callback(
         "➡️ بعدی",
-        `quiz_admin_reports:${offset + 1}`
+        `quiz_admin_reports:${safeOffset + 1}`
       ),
     ]);
   }
@@ -238,6 +275,13 @@ async function sendPendingReports(
 
   buttons.push([
     Markup.button.callback(
+      "🔎 تغییر فیلتر",
+      "quiz_admin_reports_filter"
+    ),
+  ]);
+
+  buttons.push([
+    Markup.button.callback(
       "🔙 منوی مدیریت مسابقه",
       "quiz_admin_reports_back"
     ),
@@ -245,12 +289,10 @@ async function sendPendingReports(
 
   await ctx.reply(
     text +
-      `\n\n📊 گزارش ${offset + 1} از ${total}`,
+      `\n\n📊 گزارش ${safeOffset + 1} از ${total}`,
     Markup.inlineKeyboard(buttons)
   );
 }
-
-async function handleReportsMenu(ctx) {
   try {
     const telegramUserId =
       ctx.from?.id;
