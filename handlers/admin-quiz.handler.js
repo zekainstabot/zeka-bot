@@ -2437,54 +2437,6 @@ function createAdminQuizHandler(bot) {
     ]
   );;
 
-      bot.action(
-  /^quiz_admin_bank_category:(.+)$/,
-  async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-
-      const telegramUserId =
-        ctx.from.id;
-
-      const selectedCategory =
-        ctx.match[1];
-
-      const state =
-        getBankState(
-          telegramUserId
-        );
-
-      state.category =
-        selectedCategory === "CLEAR"
-          ? null
-          : selectedCategory;
-
-      state.offset = 0;
-
-      setState(
-        telegramUserId,
-        state
-      );
-
-      await sendQuestionBank(
-        ctx,
-        telegramUserId,
-        0
-      );
-
-    } catch (error) {
-      console.error(
-        "quiz category select error:",
-        error
-      );
-
-      await ctx.reply(
-        "❌ اعمال فیلتر دسته‌بندی انجام نشد."
-      );
-    }
-  }
-);
-
       buttons.push([
         Markup.button.callback(
           "❌ حذف فیلتر دسته‌بندی",
