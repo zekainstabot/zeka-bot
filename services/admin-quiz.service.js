@@ -266,6 +266,8 @@ module.exports = {
 
   countQuestions,
 
+  listCategories,
+
   updateQuestion,
 
   updateQuestionStatus,
