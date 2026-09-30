@@ -331,6 +331,110 @@ async function handleReportsMenu(ctx) {
   }
 }
 
+async function handleReportsFilter(ctx) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    await adminQuizService.requireQuizPermission(
+      telegramUserId
+    );
+
+    const rows =
+      await quizReportService.countPendingReportsByReason(
+        telegramUserId
+      );
+
+    const counts = {};
+
+    for (const row of rows) {
+      counts[row.reason] =
+        Number(row.count || 0);
+    }
+
+    const total =
+      await quizReportService.countPendingReports(
+        telegramUserId
+      );
+
+    await ctx.reply(
+      "🔎 فیلتر گزارش‌ها\n\n" +
+        `📊 همه گزارش‌های در انتظار: ${total}\n\n` +
+        "دلیل موردنظر را انتخاب کنید:",
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            `📊 همه (${total})`,
+            "quiz_admin_reports_filter_select:ALL"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            `❌ جواب صحیح اشتباه است (${counts.WRONG_ANSWER || 0})`,
+            "quiz_admin_reports_filter_select:WRONG_ANSWER"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            `❓ متن سؤال مشکل دارد (${counts.BAD_QUESTION || 0})`,
+            "quiz_admin_reports_filter_select:BAD_QUESTION"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            `🅰️🅱️ گزینه‌ها مشکل دارند (${counts.BAD_OPTIONS || 0})`,
+            "quiz_admin_reports_filter_select:BAD_OPTIONS"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            `🔄 سؤال تکراری است (${counts.DUPLICATE || 0})`,
+            "quiz_admin_reports_filter_select:DUPLICATE"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            `⚠️ مبهم/غیرقابل‌اعتماد (${counts.UNRELIABLE || 0})`,
+            "quiz_admin_reports_filter_select:UNRELIABLE"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            `📝 سایر (${counts.OTHER || 0})`,
+            "quiz_admin_reports_filter_select:OTHER"
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "🔙 برگشت به گزارش‌ها",
+            "quiz_admin_reports_all"
+          ),
+        ],
+      ])
+    );
+  } catch (error) {
+    console.error(
+      "Quiz report filter failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "❌ دریافت فیلترها انجام نشد.",
+        {
+          show_alert: true,
+        }
+      );
+    } catch {}
+  }
+}
+
 async function handleReportView(
   ctx,
   reportId
