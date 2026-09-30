@@ -2580,11 +2580,9 @@ bot.action(
   }
 );
 
-  bot.action(
-  /^quiz_admin_reports:(\d+)$/,
-  
-  }
-);
+    bot.action(
+    /^quiz_admin_reports:(\d+)$/,
+    async (ctx) => {
       try {
         const telegramUserId =
           ctx.from?.id;
@@ -2600,10 +2598,14 @@ bot.action(
 
         await ctx.answerCbQuery();
 
+        const state =
+          getState(telegramUserId);
+
         await sendPendingReports(
           ctx,
           telegramUserId,
-          offset
+          offset,
+          state?.reason || null
         );
       } catch (error) {
         console.error(
@@ -2615,14 +2617,13 @@ bot.action(
           await ctx.answerCbQuery(
             "❌ دریافت گزارش‌ها انجام نشد.",
             {
-              show_alert: true,
+              show_alert: true
             }
           );
         } catch {}
       }
     }
   );
-
   bot.action(
     "quiz_admin_reports_back",
     async (ctx) => {
