@@ -685,7 +685,7 @@ async function startBot() {
 
   console.log("Starting queue recovery...");
 
-  await recoverWaitingJobs();
+  await recoverJobs();
 
   console.log("Queue recovery finished.");
 
