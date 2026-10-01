@@ -6,6 +6,7 @@ async function recoverWaitingJobs(limit = 100) {
 
   if (!jobs.length) {
     console.log("Queue recovery: no waiting jobs found.");
+
     return {
       recovered: 0,
       jobs: [],
