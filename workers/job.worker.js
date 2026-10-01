@@ -8,6 +8,9 @@ const {
   sendFileToUser,
 } = require("../services/delivery.service");
 
+const deliveryRepository =
+  require("../repositories/job.delivery.repository");
+
 const {
   markSending,
   markCompleted,
@@ -37,6 +40,9 @@ async function processJob(job) {
 
   let downloadedFilePath = null;
   let creditConsumed = false;
+  let deliveryStarted = false;
+  let deliveryConfirmed = false;
+  let deliveryUnknown = false;
 
   const reservedCost =
     Number(job.reserved_cost || 0);
@@ -86,15 +92,47 @@ async function processJob(job) {
         ? result.caption.trim()
         : "🤖 Zeka";
 
-    await sendFileToUser({
-      telegramUserId:
+    await deliveryRepository.createPending({
+      jobId: job.id,
+      telegramChatId:
         user.telegram_user_id,
-      filePath:
-        result.filePath,
-      caption,
-      contentType:
-        result.contentType,
     });
+
+    deliveryStarted = true;
+
+    const deliveryResult =
+      await sendFileToUser({
+        telegramUserId:
+          user.telegram_user_id,
+        filePath:
+          result.filePath,
+        caption,
+        contentType:
+          result.contentType,
+      });
+
+    const telegramMessageId =
+      deliveryResult?.response?.result
+        ?.message_id ?? null;
+
+    if (!telegramMessageId) {
+      await deliveryRepository.markUnknown(
+        job.id
+      );
+
+      deliveryUnknown = true;
+
+      throw new Error(
+        "Telegram delivery succeeded without a message_id"
+      );
+    }
+
+    await deliveryRepository.markSent(
+      job.id,
+      telegramMessageId
+    );
+
+    deliveryConfirmed = true;
 
     if (consumeCreditForJob) {
       await consumeCredit(
@@ -128,12 +166,46 @@ async function processJob(job) {
       creditConsumed:
         consumeCreditForJob,
       jobId: jobLabel,
+      telegramMessageId,
     };
   } catch (error) {
     console.error(
       `Worker failed job: ${jobLabel}`,
       error
     );
+
+    if (
+      deliveryStarted &&
+      !deliveryConfirmed &&
+      !deliveryUnknown
+    ) {
+      try {
+        await deliveryRepository.markUnknown(
+          job.id
+        );
+
+        deliveryUnknown = true;
+      } catch (deliveryError) {
+        console.error(
+          `Failed to mark delivery as UNKNOWN for job: ${jobLabel}`,
+          deliveryError
+        );
+      }
+    }
+
+    if (deliveryUnknown) {
+      console.error(
+        `Delivery state is UNKNOWN for job: ${jobLabel}. Credit will remain reserved and job will stay in SENDING.`
+      );
+
+      return {
+        success: false,
+        delivered: false,
+        deliveryUnknown: true,
+        creditConsumed: false,
+        jobId: jobLabel,
+      };
+    }
 
     if (
       consumeCreditForJob &&
