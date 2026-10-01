@@ -149,6 +149,40 @@ async function findRecoverable(limit = 100) {
   return result.rows;
 }
 
+async function recover(id) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      UPDATE jobs
+      SET
+        status = 'WAITING',
+        retry_count = retry_count +
+          CASE
+            WHEN status IN (
+              'PROCESSING',
+              'DOWNLOADING'
+            )
+            THEN 1
+            ELSE 0
+          END,
+        started_at = NULL,
+        processing_at = NULL,
+        updated_at = NOW()
+      WHERE id = $1
+        AND status IN (
+          'WAITING',
+          'PROCESSING',
+          'DOWNLOADING'
+        )
+      RETURNING *
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function claim(id) {
   const db = getClient();
 
@@ -156,8 +190,14 @@ async function claim(id) {
     `
       UPDATE jobs
       SET status = 'PROCESSING',
-          processing_at = COALESCE(processing_at, NOW()),
-          started_at = COALESCE(started_at, NOW()),
+          processing_at = COALESCE(
+            processing_at,
+            NOW()
+          ),
+          started_at = COALESCE(
+            started_at,
+            NOW()
+          ),
           updated_at = NOW()
       WHERE id = $1
         AND status = 'WAITING'
@@ -207,18 +247,24 @@ async function update(id, updates) {
     "error_message",
   ];
 
-  const entries = Object.entries(updates).filter(([field]) =>
-    allowedFields.includes(field)
+  const entries = Object.entries(updates).filter(
+    ([field]) =>
+      allowedFields.includes(field)
   );
 
   if (entries.length === 0) {
     return findById(id);
   }
 
-  const values = entries.map(([, value]) => value);
+  const values = entries.map(
+    ([, value]) => value
+  );
 
   const setClause = entries
-    .map(([field], index) => `${field} = $${index + 2}`)
+    .map(
+      ([field], index) =>
+        `${field} = $${index + 2}`
+    )
     .join(", ");
 
   const result = await db.query(
@@ -242,6 +288,7 @@ module.exports = {
   findByRequestId,
   findPending,
   findRecoverable,
+  recover,
   claim,
   updateStatus,
   update,
