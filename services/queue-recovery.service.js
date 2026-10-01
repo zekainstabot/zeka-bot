@@ -20,15 +20,29 @@ async function recoverJobs(limit = 100) {
 
   for (const job of jobs) {
     try {
-      queueManager.add(job);
+      const recoveredJob =
+        await jobRepository.recover(job.id);
+
+      if (!recoveredJob) {
+        console.log(
+          `Queue recovery: job ${
+            job.job_id || job.id
+          } could not be recovered.`
+        );
+
+        continue;
+      }
+
+      queueManager.add(recoveredJob);
 
       recovered += 1;
-      recoveredJobs.push(job);
+      recoveredJobs.push(recoveredJob);
 
       console.log(
         `Queue recovery: job ${
-          job.job_id || job.id
-        } restored from ${job.status}.`
+          recoveredJob.job_id ||
+          recoveredJob.id
+        } restored from ${job.status} to WAITING.`
       );
     } catch (error) {
       console.error(
