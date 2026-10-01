@@ -1,11 +1,13 @@
 const jobRepository = require("../repositories/job.repository");
 const queueManager = require("../queue/manager");
 
-async function recoverWaitingJobs(limit = 100) {
-  const jobs = await jobRepository.findPending(limit);
+async function recoverJobs(limit = 100) {
+  const jobs = await jobRepository.findRecoverable(limit);
 
   if (!jobs.length) {
-    console.log("Queue recovery: no waiting jobs found.");
+    console.log(
+      "Queue recovery: no recoverable jobs found."
+    );
 
     return {
       recovered: 0,
@@ -24,11 +26,15 @@ async function recoverWaitingJobs(limit = 100) {
       recoveredJobs.push(job);
 
       console.log(
-        `Queue recovery: job ${job.job_id || job.id} restored.`
+        `Queue recovery: job ${
+          job.job_id || job.id
+        } restored from ${job.status}.`
       );
     } catch (error) {
       console.error(
-        `Queue recovery failed for job ${job.job_id || job.id}:`,
+        `Queue recovery failed for job ${
+          job.job_id || job.id
+        }:`,
         error
       );
     }
@@ -45,5 +51,5 @@ async function recoverWaitingJobs(limit = 100) {
 }
 
 module.exports = {
-  recoverWaitingJobs,
+  recoverJobs,
 };
