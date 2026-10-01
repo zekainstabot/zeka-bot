@@ -21,7 +21,6 @@ const {
 const {
   consumeCredit,
   releaseCredit,
-  shouldConsumeCredit,
 } = require("../services/credit.service");
 
 async function processJob(job) {
@@ -38,14 +37,15 @@ async function processJob(job) {
 
   let downloadedFilePath = null;
   let creditConsumed = false;
-  let consumeCreditForJob = true;
+
+  const reservedCost =
+    Number(job.reserved_cost || 0);
+
+  const consumeCreditForJob =
+    Number.isFinite(reservedCost) &&
+    reservedCost > 0;
 
   try {
-    consumeCreditForJob =
-      await shouldConsumeCredit(
-        job.user_id
-      );
-
     let result;
 
     if (job.platform === "instagram") {
