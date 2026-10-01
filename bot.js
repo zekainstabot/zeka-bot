@@ -18,6 +18,10 @@ const {
 } = require("./services/queue-recovery.service");
 
 const {
+  recoverDeliveredJobs,
+} = require("./services/delivery-recovery.service");
+
+const {
   createAdminHandler,
 } = require("./handlers/admin.handler");
 
