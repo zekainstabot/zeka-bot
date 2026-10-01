@@ -121,6 +121,34 @@ async function findPending(limit = 100) {
   return result.rows;
 }
 
+async function findRecoverable(limit = 100) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 100, 500)
+  );
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM jobs
+      WHERE status IN (
+        'WAITING',
+        'PROCESSING',
+        'DOWNLOADING'
+      )
+      ORDER BY
+        priority DESC,
+        created_at ASC
+      LIMIT $1
+    `,
+    [safeLimit]
+  );
+
+  return result.rows;
+}
+
 async function claim(id) {
   const db = getClient();
 
@@ -213,6 +241,7 @@ module.exports = {
   findByJobId,
   findByRequestId,
   findPending,
+  findRecoverable,
   claim,
   updateStatus,
   update,
