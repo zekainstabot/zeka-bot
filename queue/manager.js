@@ -1,6 +1,8 @@
 const queueConfig = require("../config/queue");
 const { processJob: defaultProcessJob } = require("../workers/job.worker");
 
+const jobRepository = require("../repositories/job.repository");
+
 const jobs = [];
 
 let activeJobs = 0;
