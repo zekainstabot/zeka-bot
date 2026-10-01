@@ -121,6 +121,26 @@ async function findPending(limit = 100) {
   return result.rows;
 }
 
+async function claim(id) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      UPDATE jobs
+      SET status = 'PROCESSING',
+          processing_at = COALESCE(processing_at, NOW()),
+          started_at = COALESCE(started_at, NOW()),
+          updated_at = NOW()
+      WHERE id = $1
+        AND status = 'WAITING'
+      RETURNING *
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function updateStatus(id, status) {
   const db = getClient();
 
@@ -193,6 +213,7 @@ module.exports = {
   findByJobId,
   findByRequestId,
   findPending,
+  claim,
   updateStatus,
   update,
 };
