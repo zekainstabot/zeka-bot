@@ -685,6 +685,12 @@ async function startBot() {
   const telegramBot =
     createBot();
 
+  console.log("Starting queue recovery...");
+
+  await recoverWaitingJobs();
+
+  console.log("Queue recovery finished.");
+
   await telegramBot.launch();
 
   console.log(
