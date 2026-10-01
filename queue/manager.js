@@ -1,6 +1,5 @@
 const queueConfig = require("../config/queue");
 const { processJob: defaultProcessJob } = require("../workers/job.worker");
-
 const jobRepository = require("../repositories/job.repository");
 
 const jobs = [];
@@ -74,23 +73,23 @@ async function processNext() {
   ) {
     const job = jobs.shift();
 
-activeJobs += 1;
+    activeJobs += 1;
 
-Promise.resolve()
-  .then(async () => {
-    const claimedJob = await jobRepository.claim(job.id);
+    Promise.resolve()
+      .then(async () => {
+        const claimedJob = await jobRepository.claim(job.id);
 
-    if (!claimedJob) {
-      console.log(
-        `Queue job skipped because it was already claimed: ${
-          job.job_id || job.id
-        }`
-      );
-      return;
-    }
+        if (!claimedJob) {
+          console.log(
+            `Queue job skipped because it was already claimed: ${
+              job.job_id || job.id
+            }`
+          );
+          return;
+        }
 
-    await processJob(claimedJob);
-  })
+        await processJob(claimedJob);
+      })
       .catch((error) => {
         console.error(
           `Queue job failed: ${job.job_id || job.id}`,
