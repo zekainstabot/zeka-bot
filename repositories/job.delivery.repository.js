@@ -1,4 +1,8 @@
-const db = require("../database");
+const {
+  getClient,
+} = require("../database/client");
+
+const db = getClient();
 
 async function createPending({
   jobId,
