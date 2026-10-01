@@ -88,11 +88,12 @@ async function createAndQueueJob({
         }
       );
 
-    queueManager.add(
-      updatedJob || job
-    );
+    const queuedJob =
+      updatedJob || job;
 
-    return updatedJob || job;
+    queueManager.add(queuedJob);
+
+    return queuedJob;
   } catch (error) {
     console.error(
       `Failed to queue job: ${
@@ -103,9 +104,7 @@ async function createAndQueueJob({
 
     if (creditReserved) {
       try {
-        await releaseCredit(
-          job.id
-        );
+        await releaseCredit(job.id);
       } catch (releaseError) {
         console.error(
           `Failed to release credit for job: ${
@@ -113,13 +112,46 @@ async function createAndQueueJob({
           }`,
           releaseError
         );
+
+        try {
+          await jobRepository.update(
+            job.id,
+            {
+              status: "WAITING",
+              reserved_cost: estimatedCost,
+              error_code: "CREDIT_RELEASE_FAILED",
+              error_message:
+                releaseError instanceof Error
+                  ? releaseError.message
+                  : String(releaseError),
+            }
+          );
+        } catch (jobUpdateError) {
+          console.error(
+            `Failed to preserve waiting job after credit release failure: ${
+              job.job_id || job.id
+            }`,
+            jobUpdateError
+          );
+        }
+
+        throw error;
       }
     }
 
     try {
-      await jobRepository.updateStatus(
+      await jobRepository.update(
         job.id,
-        "FAILED"
+        {
+          status: "FAILED",
+          error_code: "JOB_CREATION_FAILED",
+          error_message:
+            error instanceof Error
+              ? error.message
+              : String(
+                  error || "Failed to create job"
+                ),
+        }
       );
     } catch (statusError) {
       console.error(
