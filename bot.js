@@ -14,6 +14,10 @@ const {
 } = require("./services/delivery.service");
 
 const {
+  recoverWaitingJobs,
+} = require("./services/queue-recovery.service");
+
+const {
   createAdminHandler,
 } = require("./handlers/admin.handler");
 
