@@ -16,6 +16,8 @@ const {
 const {
   recoverJobs,
 } = require("./services/queue-recovery.service");
+
+const {
   createAdminHandler,
 } = require("./handlers/admin.handler");
 
