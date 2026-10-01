@@ -157,6 +157,15 @@ async function recover(id) {
       UPDATE jobs
       SET
         status = 'WAITING',
+        reserved_cost = COALESCE(
+          (
+            SELECT SUM(cr.amount)
+            FROM credit_reservations cr
+            WHERE cr.job_id = jobs.id
+              AND cr.status = 'RESERVED'
+          ),
+          0
+        ),
         retry_count = retry_count +
           CASE
             WHEN status IN (
