@@ -1766,6 +1766,15 @@ function createAdminQuizHandler(bot) {
     startAddQuestion
   );
 
+  function createAdminQuizHandler(bot) {
+  createReportsHandler({
+    bot,
+    quizAdminMenu,
+    startEditQuestion,
+  });
+
+  bot.hears(
+
   bot.hears(
     "📚 بانک سؤالات",
     handleQuestionBankMenu
