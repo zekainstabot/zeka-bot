@@ -78,6 +78,12 @@ function createBot() {
   mainMenu,
 });
 
+  createAccountHandler({
+  bot,
+  mainMenu,
+  accountMenu,
+});
+
   // =========================
   // ACCOUNT
   // =========================
