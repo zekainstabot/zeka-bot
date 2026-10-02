@@ -37,39 +37,6 @@ const cancelMenu = Markup.keyboard([
   [CANCEL_TEXT],
 ]).resize();
 
-function formatReportReason(reason) {
-  const reasons = {
-    WRONG_ANSWER:
-      "❌ جواب صحیح اشتباه است",
-
-    BAD_QUESTION:
-      "❓ متن سؤال مشکل دارد",
-
-    BAD_OPTIONS:
-      "🅰️🅱️ گزینه‌ها مشکل دارند",
-
-    DUPLICATE:
-      "🔄 سؤال تکراری است",
-
-    UNRELIABLE:
-      "⚠️ سؤال مبهم/غیرقابل‌اعتماد است",
-
-    OTHER:
-      "📝 سایر",
-  };
-
-  return (
-    reasons[reason] ||
-    reason ||
-    "نامشخص"
-  );
-}
-
-function formatQuestion(question) {
-  if (!question) {
-    return "❌ سؤال پیدا نشد.";
-  }
-
   return (
     `🆔 شناسه سؤال: ${question.id}\n\n` +
     `❓ ${question.question_text}\n\n` +
