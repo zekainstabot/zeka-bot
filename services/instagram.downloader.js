@@ -823,23 +823,6 @@ function isRateLimitError(error) {
   );
 }
 
-function createRateLimitError(
-  error
-) {
-  const rateLimitError =
-    new Error(
-      "Instagram rate limit: HTTP 429 Too Many Requests"
-    );
-
-  rateLimitError.code =
-    "INSTAGRAM_RATE_LIMITED";
-
-  rateLimitError.cause =
-    error;
-
-  return rateLimitError;
-}
-
 async function getInstagramMetadata(
   url
 ) {
