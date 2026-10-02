@@ -1763,13 +1763,7 @@ async function handleAdminQuizText(
    HANDLER REGISTRATION
 ========================================================= */
 
-function createAdminQuizHandler(bot) {
-  bot.hears(
-    "➕ افزودن سؤال",
-    startAddQuestion
-  );
-
-  function createAdminQuizHandler(bot) {
+ function createAdminQuizHandler(bot) {
   createReportsHandler({
     bot,
     quizAdminMenu,
@@ -1777,6 +1771,9 @@ function createAdminQuizHandler(bot) {
   });
 
   bot.hears(
+    "➕ افزودن سؤال",
+    startAddQuestion
+  );
 
   bot.hears(
     "📚 بانک سؤالات",
@@ -1793,7 +1790,7 @@ function createAdminQuizHandler(bot) {
         if (!telegramUserId) {
           return;
         }
-        
+
         await ctx.answerCbQuery();
 
         await sendQuestionBank(
@@ -2059,6 +2056,10 @@ function createAdminQuizHandler(bot) {
     handleAdminQuizText
   );
 }
+
+module.exports = {
+  createAdminQuizHandler,
+};
 
 module.exports = {
   createAdminQuizHandler,
