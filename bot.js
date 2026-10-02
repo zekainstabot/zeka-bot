@@ -41,21 +41,6 @@ const {
 
 let bot = null;
 
-const accountMenu = Markup.keyboard([
-  ["📊 اعتبار من", "🏆 سطح و XP"],
-  ["🌐 زبان", "👤 اطلاعات حساب"],
-  ["🔙 بازگشت"],
-])
-  .resize()
-  .persistent();
-
-const gamesMenu = Markup.keyboard([
-  ["🎡 گردونه شانس", "🧠 مسابقه"],
-  ["❌ لغو مسابقه", "🔙 بازگشت"],
-])
-  .resize()
-  .persistent();
-
 function createBot() {
   if (bot) {
     return bot;
