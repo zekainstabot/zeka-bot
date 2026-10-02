@@ -19,6 +19,10 @@ const {
 } = require("./services/delivery.service");
 
 const {
+  createAccountHandler,
+} = require("./handlers/account.handler");
+
+const {
   createBasicHandler,
 } = require("./handlers/basic.handler");
 
