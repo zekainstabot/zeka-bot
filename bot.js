@@ -69,6 +69,11 @@ function createBot() {
 
   createAdminHandler(bot);
 
+  createBasicHandler({
+  bot,
+  mainMenu,
+});
+
   // =========================
   // START
   // =========================
