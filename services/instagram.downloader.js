@@ -1096,9 +1096,6 @@ async function downloadInstagramMedia({
 
 module.exports = {
   downloadInstagramMedia,
-  getInstagramMetadata,
-  getInstagramPostHtml,
   extractInstagramShortcode,
-  detectInstagramMediaType,
   detectFileContentType,
 };
