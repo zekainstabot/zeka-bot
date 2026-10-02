@@ -37,6 +37,11 @@ const cancelMenu = Markup.keyboard([
   [CANCEL_TEXT],
 ]).resize();
 
+function formatQuestion(question) {
+  if (!question) {
+    return "❌ سؤال پیدا نشد.";
+  }
+
   return (
     `🆔 شناسه سؤال: ${question.id}\n\n` +
     `❓ ${question.question_text}\n\n` +
