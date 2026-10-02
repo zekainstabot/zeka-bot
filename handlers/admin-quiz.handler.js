@@ -6,12 +6,6 @@ const adminQuizService = require(
   "../services/admin-quiz.service"
 );
 
-const quizReportService = require(
-  "../services/quiz-report.service"
-);
-
-const adminQuizStates = new Map();
-
 const CANCEL_TEXT = "❌ لغو";
 
 const BANK_PAGE_SIZE = 5;
