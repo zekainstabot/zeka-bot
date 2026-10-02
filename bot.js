@@ -54,6 +54,10 @@ const {
 } = require("./handlers/pro.handler");
 
 const {
+  createFeaturesHandler,
+} = require("./handlers/features.handler");
+
+const {
   createAdminHandler,
 } = require("./handlers/admin.handler");
 
@@ -118,18 +122,9 @@ function createBot() {
     mainMenu,
   });
 
-  bot.hears("🛠 امکانات ویژه", async (ctx) => {
-    await ctx.reply(
-      "🛠 امکانات ویژه\n\n" +
-        "این بخش برای امکانات پیشرفته زکا در نظر گرفته شده است.\n\n" +
-        "📊 اطلاعات صفحات\n" +
-        "📦 آرشیو صفحات عمومی\n" +
-        "🎵 دانلود صوت\n" +
-        "👀 مانیتور صفحات\n" +
-        "📥 دانلود محتوای بیشتر\n\n" +
-        "این امکانات به‌مرور فعال می‌شوند.",
-      mainMenu
-    );
+  createFeaturesHandler({
+    bot,
+    mainMenu,
   });
 
   bot.hears("📚 راهنما", async (ctx) => {
