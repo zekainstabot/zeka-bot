@@ -1,4 +1,9 @@
-const { Telegraf, Markup } = require("telegraf");
+const { Telegraf } = require("telegraf");
+const {
+  mainMenu,
+  accountMenu,
+  gamesMenu,
+} = require("./config/bot-menus");
 
 const config = require("./config/app");
 const { close } = require("./database/client");
