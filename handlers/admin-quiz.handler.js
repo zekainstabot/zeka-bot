@@ -516,13 +516,13 @@ async function handleReportResolve(
       return;
     }
 
-   const state =
-  getState(telegramUserId);
+    const state =
+      getState(telegramUserId);
 
-const normalizedStatus =
-  String(status || "")
-    .trim()
-    .toUpperCase();
+    const normalizedStatus =
+      String(status || "")
+        .trim()
+        .toUpperCase();
 
     if (
       ![
@@ -636,12 +636,12 @@ function getBankState(
   }
 
   return {
-  mode: "BANK",
-  offset: 0,
-  status: "ACTIVE",
-  search: "",
-  categoryId: null,
-};
+    mode: "BANK",
+    offset: 0,
+    status: "ACTIVE",
+    search: "",
+    categoryId: null,
+  };
 }
 
 function buildBankButtons({
@@ -717,11 +717,11 @@ function buildBankButtons({
   ]);
 
   buttons.push([
-  Markup.button.callback(
-    "🏷️ فیلتر دسته‌بندی",
-    "quiz_admin_bank_category_filter"
-  ),
-]);
+    Markup.button.callback(
+      "🏷️ فیلتر دسته‌بندی",
+      "quiz_admin_bank_category_filter"
+    ),
+  ]);
 
   buttons.push([
     Markup.button.callback(
@@ -779,12 +779,12 @@ async function sendQuestionBank(
     state.status || "ACTIVE";
 
   const search =
-  state.search || "";
+    state.search || "";
 
-const categoryId =
-  state.categoryId || null;
+  const categoryId =
+    state.categoryId || null;
 
-const questions =
+  const questions =
     await adminQuizService.listQuestions(
       telegramUserId,
       {
@@ -797,14 +797,14 @@ const questions =
     );
 
   const total =
-  await adminQuizService.countQuestions(
-    telegramUserId,
-    {
-      search,
-      status,
-      categoryId,
-    }
-  );
+    await adminQuizService.countQuestions(
+      telegramUserId,
+      {
+        search,
+        status,
+        categoryId,
+      }
+    );
 
   state.mode = "BANK";
   state.offset = safeOffset;
@@ -1415,7 +1415,6 @@ async function startDirectEditQuestion(
 /* =========================================================
    REPORT-BASED EDIT
 ========================================================= */
-
 async function startEditQuestion(
   ctx,
   reportId
@@ -2131,10 +2130,6 @@ async function handleEditQuestionStep(
         return;
       }
 
-      /* -----------------------------------------
-         DIRECT EDIT
-      ----------------------------------------- */
-
       if (
         mode ===
         "EDIT_DIRECT"
@@ -2160,10 +2155,6 @@ async function handleEditQuestionStep(
 
         return;
       }
-
-      /* -----------------------------------------
-         REPORT EDIT
-      ----------------------------------------- */
 
       await ctx.reply(
         "✅ سؤال با موفقیت اصلاح شد.\n\n" +
@@ -2336,14 +2327,10 @@ async function handleAdminQuizText(
 ========================================================= */
 
 function createAdminQuizHandler(bot) {
-  /* ADD */
-
   bot.hears(
     "➕ افزودن سؤال",
     startAddQuestion
   );
-
-  /* QUESTION BANK */
 
   bot.hears(
     "📚 بانک سؤالات",
@@ -2404,72 +2391,72 @@ function createAdminQuizHandler(bot) {
   );
 
   bot.action(
-  "quiz_admin_bank_category_filter",
-  async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
+    "quiz_admin_bank_category_filter",
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
 
-      const telegramUserId =
-        ctx.from.id;
+        const telegramUserId =
+          ctx.from.id;
 
-      const categories =
-        await adminQuizService.listCategories(
-          telegramUserId
-        );
+        const categories =
+          await adminQuizService.listCategories(
+            telegramUserId
+          );
 
-      if (
-        !categories ||
-        categories.length === 0
-      ) {
+        if (
+          !categories ||
+          categories.length === 0
+        ) {
+          await ctx.reply(
+            "📚 هیچ دسته‌بندی‌ای پیدا نشد."
+          );
+
+          return;
+        }
+
+        const buttons =
+          categories.map(
+            (category) => [
+              Markup.button.callback(
+                `🏷️ ${category.name_fa}`,
+                `quiz_admin_bank_category:${category.id}`
+              ),
+            ]
+          );
+
+        buttons.push([
+          Markup.button.callback(
+            "❌ حذف فیلتر دسته‌بندی",
+            "quiz_admin_bank_category:CLEAR"
+          ),
+        ]);
+
+        buttons.push([
+          Markup.button.callback(
+            "🔙 برگشت",
+            "quiz_admin_bank_back"
+          ),
+        ]);
+
         await ctx.reply(
-          "📚 هیچ دسته‌بندی‌ای پیدا نشد."
+          "🏷️ دسته‌بندی را انتخاب کن:",
+          Markup.inlineKeyboard(
+            buttons
+          )
         );
-        return;
+      } catch (error) {
+        console.error(
+          "quiz category filter error:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ دریافت دسته‌بندی‌ها انجام نشد."
+        );
       }
-
-      const buttons =
-  categories.map(
-    (category) => [
-      Markup.button.callback(
-        `🏷️ ${category.name_fa}`,
-        `quiz_admin_bank_category:${category.id}`
-      ),
-    ]
-  );;
-
-      buttons.push([
-        Markup.button.callback(
-          "❌ حذف فیلتر دسته‌بندی",
-          "quiz_admin_bank_category:CLEAR"
-        ),
-      ]);
-
-      buttons.push([
-        Markup.button.callback(
-          "🔙 برگشت",
-          "quiz_admin_bank_back"
-        ),
-      ]);
-
-      await ctx.reply(
-        "🏷️ دسته‌بندی را انتخاب کن:",
-        Markup.inlineKeyboard(
-          buttons
-        )
-      );
-
-    } catch (error) {
-      console.error(
-        "quiz category filter error:",
-        error
-      );
-
-      await ctx.reply(
-        "❌ دریافت دسته‌بندی‌ها انجام نشد."
-      );
     }
-  }
-);
+  );
 
   bot.action(
     /^quiz_admin_bank_category:(.+)$/,
@@ -2489,9 +2476,12 @@ function createAdminQuizHandler(bot) {
           );
 
         state.categoryId =
-  selectedCategory === "CLEAR"
-    ? null
-    : Number(selectedCategory);
+          selectedCategory ===
+          "CLEAR"
+            ? null
+            : Number(
+                selectedCategory
+              );
 
         state.offset = 0;
 
@@ -2505,7 +2495,6 @@ function createAdminQuizHandler(bot) {
           telegramUserId,
           0
         );
-
       } catch (error) {
         console.error(
           "quiz category select error:",
@@ -2518,7 +2507,7 @@ function createAdminQuizHandler(bot) {
       }
     }
   );
-  
+
   bot.action(
     /^quiz_admin_bank_view:(\d+)$/,
     async (ctx) => {
@@ -2619,98 +2608,96 @@ function createAdminQuizHandler(bot) {
     }
   );
 
-  /* REPORTS */
-
   bot.hears(
-  "🚨 گزارش‌های سؤالات",
-  handleReportsMenu
-);
+    "🚨 گزارش‌های سؤالات",
+    handleReportsMenu
+  );
 
-bot.action(
-  "quiz_admin_reports_filter",
-  handleReportsFilter
-);
+  bot.action(
+    "quiz_admin_reports_filter",
+    handleReportsFilter
+  );
 
-bot.action(
-  "quiz_admin_reports_all",
-  async (ctx) => {
-    try {
-      const telegramUserId =
-        ctx.from?.id;
-
-      if (!telegramUserId) {
-        return;
-      }
-
-      await ctx.answerCbQuery();
-
-      await sendPendingReports(
-        ctx,
-        telegramUserId,
-        0,
-        null
-      );
-    } catch (error) {
-      console.error(
-        "Show all quiz reports failed:",
-        error
-      );
-
+  bot.action(
+    "quiz_admin_reports_all",
+    async (ctx) => {
       try {
-        await ctx.answerCbQuery(
-          "❌ دریافت گزارش‌ها انجام نشد.",
-          {
-            show_alert: true,
-          }
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        await sendPendingReports(
+          ctx,
+          telegramUserId,
+          0,
+          null
         );
-      } catch {}
-    }
-  }
-);
+      } catch (error) {
+        console.error(
+          "Show all quiz reports failed:",
+          error
+        );
 
-bot.action(
-  /^quiz_admin_reports_filter_select:(ALL|WRONG_ANSWER|BAD_QUESTION|BAD_OPTIONS|DUPLICATE|UNRELIABLE|OTHER)$/,
-  async (ctx) => {
-    try {
-      const telegramUserId =
-        ctx.from?.id;
-
-      if (!telegramUserId) {
-        return;
+        try {
+          await ctx.answerCbQuery(
+            "❌ دریافت گزارش‌ها انجام نشد.",
+            {
+              show_alert: true,
+            }
+          );
+        } catch {}
       }
-
-      await ctx.answerCbQuery();
-
-      const selected =
-        ctx.match[1];
-
-      await sendPendingReports(
-        ctx,
-        telegramUserId,
-        0,
-        selected === "ALL"
-          ? null
-          : selected
-      );
-    } catch (error) {
-      console.error(
-        "Select quiz report filter failed:",
-        error
-      );
-
-      try {
-        await ctx.answerCbQuery(
-          "❌ اعمال فیلتر انجام نشد.",
-          {
-            show_alert: true,
-          }
-        );
-      } catch {}
     }
-  }
-);
+  );
 
-    bot.action(
+  bot.action(
+    /^quiz_admin_reports_filter_select:(ALL|WRONG_ANSWER|BAD_QUESTION|BAD_OPTIONS|DUPLICATE|UNRELIABLE|OTHER)$/,
+    async (ctx) => {
+      try {
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        const selected =
+          ctx.match[1];
+
+        await sendPendingReports(
+          ctx,
+          telegramUserId,
+          0,
+          selected === "ALL"
+            ? null
+            : selected
+        );
+      } catch (error) {
+        console.error(
+          "Select quiz report filter failed:",
+          error
+        );
+
+        try {
+          await ctx.answerCbQuery(
+            "❌ اعمال فیلتر انجام نشد.",
+            {
+              show_alert: true,
+            }
+          );
+        } catch {}
+      }
+    }
+  );
+
+  bot.action(
     /^quiz_admin_reports:(\d+)$/,
     async (ctx) => {
       try {
@@ -2747,13 +2734,14 @@ bot.action(
           await ctx.answerCbQuery(
             "❌ دریافت گزارش‌ها انجام نشد.",
             {
-              show_alert: true
+              show_alert: true,
             }
           );
         } catch {}
       }
     }
   );
+
   bot.action(
     "quiz_admin_reports_back",
     async (ctx) => {
@@ -2810,8 +2798,6 @@ bot.action(
       );
     }
   );
-
-  /* TEXT */
 
   bot.on(
     "text",
