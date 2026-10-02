@@ -84,6 +84,11 @@ function createBot() {
   accountMenu,
 });
 
+    createGamesHandler({
+    bot,
+    gamesMenu,
+  });
+
   // =========================
   // GIFTS
   // =========================
