@@ -1,4 +1,5 @@
 const { Telegraf } = require("telegraf");
+
 const {
   mainMenu,
   accountMenu,
@@ -6,37 +7,47 @@ const {
 } = require("./config/bot-menus");
 
 const config = require("./config/app");
-const { close } = require("./database/client");
-const { register, shutdown } = require("./core/shutdown");
-const { getOrCreateUser } = require("./services/user.service");
-const { getAccountSummary } = require("./services/account.service");
-const { parseUrl } = require("./services/url.service");
+
+const {
+  close,
+} = require("./database/client");
+
+const {
+  register,
+  shutdown,
+} = require("./core/shutdown");
+
+const {
+  getOrCreateUser,
+} = require("./services/user.service");
+
+const {
+  parseUrl,
+} = require("./services/url.service");
+
 const {
   createDownloadRequest,
 } = require("./services/request.service");
+
 const {
   setBot: setDeliveryBot,
 } = require("./services/delivery.service");
-
-const {
-  createGamesHandler,
-} = require("./handlers/games.handler");
-
-const {
-  createAccountHandler,
-} = require("./handlers/account.handler");
 
 const {
   createBasicHandler,
 } = require("./handlers/basic.handler");
 
 const {
-  recoverJobs,
-} = require("./services/queue-recovery.service");
+  createAccountHandler,
+} = require("./handlers/account.handler");
 
 const {
-  recoverDeliveredJobs,
-} = require("./services/delivery-recovery.service");
+  createGamesHandler,
+} = require("./handlers/games.handler");
+
+const {
+  createGiftsHandler,
+} = require("./handlers/gifts.handler");
 
 const {
   createAdminHandler,
@@ -46,6 +57,14 @@ const {
   createQuizHandler,
   cleanupQuizTimers,
 } = require("./games/quiz/quiz.handler");
+
+const {
+  recoverJobs,
+} = require("./services/queue-recovery.service");
+
+const {
+  recoverDeliveredJobs,
+} = require("./services/delivery-recovery.service");
 
 let bot = null;
 
@@ -67,47 +86,28 @@ function createBot() {
     gamesMenu,
   });
 
-  // =========================
-  // ADMIN
-  // =========================
-
   createAdminHandler(bot);
 
   createBasicHandler({
-  bot,
-  mainMenu,
-});
+    bot,
+    mainMenu,
+  });
 
   createAccountHandler({
-  bot,
-  mainMenu,
-  accountMenu,
-});
+    bot,
+    mainMenu,
+    accountMenu,
+  });
 
-    createGamesHandler({
+  createGamesHandler({
     bot,
     gamesMenu,
   });
 
-  // =========================
-  // GIFTS
-  // =========================
-
-  bot.hears("🎁 هدایا", async (ctx) => {
-    await ctx.reply(
-      "🎁 هدایا\n\n" +
-        "به‌زودی بخش‌های زیر در این قسمت قرار می‌گیرند:\n\n" +
-        "👥 دعوت دوستان\n" +
-        "🎰 شانس\n" +
-        "🎯 مأموریت‌ها\n" +
-        "➕ درخواست اعتبار بیشتر",
-      mainMenu
-    );
+  createGiftsHandler({
+    bot,
+    mainMenu,
   });
-
-  // =========================
-  // PRO
-  // =========================
 
   bot.hears("⭐ زکا پرو", async (ctx) => {
     await ctx.reply(
@@ -121,10 +121,6 @@ function createBot() {
       mainMenu
     );
   });
-
-  // =========================
-  // SPECIAL FEATURES
-  // =========================
 
   bot.hears("🛠 امکانات ویژه", async (ctx) => {
     await ctx.reply(
@@ -140,10 +136,6 @@ function createBot() {
     );
   });
 
-  // =========================
-  // GUIDE
-  // =========================
-
   bot.hears("📚 راهنما", async (ctx) => {
     await ctx.reply(
       "📚 راهنمای استفاده از زکا\n\n" +
@@ -156,20 +148,12 @@ function createBot() {
     );
   });
 
-  // =========================
-  // BACK TO MAIN MENU
-  // =========================
-
   bot.hears("🔙 بازگشت", async (ctx) => {
     await ctx.reply(
       "🏠 منوی اصلی",
       mainMenu
     );
   });
-
-  // =========================
-  // TEXT / DOWNLOAD REQUEST
-  // =========================
 
   bot.on("text", async (ctx) => {
     const text =
@@ -199,7 +183,6 @@ function createBot() {
       "👤 اطلاعات حساب",
       "🔙 بازگشت",
 
-      // ADMIN
       "🧠 مدیریت مسابقه",
       "➕ افزودن سؤال",
       "🔙 پنل مدیریت",
@@ -253,7 +236,8 @@ function createBot() {
       const request =
         result.request;
 
-      const job = result.job;
+      const job =
+        result.job;
 
       await ctx.reply(
         `✅ درخواست شما ثبت شد.\n\n` +
@@ -306,10 +290,6 @@ function createBot() {
     }
   });
 
-  // =========================
-  // SHUTDOWN
-  // =========================
-
   register(async () => {
     cleanupQuizTimers();
 
@@ -327,10 +307,6 @@ function createBot() {
   return bot;
 }
 
-// =========================
-// PROCESS SIGNALS
-// =========================
-
 process.once(
   "SIGINT",
   async () => {
@@ -345,25 +321,30 @@ process.once(
   }
 );
 
-// =========================
-// START BOT
-// =========================
-
 async function startBot() {
   const telegramBot =
     createBot();
 
-  console.log("Starting delivery recovery...");
+  console.log(
+    "Starting delivery recovery..."
+  );
 
-await recoverDeliveredJobs();
+  await recoverDeliveredJobs();
 
-console.log("Delivery recovery finished.");
+  console.log(
+    "Delivery recovery finished."
+  );
 
-console.log("Starting queue recovery...");
+  console.log(
+    "Starting queue recovery..."
+  );
 
-await recoverJobs();
+  await recoverJobs();
 
-console.log("Queue recovery finished.");
+  console.log(
+    "Queue recovery finished."
+  );
+
   await telegramBot.launch();
 
   console.log(
