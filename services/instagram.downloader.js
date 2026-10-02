@@ -1154,62 +1154,16 @@ async function downloadInstagramMedia({
   /*
    * REEL / STORY / VIDEO
    *
-   * اول yt-dlp
+   * بدون دریافت metadata اضافی
+   * مستقیم yt-dlp
+   *
    * اگر 429 شد:
    * Browser fallback
    */
 
-  let metadata;
-
-  try {
-    metadata =
-      await getInstagramMetadata(
-        normalizedUrl
-      );
-  } catch (
-    error
-  ) {
-    if (
-      isRateLimitError(
-        error
-      )
-    ) {
-      console.log(
-        "Instagram metadata received HTTP 429."
-      );
-
-      console.log(
-        "Switching from yt-dlp to Browser fallback."
-      );
-
-      return await downloadWithBrowserFallback({
-        url:
-          normalizedUrl,
-
-        jobId,
-
-        contentType:
-          normalizedContentType,
-      });
-    }
-
-    throw error;
-  }
-
-  const mediaType =
-    detectInstagramMediaType(
-      metadata,
-      normalizedUrl
-    );
-
   console.log(
     "Instagram requested content type:",
     normalizedContentType
-  );
-
-  console.log(
-    "Instagram detected media type:",
-    mediaType
   );
 
   const format =
@@ -1323,7 +1277,8 @@ async function downloadInstagramMedia({
         filePath
       ),
 
-    mediaType,
+    mediaType:
+      normalizedContentType,
 
     finalCost:
       null,
