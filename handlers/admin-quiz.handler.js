@@ -375,13 +375,12 @@ async function sendQuestionBank(
   }
 
   const buttons =
-    buildBankButtons({
-      questions,
-      total,
-      offset: safeOffset,
-      status,
-      category,
-    });
+  buildBankButtons({
+    questions,
+    total,
+    offset: safeOffset,
+    status,
+  });
 
   if (
     ctx.callbackQuery &&
