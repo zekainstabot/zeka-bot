@@ -87,8 +87,7 @@ function buildBankButtons({
   questions,
   total,
   offset,
-  status,
-  category
+  status
 }) {
   const buttons = [];
 
