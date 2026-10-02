@@ -27,24 +27,6 @@ const cancelMenu = Markup.keyboard([
   [CANCEL_TEXT],
 ]).resize();
 
-function getState(userId) {
-  return (
-    adminQuizStates.get(userId) ||
-    null
-  );
-}
-
-function setState(userId, state) {
-  adminQuizStates.set(
-    userId,
-    state
-  );
-}
-
-function clearState(userId) {
-  adminQuizStates.delete(userId);
-}
-
 function formatReportReason(reason) {
   const reasons = {
     WRONG_ANSWER:
