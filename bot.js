@@ -62,6 +62,10 @@ const {
 } = require("./handlers/help.handler");
 
 const {
+  createNavigationHandler,
+} = require("./handlers/navigation.handler");
+
+const {
   createAdminHandler,
 } = require("./handlers/admin.handler");
 
@@ -136,11 +140,9 @@ function createBot() {
     mainMenu,
   });
 
-  bot.hears("🔙 بازگشت", async (ctx) => {
-    await ctx.reply(
-      "🏠 منوی اصلی",
-      mainMenu
-    );
+  createNavigationHandler({
+    bot,
+    mainMenu,
   });
 
   bot.on("text", async (ctx) => {
