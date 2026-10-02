@@ -41,15 +41,6 @@ const {
 
 let bot = null;
 
-const mainMenu = Markup.keyboard([
-  ["📥 دانلود", "👤 حساب من"],
-  ["🎁 هدایا", "⭐ زکا پرو"],
-  ["🎮 مینی‌گیم‌ها", "🛠 امکانات ویژه"],
-  ["📚 راهنما"],
-])
-  .resize()
-  .persistent();
-
 const accountMenu = Markup.keyboard([
   ["📊 اعتبار من", "🏆 سطح و XP"],
   ["🌐 زبان", "👤 اطلاعات حساب"],
