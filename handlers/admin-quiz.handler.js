@@ -1815,6 +1815,12 @@ function createAdminQuizHandler(bot) {
           return;
         }
 
+          createReportsHandler({
+    bot,
+    quizAdminMenu,
+    startEditQuestion,
+  });
+
         await ctx.answerCbQuery();
 
         await sendQuestionBank(
