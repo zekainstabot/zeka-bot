@@ -85,42 +85,6 @@ function createBot() {
 });
 
   // =========================
-  // ACCOUNT
-  // =========================
-
-  bot.hears("👤 حساب من", async (ctx) => {
-    try {
-      const user = await getOrCreateUser(ctx.from);
-      const account = await getAccountSummary(user);
-
-      const proStatus = account.isPro
-        ? "⭐ فعال"
-        : "❌ فعال نیست";
-
-      await ctx.reply(
-        "👤 حساب من\n\n" +
-          `👤 نام: ${
-            account.displayName || "ثبت نشده"
-          }\n` +
-          `🆔 شناسه: ${account.telegramUserId}\n\n` +
-          `💳 اعتبار: ${account.credit}\n` +
-          `🏆 سطح: ${account.level}\n` +
-          `✨ XP: ${account.xp}\n` +
-          `🔥 روزهای فعال متوالی: ${account.streakDays}\n\n` +
-          `⭐ زکا پرو: ${proStatus}`,
-        accountMenu
-      );
-    } catch (error) {
-      console.error("Account menu failed:", error);
-
-      await ctx.reply(
-        "❌ دریافت اطلاعات حساب انجام نشد.\nلطفاً دوباره تلاش کنید.",
-        mainMenu
-      );
-    }
-  });
-
-  // =========================
   // GIFTS
   // =========================
 
