@@ -2060,7 +2060,3 @@ async function handleAdminQuizText(
 module.exports = {
   createAdminQuizHandler,
 };
-
-module.exports = {
-  createAdminQuizHandler,
-};
