@@ -12,6 +12,16 @@ const adminQuizService = require(
   "../services/admin-quiz.service"
 );
 
+const quizReportService = require(
+  "../services/quiz-report.service"
+);
+
+const {
+  createReportsHandler,
+} = require(
+  "./admin-quiz/reports.handler"
+);
+
 const CANCEL_TEXT = "❌ لغو";
 
 const BANK_PAGE_SIZE = 5;
