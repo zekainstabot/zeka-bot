@@ -1781,13 +1781,7 @@ function createAdminQuizHandler(bot) {
         if (!telegramUserId) {
           return;
         }
-
-          createReportsHandler({
-    bot,
-    quizAdminMenu,
-    startEditQuestion,
-  });
-
+        
         await ctx.answerCbQuery();
 
         await sendQuestionBank(
