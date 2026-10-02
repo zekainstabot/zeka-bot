@@ -43,10 +43,6 @@ const {
 } = require("./handlers/admin.handler");
 
 const {
-  startSpin,
-} = require("./games/wheel/wheel.service");
-
-const {
   createQuizHandler,
   cleanupQuizTimers,
 } = require("./games/quiz/quiz.handler");
