@@ -19,6 +19,10 @@ const {
 } = require("./services/delivery.service");
 
 const {
+  createGamesHandler,
+} = require("./handlers/games.handler");
+
+const {
   createAccountHandler,
 } = require("./handlers/account.handler");
 
