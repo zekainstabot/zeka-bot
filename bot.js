@@ -19,6 +19,10 @@ const {
 } = require("./services/delivery.service");
 
 const {
+  createBasicHandler,
+} = require("./handlers/basic.handler");
+
+const {
   recoverJobs,
 } = require("./services/queue-recovery.service");
 
