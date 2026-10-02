@@ -2,6 +2,12 @@ const {
   Markup,
 } = require("telegraf");
 
+const {
+  getState,
+  setState,
+  clearState,
+} = require("./admin-quiz/state");
+
 const adminQuizService = require(
   "../services/admin-quiz.service"
 );
