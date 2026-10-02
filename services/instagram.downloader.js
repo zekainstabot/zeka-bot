@@ -823,63 +823,6 @@ function isRateLimitError(error) {
   );
 }
 
-async function getInstagramMetadata(
-  url
-) {
-  console.log(
-    "Instagram metadata extraction started"
-  );
-
-  try {
-    const metadata =
-      await ytdlp(
-        url,
-        {
-          noPlaylist:
-            true,
-
-          noWarnings:
-            true,
-
-          dumpSingleJson:
-            true,
-
-          skipDownload:
-            true,
-        }
-      );
-
-    console.log(
-      "Instagram metadata extraction completed"
-    );
-
-    return metadata;
-  } catch (
-    error
-  ) {
-    const message =
-      error?.message ||
-      String(error || "");
-
-    console.log(
-      "Instagram metadata extraction failed:",
-      message
-    );
-
-    if (
-      isRateLimitError(
-        error
-      )
-    ) {
-      throw createRateLimitError(
-        error
-      );
-    }
-
-    return null;
-  }
-}
-
 async function downloadWithBrowserFallback({
   url,
   jobId,
