@@ -13,6 +13,7 @@ const quizReportService = require(
 const {
   getState,
   setState,
+  clearState,
 } = require("./state");
 
 function formatReportReason(reason) {
@@ -58,11 +59,7 @@ function formatQuestion(question) {
     `✅ پاسخ صحیح: ${question.correct_option}\n` +
     `🏷️ دسته‌بندی: ${question.category || "نامشخص"}\n` +
     `🎯 سختی: ${question.difficulty || "نامشخص"}\n` +
-    `📌 وضعیت: ${
-      question.question_status ||
-      question.status ||
-      "نامشخص"
-    }\n` +
+    `📌 وضعیت: ${question.question_status || question.status || "نامشخص"}\n` +
     `💡 توضیح: ${question.explanation || "ندارد"}`
   );
 }
@@ -569,10 +566,207 @@ async function handleReportResolve(
   }
 }
 
+function createReportsHandler({
+  bot,
+  quizAdminMenu,
+  startEditQuestion,
+}) {
+  bot.hears(
+    "🚨 گزارش‌های سؤالات",
+    handleReportsMenu
+  );
+
+  bot.action(
+    "quiz_admin_reports_filter",
+    handleReportsFilter
+  );
+
+  bot.action(
+    "quiz_admin_reports_all",
+    async (ctx) => {
+      try {
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        await sendPendingReports(
+          ctx,
+          telegramUserId,
+          0,
+          null
+        );
+      } catch (error) {
+        console.error(
+          "Show all quiz reports failed:",
+          error
+        );
+
+        try {
+          await ctx.answerCbQuery(
+            "❌ دریافت گزارش‌ها انجام نشد.",
+            {
+              show_alert: true,
+            }
+          );
+        } catch {}
+      }
+    }
+  );
+
+  bot.action(
+    /^quiz_admin_reports_filter_select:(ALL|WRONG_ANSWER|BAD_QUESTION|BAD_OPTIONS|DUPLICATE|UNRELIABLE|OTHER)$/,
+    async (ctx) => {
+      try {
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        const selected =
+          ctx.match[1];
+
+        await sendPendingReports(
+          ctx,
+          telegramUserId,
+          0,
+          selected === "ALL"
+            ? null
+            : selected
+        );
+      } catch (error) {
+        console.error(
+          "Select quiz report filter failed:",
+          error
+        );
+
+        try {
+          await ctx.answerCbQuery(
+            "❌ اعمال فیلتر انجام نشد.",
+            {
+              show_alert: true,
+            }
+          );
+        } catch {}
+      }
+    }
+  );
+
+  bot.action(
+    /^quiz_admin_reports:(\d+)$/,
+    async (ctx) => {
+      try {
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        const offset =
+          Number(
+            ctx.match[1]
+          );
+
+        await ctx.answerCbQuery();
+
+        const state =
+          getState(telegramUserId);
+
+        await sendPendingReports(
+          ctx,
+          telegramUserId,
+          offset,
+          state?.reason || null
+        );
+      } catch (error) {
+        console.error(
+          "Quiz admin reports pagination failed:",
+          error
+        );
+
+        try {
+          await ctx.answerCbQuery(
+            "❌ دریافت گزارش‌ها انجام نشد.",
+            {
+              show_alert: true,
+            }
+          );
+        } catch {}
+      }
+    }
+  );
+
+  bot.action(
+    "quiz_admin_reports_back",
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        clearState(
+          ctx.from?.id
+        );
+
+        await ctx.reply(
+          "🧠 مدیریت مسابقه\n\n" +
+            "بخش موردنظر را انتخاب کنید.",
+          quizAdminMenu
+        );
+      } catch (error) {
+        console.error(
+          "Quiz admin reports back failed:",
+          error
+        );
+      }
+    }
+  );
+
+  bot.action(
+    /^quiz_admin_report_view:(\d+)$/,
+    async (ctx) => {
+      await handleReportView(
+        ctx,
+        Number(
+          ctx.match[1]
+        )
+      );
+    }
+  );
+
+  bot.action(
+    /^quiz_admin_report_edit:(\d+)$/,
+    async (ctx) => {
+      await startEditQuestion(
+        ctx,
+        Number(
+          ctx.match[1]
+        )
+      );
+    }
+  );
+
+  bot.action(
+    /^quiz_admin_report_resolve:(\d+):(RESOLVED|REJECTED)$/,
+    async (ctx) => {
+      await handleReportResolve(
+        ctx,
+        Number(
+          ctx.match[1]
+        ),
+        ctx.match[2]
+      );
+    }
+  );
+}
+
 module.exports = {
-  handleReportsMenu,
-  handleReportsFilter,
-  sendPendingReports,
-  handleReportView,
-  handleReportResolve,
+  createReportsHandler,
 };
