@@ -190,10 +190,10 @@ async function handleBackToAdmin(
   await ctx.reply(
     "🛠️ پنل ادمین",
     Markup.keyboard([
-      ["🧠 مدیریت مسابقه"],
-      ["🔙 خروج از پنل مدیریت"],
-    ]).resize()
-  );
+  ["🧠 مدیریت مسابقه"],
+  ["🔮 مدیریت فال"],
+  ["🔙 خروج از پنل مدیریت"],
+]).resize()
 }
 
 function createAdminHandler(
