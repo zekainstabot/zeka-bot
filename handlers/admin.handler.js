@@ -72,10 +72,10 @@ async function handleAdminCommand(
         `👤 Role: ${admin.role_name}\n\n` +
         "از منوی زیر بخش موردنظر را انتخاب کنید.",
       Markup.keyboard([
-        ["🧠 مدیریت مسابقه"],
-        ["🔙 خروج از پنل مدیریت"],
-      ]).resize()
-    );
+  ["🧠 مدیریت مسابقه"],
+  ["🔮 مدیریت فال"],
+  ["🔙 خروج از پنل مدیریت"],
+]).resize()
   } catch (error) {
     console.error(
       "Admin command failed:",
