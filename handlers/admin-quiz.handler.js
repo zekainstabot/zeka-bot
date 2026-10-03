@@ -2042,6 +2042,11 @@ function createAdminQuizHandler(
     handleQuestionBankMenu
   );
 
+  bot.hears(
+  IMPORT_BUTTON,
+  handleImportQuestionsMenu
+);
+
   bot.action(
     /^quiz_admin_bank:(\d+)$/,
     async (ctx) => {
