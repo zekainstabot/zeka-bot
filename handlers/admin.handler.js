@@ -8,12 +8,19 @@ const {
 } = require("../services/admin.service");
 
 const {
+  setSetting,
+  getSetting,
+} = require("../services/settings.service");
+
+const {
   createAdminQuizHandler,
 } = require("./admin-quiz.handler");
 
 const {
   createAdminProHandler,
 } = require("./admin-pro.handler");
+
+const reportAdminStates = new Map();
 
 function buildAdminMenu(admin) {
   const buttons = [
@@ -26,6 +33,10 @@ function buildAdminMenu(admin) {
   ) {
     buttons.push([
       "💎 مدیریت Pro",
+    ]);
+
+    buttons.push([
+      "🐞 تنظیم ادمین گزارش",
     ]);
   }
 
@@ -251,6 +262,173 @@ async function handleProAdminMenu(ctx) {
   }
 }
 
+async function handleReportAdminMenu(ctx) {
+  try {
+    const telegramUserId =
+      ctx.from?.id;
+
+    if (!telegramUserId) {
+      return;
+    }
+
+    const admin =
+      await getAdminByTelegramId(
+        telegramUserId
+      );
+
+    if (
+      !admin ||
+      !admin.is_active
+    ) {
+      await ctx.reply(
+        "⛔ شما دسترسی به پنل مدیریت ندارید."
+      );
+
+      return;
+    }
+
+    if (
+      admin.role_key !==
+      "super_admin"
+    ) {
+      await ctx.reply(
+        "⛔ فقط Super Admin می‌تواند ادمین گزارش را تنظیم کند."
+      );
+
+      return;
+    }
+
+    const currentAdminId =
+      await getSetting(
+        "support.report_admin_id",
+        ""
+      );
+
+    const currentText =
+      currentAdminId
+        ? String(currentAdminId)
+        : "تنظیم نشده";
+
+    reportAdminStates.set(
+      String(telegramUserId),
+      {
+        createdAt: Date.now(),
+      }
+    );
+
+    await ctx.reply(
+      "🐞 تنظیم ادمین گزارش\n\n" +
+        `🆔 ادمین فعلی: ${currentText}\n\n` +
+        "شناسه عددی تلگرام ادمینی که باید گزارش‌ها را دریافت کند ارسال کن.\n\n" +
+        "مثال:\n" +
+        "123456789\n\n" +
+        "⏱️ تا 10 دقیقه فرصت داری."
+    );
+  } catch (error) {
+    console.error(
+      "Report admin menu failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ تنظیم ادمین گزارش انجام نشد."
+    );
+  }
+}
+
+async function handleReportAdminText(ctx) {
+  const telegramUserId =
+    ctx.from?.id;
+
+  if (!telegramUserId) {
+    return false;
+  }
+
+  const state =
+    reportAdminStates.get(
+      String(telegramUserId)
+    );
+
+  if (!state) {
+    return false;
+  }
+
+  reportAdminStates.delete(
+    String(telegramUserId)
+  );
+
+  const admin =
+    await getAdminByTelegramId(
+      telegramUserId
+    );
+
+  if (
+    !admin ||
+    !admin.is_active ||
+    admin.role_key !== "super_admin"
+  ) {
+    await ctx.reply(
+      "⛔ فقط Super Admin می‌تواند ادمین گزارش را تنظیم کند."
+    );
+
+    return true;
+  }
+
+  if (
+    Date.now() - state.createdAt >
+    10 * 60 * 1000
+  ) {
+    await ctx.reply(
+      "⏱️ زمان تنظیم ادمین گزارش تمام شده است.\nلطفاً دوباره وارد بخش تنظیم ادمین گزارش شو."
+    );
+
+    return true;
+  }
+
+  const reportAdminId =
+    String(
+      ctx.message?.text || ""
+    ).trim();
+
+  if (
+    !/^\d+$/.test(reportAdminId)
+  ) {
+    await ctx.reply(
+      "❌ شناسه نامعتبر است.\n\n" +
+        "فقط ID عددی تلگرام را ارسال کن.\n\n" +
+        "مثال:\n" +
+        "123456789"
+    );
+
+    return true;
+  }
+
+  try {
+    await setSetting(
+      "support.report_admin_id",
+      reportAdminId
+    );
+
+    await ctx.reply(
+      "✅ ادمین گزارش با موفقیت تنظیم شد.\n\n" +
+        `🆔 شناسه دریافت‌کننده: ${reportAdminId}\n\n` +
+        "از این به بعد گزارش‌های دانلود برای این ادمین ارسال می‌شود.",
+      buildAdminMenu(admin)
+    );
+  } catch (error) {
+    console.error(
+      "Failed to save report admin:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ ذخیره ادمین گزارش انجام نشد."
+    );
+  }
+
+  return true;
+}
+
 function createAdminHandler(bot) {
   bot.command(
     "admin",
@@ -268,6 +446,11 @@ function createAdminHandler(bot) {
   );
 
   bot.hears(
+    "🐞 تنظیم ادمین گزارش",
+    handleReportAdminMenu
+  );
+
+  bot.hears(
     "🔙 پنل مدیریت",
     handleBackToAdmin
   );
@@ -275,6 +458,24 @@ function createAdminHandler(bot) {
   bot.hears(
     "🔙 خروج از پنل مدیریت",
     handleAdminExit
+  );
+
+  bot.on(
+    "text",
+    async (ctx, next) => {
+      const handled =
+        await handleReportAdminText(
+          ctx
+        );
+
+      if (handled) {
+        return;
+      }
+
+      if (typeof next === "function") {
+        return next();
+      }
+    }
   );
 
   createAdminQuizHandler(bot);
