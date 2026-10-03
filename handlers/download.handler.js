@@ -14,6 +14,10 @@ function createDownloadHandler({
     createDownloadRequest,
   } = require("../services/request.service");
 
+  const {
+    sendDownloadReport,
+  } = require("../services/report.service");
+
   const jobRepository =
     require("../repositories/job.repository");
 
@@ -38,7 +42,7 @@ function createDownloadHandler({
     ).padStart(2, "0")}`;
   }
 
-  function statusKeyboard() {
+  function statusKeyboard(jobId) {
     return {
       reply_markup: {
         inline_keyboard: [
@@ -46,7 +50,7 @@ function createDownloadHandler({
             {
               text: "🐞 گزارش اشکال",
               callback_data:
-                "download_report",
+                `download_report:${jobId}`,
             },
           ],
         ],
@@ -152,7 +156,7 @@ function createDownloadHandler({
                   elapsed
                 )}\n\n` +
                 "اگر مشکل ادامه داشت، گزارش اشکال را بزن.",
-              statusKeyboard()
+              statusKeyboard(job.id)
             );
           } catch (error) {
             console.error(
@@ -198,7 +202,7 @@ function createDownloadHandler({
               `⏱ زمان: ${formatElapsed(
                 elapsed
               )}`,
-            statusKeyboard()
+            statusKeyboard(job.id)
           );
         } catch (error) {
           const message =
@@ -241,15 +245,53 @@ function createDownloadHandler({
   }
 
   bot.action(
-    "download_report",
+    /^download_report:(.+)$/,
     async (ctx) => {
       try {
         await ctx.answerCbQuery();
+
+        const jobId =
+          String(
+            ctx.match?.[1] || ""
+          ).trim();
+
+        if (!jobId) {
+          await ctx.reply(
+            "❌ اطلاعات درخواست دانلود پیدا نشد.",
+            mainMenu
+          );
+
+          return;
+        }
+
+        const job =
+          await jobRepository.findById(
+            jobId
+          );
+
+        if (!job) {
+          await ctx.reply(
+            "❌ اطلاعات این دانلود دیگر در دسترس نیست.",
+            mainMenu
+          );
+
+          return;
+        }
+
+        const user =
+          await getOrCreateUser(
+            ctx.from
+          );
 
         reportStates.set(
           String(ctx.from.id),
           {
             chatId: ctx.chat.id,
+            jobId: job.id,
+            originalUrl:
+              job.original_url ||
+              "ثبت نشده",
+            user,
             createdAt: Date.now(),
           }
         );
@@ -268,6 +310,11 @@ function createDownloadHandler({
         console.error(
           "Download report action failed:",
           error
+        );
+
+        await ctx.reply(
+          "❌ ثبت گزارش انجام نشد.\nلطفاً دوباره تلاش کن.",
+          mainMenu
         );
       }
     }
@@ -310,21 +357,47 @@ function createDownloadHandler({
         return;
       }
 
-      await ctx.reply(
-        "✅ گزارش شما دریافت شد.\n\n" +
-          "مشکل ثبت شد و در بررسی‌های بعدی استفاده می‌شود.",
-        mainMenu
-      );
+      try {
+        const user =
+          reportState.user ||
+          await getOrCreateUser(
+            ctx.from
+          );
 
-      console.log(
-        "Download report received:",
-        {
-          userId,
-          chatId:
-            reportState.chatId,
-          report: text,
+        const result =
+          await sendDownloadReport({
+            user,
+            report: text,
+            originalUrl:
+              reportState.originalUrl,
+            jobId:
+              reportState.jobId,
+          });
+
+        if (result.sent) {
+          await ctx.reply(
+            "✅ گزارش شما ارسال شد.\n\n" +
+              "گزارش برای ادمین زکا ارسال شد و بررسی می‌شود.",
+            mainMenu
+          );
+        } else {
+          await ctx.reply(
+            "⚠️ گزارش شما دریافت شد، اما ارسال آن برای ادمین انجام نشد.\n\n" +
+              "لطفاً بعداً دوباره تلاش کن.",
+            mainMenu
+          );
         }
-      );
+      } catch (error) {
+        console.error(
+          "Download report submission failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ ارسال گزارش انجام نشد.\nلطفاً دوباره تلاش کن.",
+          mainMenu
+        );
+      }
 
       return;
     }
@@ -407,7 +480,7 @@ function createDownloadHandler({
           "⏳ درخواستت ثبت شد.\n\n" +
             "⚙️ در حال آماده‌سازی فایل...\n\n" +
             "⏱ زمان: 00:00",
-          statusKeyboard()
+          statusKeyboard(job.id)
         );
 
       watchJob({
