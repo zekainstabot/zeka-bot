@@ -72,10 +72,11 @@ async function handleAdminCommand(
         `👤 Role: ${admin.role_name}\n\n` +
         "از منوی زیر بخش موردنظر را انتخاب کنید.",
       Markup.keyboard([
-  ["🧠 مدیریت مسابقه"],
-  ["🔮 مدیریت فال"],
-  ["🔙 خروج از پنل مدیریت"],
-]).resize()
+        ["🧠 مدیریت مسابقه"],
+        ["🔮 مدیریت فال"],
+        ["🔙 خروج از پنل مدیریت"],
+      ]).resize()
+    );
   } catch (error) {
     console.error(
       "Admin command failed:",
@@ -189,13 +190,13 @@ async function handleBackToAdmin(
 
   await ctx.reply(
     "🛠️ پنل ادمین",
-
     Markup.keyboard([
-  ["🧠 مدیریت مسابقه"],
-  ["🔮 مدیریت فال"],
-  ["🔙 خروج از پنل مدیریت"],
-]).resize()
-);
+      ["🧠 مدیریت مسابقه"],
+      ["🔮 مدیریت فال"],
+      ["🔙 خروج از پنل مدیریت"],
+    ]).resize()
+  );
+}
 
 function createAdminHandler(
   bot
@@ -220,9 +221,13 @@ function createAdminHandler(
     handleAdminExit
   );
 
-  createAdminFortuneHandler(bot);
+  createAdminFortuneHandler(
+    bot
+  );
 
-  createAdminQuizHandler(bot);
+  createAdminQuizHandler(
+    bot
+  );
 }
 
 module.exports = {
