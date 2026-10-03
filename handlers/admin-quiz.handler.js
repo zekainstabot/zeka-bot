@@ -12,6 +12,12 @@ const adminQuizService = require(
   "../services/admin-quiz.service"
 );
 
+const {
+  importFromUrl,
+} = require(
+  "../services/admin-quiz-import.service"
+);
+
 const quizReportService = require(
   "../services/quiz-report.service"
 );
