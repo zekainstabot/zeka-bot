@@ -2027,10 +2027,11 @@ function createAdminQuizHandler(
   bot
 ) {
   createReportsHandler({
-    bot,
-    quizAdminMenu,
-    startEditQuestion,
-  });
+  bot,
+  quizAdminMenu,
+  startEditQuestion:
+    startDirectEditQuestion,
+});
 
   bot.hears(
     "➕ افزودن سؤال",
