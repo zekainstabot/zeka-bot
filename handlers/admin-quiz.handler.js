@@ -30,39 +30,6 @@ const CANCEL_TEXT = "❌ لغو";
 
 const BANK_PAGE_SIZE = 5;
 
-const importStates = new Map();
-
-const IMPORT_BUTTON =
-  "📥 ورود سؤال از سایت";
-
-function getImportState(
-  telegramUserId
-) {
-  return (
-    importStates.get(
-      telegramUserId
-    ) || null
-  );
-}
-
-function setImportState(
-  telegramUserId,
-  state
-) {
-  importStates.set(
-    telegramUserId,
-    state
-  );
-}
-
-function clearImportState(
-  telegramUserId
-) {
-  importStates.delete(
-    telegramUserId
-  );
-}
-
 function importCancelMenu() {
   return Markup.keyboard([
     ["❌ لغو"],
