@@ -2306,10 +2306,10 @@ function createAdminQuizHandler(
         );
 
         await ctx.reply(
-          "🧠 مدیریت مسابقه\n\n" +
-            "بخش موردنظر را انتخاب کنید.",
-          await quizAdminMenu(ctx)
-        );
+  "🧠 مدیریت مسابقه\n\n" +
+    "بخش موردنظر را انتخاب کنید.",
+  await quizAdminMenu(ctx)
+);
       } catch (error) {
         console.error(
           "Quiz bank back failed:",
