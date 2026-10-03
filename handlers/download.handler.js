@@ -18,6 +18,7 @@ function createDownloadHandler({
     require("../repositories/job.repository");
 
   const activeWatchers = new Map();
+  const reportStates = new Map();
 
   function formatElapsed(seconds) {
     const safeSeconds = Math.max(
@@ -245,13 +246,23 @@ function createDownloadHandler({
       try {
         await ctx.answerCbQuery();
 
+        reportStates.set(
+          String(ctx.from.id),
+          {
+            chatId: ctx.chat.id,
+            createdAt: Date.now(),
+          }
+        );
+
         await ctx.reply(
           "🐞 گزارش اشکال\n\n" +
-            "لطفاً مشکل دانلود را در یک پیام بنویس.\n\n" +
+            "مشکلی که در دانلود داشتی را در یک پیام بنویس.\n\n" +
             "مثلاً:\n" +
-            "«فایل دانلود نشد.»\n" +
-            "«فایل باز نمی‌شود.»\n" +
-            "«دانلود خیلی طول کشید.»"
+            "• فایل دانلود نشد\n" +
+            "• فایل باز نمی‌شود\n" +
+            "• دانلود خیلی طول کشید\n" +
+            "• فایل ناقص است\n\n" +
+            "✏️ متن مشکلت را ارسال کن:"
         );
       } catch (error) {
         console.error(
@@ -266,10 +277,55 @@ function createDownloadHandler({
     const text =
       ctx.message.text.trim();
 
+    if (!text) {
+      return;
+    }
+
     if (
-      !text ||
       text.startsWith("/")
     ) {
+      return;
+    }
+
+    const userId =
+      String(ctx.from.id);
+
+    const reportState =
+      reportStates.get(userId);
+
+    if (reportState) {
+      reportStates.delete(userId);
+
+      if (
+        Date.now() -
+          reportState.createdAt >
+        10 * 60 * 1000
+      ) {
+        await ctx.reply(
+          "⏱ زمان ثبت گزارش تمام شده است.\n\n" +
+            "لطفاً دوباره روی «🐞 گزارش اشکال» بزن.",
+          mainMenu
+        );
+
+        return;
+      }
+
+      await ctx.reply(
+        "✅ گزارش شما دریافت شد.\n\n" +
+          "مشکل ثبت شد و در بررسی‌های بعدی استفاده می‌شود.",
+        mainMenu
+      );
+
+      console.log(
+        "Download report received:",
+        {
+          userId,
+          chatId:
+            reportState.chatId,
+          report: text,
+        }
+      );
+
       return;
     }
 
@@ -334,9 +390,11 @@ function createDownloadHandler({
       const result =
         await createDownloadRequest({
           userId: user.id,
-          platform: parsed.platform,
+          platform:
+            parsed.platform,
           originalUrl: text,
-          normalizedUrl: parsed.url,
+          normalizedUrl:
+            parsed.url,
           contentType:
             parsed.contentType,
         });
