@@ -14,7 +14,7 @@ const adminProMenu = Markup.keyboard([
   ["⭐ فعال‌سازی Pro", "⏳ تمدید Pro"],
   ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
   ["❌ لغو Pro"],
-  ["🔙 پنل مدیریت"],
+  ["🔙 پنل Super Admin"],
 ]).resize();
 
 const cancelMenu = Markup.keyboard([
