@@ -27,9 +27,16 @@ const {
   createAdminManagementHandler,
 } = require("./admin-management.handler");
 
-const reportAdminStates = new Map();
+const {
+  createAdminFortuneHandler,
+} = require("./admin-fortune.handler");
 
-async function getSuperAdmin(ctx) {
+const reportAdminStates =
+  new Map();
+
+async function getSuperAdmin(
+  ctx
+) {
   const telegramUserId =
     ctx.from?.id;
 
@@ -58,6 +65,7 @@ function buildSuperAdminMenu() {
   return Markup.keyboard([
     ["🛠 مدیریت ادمین"],
     ["🧠 مدیریت مسابقه"],
+    ["🔮 مدیریت فال"],
     ["💎 مدیریت Pro"],
     ["🐞 تنظیم ادمین گزارش"],
     ["🔙 خروج از پنل مدیریت"],
@@ -253,7 +261,9 @@ async function handleReportAdminText(
     ).trim();
 
   if (
-    !/^\d+$/.test(reportAdminId)
+    !/^\d+$/.test(
+      reportAdminId
+    )
   ) {
     await ctx.reply(
       "❌ فقط ID عددی تلگرام را ارسال کن.\n\n" +
@@ -375,7 +385,13 @@ function createSuperAdminHandler(
     bot
   );
 
-  createAdminProHandler(bot);
+  createAdminFortuneHandler(
+    bot
+  );
+
+  createAdminProHandler(
+    bot
+  );
 }
 
 module.exports = {
