@@ -4,7 +4,7 @@ const mainMenu = Markup.keyboard([
   ["📥 دانلود", "👤 حساب من"],
   ["🎁 هدایا", "⭐ زکا پرو"],
   ["🎮 مینی‌گیم‌ها", "🛠 امکانات ویژه"],
-  ["📚 راهنما"],
+  ["🔮 فال"],
 ])
   .resize()
   .persistent();
@@ -24,8 +24,18 @@ const gamesMenu = Markup.keyboard([
   .resize()
   .persistent();
 
+const fortuneMenu = Markup.keyboard([
+  ["📖 فال حافظ", "❤️ فال عشق"],
+  ["🌙 فال روزانه", "💰 فال مالی"],
+  ["🎯 فال نیت"],
+  ["🔙 بازگشت"],
+])
+  .resize()
+  .persistent();
+
 module.exports = {
   mainMenu,
   accountMenu,
   gamesMenu,
+  fortuneMenu,
 };
