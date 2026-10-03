@@ -6,6 +6,12 @@ const adminService = require(
   "../services/admin-management.service"
 );
 
+const {
+  setUserCommands,
+} = require(
+  "../services/command.service"
+);
+
 const states = new Map();
 
 const CANCEL_TEXT = "❌ لغو";
@@ -151,6 +157,25 @@ function startState(
   );
 }
 
+async function updateUserCommands(
+  ctx,
+  telegramUserId,
+  role
+) {
+  try {
+    await setUserCommands(
+      ctx.telegram,
+      telegramUserId,
+      role
+    );
+  } catch (error) {
+    console.error(
+      "Failed to update user commands:",
+      error
+    );
+  }
+}
+
 async function handleAdminManagementText(
   ctx,
   next
@@ -243,6 +268,12 @@ async function handleAdminManagementText(
         text
       );
 
+      await updateUserCommands(
+        ctx,
+        text,
+        "admin"
+      );
+
       await ctx.reply(
         "✅ کاربر با موفقیت به عنوان Admin اضافه شد.\n\n" +
           `🆔 ${text}`,
@@ -259,6 +290,12 @@ async function handleAdminManagementText(
       await adminService.setAdminActive(
         text,
         true
+      );
+
+      await updateUserCommands(
+        ctx,
+        text,
+        "admin"
       );
 
       await ctx.reply(
@@ -279,6 +316,12 @@ async function handleAdminManagementText(
         false
       );
 
+      await updateUserCommands(
+        ctx,
+        text,
+        "user"
+      );
+
       await ctx.reply(
         "🔴 ادمین غیرفعال شد.\n\n" +
           `🆔 ${text}`,
@@ -294,6 +337,12 @@ async function handleAdminManagementText(
     ) {
       await adminService.removeAdmin(
         text
+      );
+
+      await updateUserCommands(
+        ctx,
+        text,
+        "user"
       );
 
       await ctx.reply(
