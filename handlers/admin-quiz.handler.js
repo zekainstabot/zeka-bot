@@ -2319,13 +2319,13 @@ function createAdminQuizHandler(
   );
 
   bot.on(
-    "text",
-    handleAdminQuizText
-  );
-
-  bot.on(
   "text",
   handleImportQuestionsText
+);
+
+bot.on(
+  "text",
+  handleAdminQuizText
 );
 }
 
