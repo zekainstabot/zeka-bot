@@ -1,12 +1,27 @@
+const {
+  setUserCommands,
+} = require("../services/command.service");
+
 function createBasicHandler({
   bot,
   mainMenu,
 }) {
   bot.start(async (ctx) => {
     try {
-      const { getOrCreateUser } = require("../services/user.service");
+      const {
+        getOrCreateUser,
+      } = require("../services/user.service");
 
-      const user = await getOrCreateUser(ctx.from);
+      const user =
+        await getOrCreateUser(
+          ctx.from
+        );
+
+      await setUserCommands(
+        ctx.telegram,
+        ctx.from.id,
+        "user"
+      );
 
       const name =
         user.display_name ||
@@ -21,7 +36,10 @@ function createBasicHandler({
         mainMenu
       );
     } catch (error) {
-      console.error("Start handler failed:", error);
+      console.error(
+        "Start handler failed:",
+        error
+      );
 
       await ctx.reply(
         "❌ در ثبت اطلاعات شما مشکلی پیش آمد.\nلطفاً دوباره تلاش کنید."
@@ -39,15 +57,18 @@ function createBasicHandler({
     );
   });
 
-  bot.hears("📥 دانلود", async (ctx) => {
-    await ctx.reply(
-      "📥 دانلود\n\n" +
-        "لینک محتوایی که می‌خواهی دانلود شود را ارسال کن.\n\n" +
-        "مثال:\n" +
-        "https://www.instagram.com/...",
-      mainMenu
-    );
-  });
+  bot.hears(
+    "📥 دانلود",
+    async (ctx) => {
+      await ctx.reply(
+        "📥 دانلود\n\n" +
+          "لینک محتوایی که می‌خواهی دانلود شود را ارسال کن.\n\n" +
+          "مثال:\n" +
+          "https://www.instagram.com/...",
+        mainMenu
+      );
+    }
+  );
 }
 
 module.exports = {
