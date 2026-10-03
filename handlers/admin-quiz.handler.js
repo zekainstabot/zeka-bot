@@ -18,10 +18,6 @@ const {
   "../services/admin-quiz-import.service"
 );
 
-const quizReportService = require(
-  "../services/quiz-report.service"
-);
-
 const {
   createReportsHandler,
 } = require(
