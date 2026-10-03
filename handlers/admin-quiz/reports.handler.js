@@ -716,10 +716,10 @@ function createReportsHandler({
         );
 
         await ctx.reply(
-          "🧠 مدیریت مسابقه\n\n" +
-            "بخش موردنظر را انتخاب کنید.",
-          quizAdminMenu
-        );
+  "🧠 مدیریت مسابقه\n\n" +
+    "بخش موردنظر را انتخاب کنید.",
+  await quizAdminMenu(ctx)
+);
       } catch (error) {
         console.error(
           "Quiz admin reports back failed:",
