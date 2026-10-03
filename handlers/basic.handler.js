@@ -2,6 +2,10 @@ const {
   setUserCommands,
 } = require("../services/command.service");
 
+const {
+  getAdminByTelegramId,
+} = require("../services/admin.service");
+
 function createBasicHandler({
   bot,
   mainMenu,
@@ -17,10 +21,34 @@ function createBasicHandler({
           ctx.from
         );
 
+      const admin =
+        await getAdminByTelegramId(
+          ctx.from.id
+        );
+
+      let role = "user";
+
+      if (
+        admin &&
+        admin.is_active
+      ) {
+        if (
+          admin.role_key ===
+          "super_admin"
+        ) {
+          role = "super_admin";
+        } else if (
+          admin.role_key ===
+          "admin"
+        ) {
+          role = "admin";
+        }
+      }
+
       await setUserCommands(
         ctx.telegram,
         ctx.from.id,
-        "user"
+        role
       );
 
       const name =
