@@ -1798,6 +1798,231 @@ async function handleAdminQuizText(
    HANDLER REGISTRATION
 ========================================================= */
 
+async function handleImportQuestionsMenu(
+  ctx
+) {
+  const telegramUserId =
+    ctx.from?.id;
+
+  if (!telegramUserId) {
+    return;
+  }
+
+  try {
+    await adminQuizService.requireQuizPermission(
+      telegramUserId
+    );
+  } catch {
+    await ctx.reply(
+      "⛔ فقط Admin به این بخش دسترسی دارد."
+    );
+
+    return;
+  }
+
+  setImportState(
+    telegramUserId,
+    {
+      step: "URL",
+      createdAt: Date.now(),
+    }
+  );
+
+  await ctx.reply(
+    "📥 ورود سؤال از سایت\n\n" +
+      "لینک صفحه‌ای که سؤال‌ها داخل آن قرار دارند را ارسال کن.\n\n" +
+      "مثال:\n" +
+      "https://example.com/questions\n\n" +
+      "⏱️ تا 10 دقیقه فرصت داری.",
+    importCancelMenu()
+  );
+}
+
+async function handleImportQuestionsText(
+  ctx,
+  next
+) {
+  const telegramUserId =
+    ctx.from?.id;
+
+  if (!telegramUserId) {
+    return next();
+  }
+
+  const state =
+    getImportState(
+      telegramUserId
+    );
+
+  if (!state) {
+    return next();
+  }
+
+  const text =
+    String(
+      ctx.message?.text || ""
+    ).trim();
+
+  if (!text) {
+    return;
+  }
+
+  if (
+    text === "❌ لغو" ||
+    text === "/cancel"
+  ) {
+    clearImportState(
+      telegramUserId
+    );
+
+    await ctx.reply(
+      "❌ ورود سؤال‌ها لغو شد.",
+      await quizAdminMenu(ctx)
+    );
+
+    return;
+  }
+
+  if (
+    Date.now() -
+      state.createdAt >
+    10 * 60 * 1000
+  ) {
+    clearImportState(
+      telegramUserId
+    );
+
+    await ctx.reply(
+      "⏱️ زمان ورود سؤال‌ها تمام شده است.",
+      await quizAdminMenu(ctx)
+    );
+
+    return;
+  }
+
+  try {
+    await adminQuizService.requireQuizPermission(
+      telegramUserId
+    );
+  } catch {
+    clearImportState(
+      telegramUserId
+    );
+
+    await ctx.reply(
+      "⛔ دسترسی شما به این بخش وجود ندارد."
+    );
+
+    return;
+  }
+
+  if (
+    !/^https?:\/\//i.test(text)
+  ) {
+    await ctx.reply(
+      "❌ لینک معتبر نیست.\n\n" +
+        "لینک باید با http:// یا https:// شروع شود.",
+      importCancelMenu()
+    );
+
+    return;
+  }
+
+  await ctx.reply(
+    "⏳ در حال بررسی صفحه و استخراج سؤال‌ها..."
+  );
+
+  try {
+    const result =
+      await importFromUrl(
+        text
+      );
+
+    clearImportState(
+      telegramUserId
+    );
+
+    if (
+      !result.total
+    ) {
+      await ctx.reply(
+        "❌ هیچ سؤال چهارگزینه‌ای قابل استخراج پیدا نشد.\n\n" +
+          "ممکن است ساختار این سایت با فرمت فعلی سازگار نباشد.",
+        await quizAdminMenu(ctx)
+      );
+
+      return;
+    }
+
+    const preview =
+      result.questions
+        .slice(0, 5)
+        .map(
+          (question, index) => {
+            const options =
+              question.options
+                .map(
+                  (
+                    option,
+                    optionIndex
+                  ) =>
+                    `${String.fromCharCode(
+                      65 +
+                        optionIndex
+                    )}) ${option}`
+                )
+                .join("\n");
+
+            const answer =
+              question.correctOption ===
+              null
+                ? "نامشخص"
+                : String.fromCharCode(
+                    65 +
+                      question.correctOption
+                  );
+
+            return (
+              `${index + 1}. ${question.question}\n\n` +
+              `${options}\n\n` +
+              `✅ پاسخ استخراج‌شده: ${answer}`
+            );
+          }
+        )
+        .join(
+          "\n\n────────────\n\n"
+        );
+
+    await ctx.reply(
+      `📥 نتیجه استخراج\n\n` +
+        `🔢 تعداد سؤال پیدا‌شده: ${result.total}\n` +
+        `🔗 منبع: ${result.url}\n\n` +
+        `📋 پیش‌نمایش ۵ سؤال اول:\n\n` +
+        preview +
+        `\n\n⚠️ فعلاً هیچ سؤالی وارد بانک نشده است.`,
+      await quizAdminMenu(ctx)
+    );
+  } catch (error) {
+    console.error(
+      "Quiz import failed:",
+      error
+    );
+
+    clearImportState(
+      telegramUserId
+    );
+
+    await ctx.reply(
+      "❌ استخراج سؤال‌ها انجام نشد.\n\n" +
+        `خطا: ${
+          error.message ||
+          "خطای نامشخص"
+        }`,
+      await quizAdminMenu(ctx)
+    );
+  }
+}
+
 function createAdminQuizHandler(
   bot
 ) {
