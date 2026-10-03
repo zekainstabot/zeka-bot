@@ -398,12 +398,12 @@ async function sendQuestionBank(
   }
 
   const buttons =
-  buildBankButtons({
-    questions,
-    total,
-    offset: safeOffset,
-    status,
-  });
+    buildBankButtons({
+      questions,
+      total,
+      offset: safeOffset,
+      status,
+    });
 
   if (
     ctx.callbackQuery &&
@@ -872,118 +872,6 @@ async function startDirectEditQuestion(
     } catch {}
   }
 }
-
-/* =========================================================
-   REPORT-BASED EDIT
-========================================================= */
-async function startEditQuestion(
-  ctx,
-  reportId
-) {
-  try {
-    const telegramUserId =
-      ctx.from?.id;
-
-    if (!telegramUserId) {
-      return;
-    }
-
-    await ctx.answerCbQuery();
-
-    await adminQuizService.requireQuizPermission(
-      telegramUserId
-    );
-
-    const report =
-      await quizReportService.getReportById(
-        telegramUserId,
-        reportId
-      );
-
-    if (!report) {
-      await ctx.editMessageText(
-        "❌ گزارش پیدا نشد."
-      );
-
-      return;
-    }
-
-    if (
-      report.status !==
-      "PENDING"
-    ) {
-      await ctx.editMessageText(
-        "ℹ️ این گزارش قبلاً بررسی شده و دیگر قابل ویرایش از این بخش نیست."
-      );
-
-      return;
-    }
-
-    setState(
-      telegramUserId,
-      {
-        mode: "EDIT",
-        step: "question",
-        reportId:
-          report.id,
-        questionId:
-          report.question_id,
-        data: {
-          questionText:
-            report.question_text,
-          optionA:
-            report.option_a,
-          optionB:
-            report.option_b,
-          optionC:
-            report.option_c,
-          optionD:
-            report.option_d,
-          correctOption:
-            report.correct_option,
-          category:
-            report.category ||
-            "",
-          difficulty:
-            report.difficulty ||
-            "MEDIUM",
-          explanation:
-            report.explanation ||
-            null,
-        },
-      }
-    );
-
-    await ctx.reply(
-      "✏️ اصلاح سؤال\n\n" +
-        `🆔 شناسه سؤال: ${report.question_id}\n\n` +
-        "📝 متن جدید سؤال را ارسال کنید.\n\n" +
-        "مقدار فعلی:\n" +
-        `${report.question_text}\n\n` +
-        "برای لغو، «❌ لغو» را بزنید.",
-      cancelMenu
-    );
-  } catch (error) {
-    console.error(
-      "Start edit quiz question failed:",
-      error
-    );
-
-    try {
-      await ctx.answerCbQuery(
-        "❌ شروع ویرایش سؤال انجام نشد.",
-        {
-          show_alert: true,
-        }
-      );
-    } catch {}
-  }
-}
-
-/* =========================================================
-   ADD QUESTION
-========================================================= */
-
 async function startAddQuestion(
   ctx
 ) {
@@ -1293,7 +1181,7 @@ async function handleAddQuestionStep(
         "✅ سؤال با موفقیت ثبت شد.\n\n" +
           `🆔 شناسه سؤال: ${question.id}\n` +
           `📊 تعداد سؤالات فعال: ${total}`,
-        quizAdminMenu
+        await quizAdminMenu(ctx)
       );
 
       return;
@@ -1306,7 +1194,7 @@ async function handleAddQuestionStep(
 
       await ctx.reply(
         "⚠️ وضعیت افزودن سؤال نامعتبر بود و از ابتدا پاک شد.",
-        quizAdminMenu
+        await quizAdminMenu(ctx)
       );
 
       return;
@@ -1585,7 +1473,7 @@ async function handleEditQuestionStep(
       if (!updated) {
         await ctx.reply(
           "❌ سؤال پیدا نشد یا اصلاحات ذخیره نشد.",
-          quizAdminMenu
+          await quizAdminMenu(ctx)
         );
 
         return;
@@ -1654,11 +1542,88 @@ async function handleEditQuestionStep(
 
       await ctx.reply(
         "⚠️ وضعیت ویرایش نامعتبر بود و فرایند لغو شد.",
-        quizAdminMenu
+        await quizAdminMenu(ctx)
       );
 
       return;
     }
+  }
+}
+      await ctx.reply(
+        "❌ سؤال پیدا نشد یا اصلاحات ذخیره نشد.",
+        await quizAdminMenu(ctx)
+      );
+
+      return;
+    }
+
+    if (
+      mode ===
+      "EDIT_DIRECT"
+    ) {
+      await ctx.reply(
+        "✅ سؤال با موفقیت اصلاح شد.\n\n" +
+          `🆔 شناسه سؤال: ${updated.id}`,
+        Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "👀 مشاهده سؤال",
+              `quiz_admin_bank_view:${updated.id}`
+            ),
+          ],
+          [
+            Markup.button.callback(
+              "🔙 بانک سؤالات",
+              "quiz_admin_bank_back_list"
+            ),
+          ],
+        ])
+      );
+
+      return;
+    }
+
+    await ctx.reply(
+      "✅ سؤال با موفقیت اصلاح شد.\n\n" +
+        `🆔 سؤال: ${updated.id}\n` +
+        `📋 گزارش مرتبط: ${reportId}\n\n` +
+        "⚠️ گزارش هنوز بسته نشده است.",
+      Markup.inlineKeyboard([
+        [
+          Markup.button.callback(
+            "✅ بستن گزارش",
+            `quiz_admin_report_resolve:${reportId}:RESOLVED`
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "👀 مشاهده گزارش",
+            `quiz_admin_report_view:${reportId}`
+          ),
+        ],
+        [
+          Markup.button.callback(
+            "🚨 گزارش‌های بعدی",
+            "quiz_admin_reports:0"
+          ),
+        ],
+      ])
+    );
+
+    return;
+  }
+
+  default: {
+    clearState(
+      telegramUserId
+    );
+
+    await ctx.reply(
+      "⚠️ وضعیت ویرایش نامعتبر بود و فرایند لغو شد.",
+      await quizAdminMenu(ctx)
+    );
+
+    return;
   }
 }
 
@@ -1713,7 +1678,7 @@ async function handleAdminQuizText(
     if (wasSearching) {
       await ctx.reply(
         "❌ جستجو لغو شد.",
-        quizAdminMenu
+        await quizAdminMenu(ctx)
       );
 
       return;
@@ -1723,7 +1688,7 @@ async function handleAdminQuizText(
       wasEditing
         ? "❌ اصلاح سؤال لغو شد."
         : "❌ افزودن سؤال لغو شد.",
-      quizAdminMenu
+      await quizAdminMenu(ctx)
     );
 
     return;
@@ -1778,7 +1743,7 @@ async function handleAdminQuizText(
     await ctx.reply(
       "❌ هنگام پردازش سؤال خطایی رخ داد.\n\n" +
         "فرایند لغو شد.",
-      quizAdminMenu
+      await quizAdminMenu(ctx)
     );
   }
 }
@@ -1787,7 +1752,9 @@ async function handleAdminQuizText(
    HANDLER REGISTRATION
 ========================================================= */
 
- function createAdminQuizHandler(bot) {
+function createAdminQuizHandler(
+  bot
+) {
   createReportsHandler({
     bot,
     quizAdminMenu,
@@ -2064,7 +2031,47 @@ async function handleAdminQuizText(
         await ctx.reply(
           "🧠 مدیریت مسابقه\n\n" +
             "بخش موردنظر را انتخاب کنید.",
-          quizAdminMenu
+          await quizAdminMenu(ctx)
+        );
+      } catch (error) {
+        console.error(
+          "Quiz bank back failed:",
+          error
+        );
+      }
+    }
+  );
+
+  bot.on(
+    "text",
+    handleAdminQuizText
+  );
+}
+
+module.exports = {
+  createAdminQuizHandler,
+};
+  bot.action(
+    "quiz_admin_bank_back",
+    async (ctx) => {
+      try {
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await ctx.answerCbQuery();
+
+        clearState(
+          telegramUserId
+        );
+
+        await ctx.reply(
+          "🧠 مدیریت مسابقه\n\n" +
+            "بخش موردنظر را انتخاب کنید.",
+          await quizAdminMenu(ctx)
         );
       } catch (error) {
         console.error(
