@@ -2358,7 +2358,3 @@ module.exports = {
     handleAdminQuizText
   );
 }
-
-module.exports = {
-  createAdminQuizHandler,
-};
