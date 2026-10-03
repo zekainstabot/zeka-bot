@@ -27,10 +27,6 @@ const {
   createAdminManagementHandler,
 } = require("./admin-management.handler");
 
-const {
-  createAdminFortuneHandler,
-} = require("./admin-fortune.handler");
-
 const reportAdminStates =
   new Map();
 
@@ -382,10 +378,6 @@ function createSuperAdminHandler(
   );
 
   createAdminManagementHandler(
-    bot
-  );
-
-  createAdminFortuneHandler(
     bot
   );
 
