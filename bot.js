@@ -66,6 +66,10 @@ const {
 } = require("./handlers/admin.handler");
 
 const {
+  createSuperAdminHandler,
+} = require("./handlers/super-admin.handler");
+
+const {
   createQuizHandler,
   cleanupQuizTimers,
 } = require("./games/quiz/quiz.handler");
@@ -104,6 +108,8 @@ function createBot() {
   });
 
   createAdminHandler(bot);
+
+  createSuperAdminHandler(bot);
 
   createBasicHandler({
     bot,
