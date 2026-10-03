@@ -26,12 +26,36 @@ const CANCEL_TEXT = "❌ لغو";
 
 const BANK_PAGE_SIZE = 5;
 
-const quizAdminMenu = Markup.keyboard([
-  ["➕ افزودن سؤال"],
-  ["📚 بانک سؤالات"],
-  ["🚨 گزارش‌های سؤالات"],
-  ["🔙 پنل مدیریت"],
-]).resize();
+async function quizAdminMenu(ctx) {
+  const telegramUserId =
+    ctx.from?.id;
+
+  let isSuperAdmin = false;
+
+  if (telegramUserId) {
+    try {
+      const admin =
+        await adminQuizService.requireQuizPermission(
+          telegramUserId
+        );
+
+      isSuperAdmin =
+        admin.role_key ===
+        "super_admin";
+    } catch {}
+  }
+
+  return Markup.keyboard([
+    ["➕ افزودن سؤال"],
+    ["📚 بانک سؤالات"],
+    ["🚨 گزارش‌های سؤالات"],
+    [
+      isSuperAdmin
+        ? "🔙 پنل Super Admin"
+        : "🔙 پنل مدیریت",
+    ],
+  ]).resize();
+}
 
 const cancelMenu = Markup.keyboard([
   [CANCEL_TEXT],
