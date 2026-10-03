@@ -45,18 +45,6 @@ async function handleAdminCommand(
       return;
     }
 
-    if (
-      admin.role_key ===
-      "super_admin"
-    ) {
-      await ctx.reply(
-        "⛔ شما Super Admin هستید.\n\n" +
-          "برای ورود از /superadmin استفاده کنید."
-      );
-
-      return;
-    }
-
     await setUserCommands(
       ctx.telegram,
       telegramUserId,
@@ -125,15 +113,6 @@ async function handleQuizAdminMenu(
     );
 
   if (
-    admin &&
-    admin.is_active &&
-    admin.role_key ===
-      "super_admin"
-  ) {
-    return next();
-  }
-
-  if (
     !admin ||
     !admin.is_active
   ) {
@@ -163,15 +142,6 @@ async function handleBackToAdmin(
     await getAdminByTelegramId(
       ctx.from?.id
     );
-
-  if (
-    admin &&
-    admin.is_active &&
-    admin.role_key ===
-      "super_admin"
-  ) {
-    return next();
-  }
 
   if (
     !admin ||
