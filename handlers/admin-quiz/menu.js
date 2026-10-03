@@ -27,6 +27,7 @@ async function quizAdminMenu(
   return Markup.keyboard([
     ["➕ افزودن سؤال"],
     ["📚 بانک سؤالات"],
+["📥 ورود سؤال از سایت"],
     ["🚨 گزارش‌های سؤالات"],
     [
       isSuperAdmin
