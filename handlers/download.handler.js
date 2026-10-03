@@ -14,6 +14,254 @@ function createDownloadHandler({
     createDownloadRequest,
   } = require("../services/request.service");
 
+  const jobRepository =
+    require("../repositories/job.repository");
+
+  const activeWatchers = new Map();
+
+  function formatElapsed(seconds) {
+    const safeSeconds = Math.max(
+      0,
+      Number(seconds) || 0
+    );
+
+    const minutes = Math.floor(
+      safeSeconds / 60
+    );
+
+    const remainingSeconds =
+      safeSeconds % 60;
+
+    return `${String(minutes).padStart(2, "0")}:${String(
+      remainingSeconds
+    ).padStart(2, "0")}`;
+  }
+
+  function statusKeyboard() {
+    return {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            {
+              text: "🐞 گزارش اشکال",
+              callback_data:
+                "download_report",
+            },
+          ],
+        ],
+      },
+    };
+  }
+
+  async function watchJob({
+    ctx,
+    jobId,
+    messageId,
+  }) {
+    const key =
+      `${ctx.chat.id}:${messageId}`;
+
+    if (activeWatchers.has(key)) {
+      return;
+    }
+
+    const startedAt = Date.now();
+
+    const watcher = {
+      stopped: false,
+      timer: null,
+    };
+
+    activeWatchers.set(
+      key,
+      watcher
+    );
+
+    const stop = () => {
+      if (watcher.stopped) {
+        return;
+      }
+
+      watcher.stopped = true;
+
+      if (watcher.timer) {
+        clearTimeout(
+          watcher.timer
+        );
+      }
+
+      activeWatchers.delete(key);
+    };
+
+    const update = async () => {
+      if (watcher.stopped) {
+        return;
+      }
+
+      try {
+        const job =
+          await jobRepository.findById(
+            jobId
+          );
+
+        if (!job) {
+          stop();
+          return;
+        }
+
+        const elapsed =
+          Math.floor(
+            (Date.now() - startedAt) /
+              1000
+          );
+
+        if (
+          job.status === "COMPLETED"
+        ) {
+          stop();
+
+          try {
+            await ctx.telegram.deleteMessage(
+              ctx.chat.id,
+              messageId
+            );
+          } catch (error) {
+            console.error(
+              "Failed to delete download status message:",
+              error
+            );
+          }
+
+          return;
+        }
+
+        if (
+          job.status === "FAILED" ||
+          job.status === "CANCELLED"
+        ) {
+          stop();
+
+          try {
+            await ctx.telegram.editMessageText(
+              ctx.chat.id,
+              messageId,
+              undefined,
+              "❌ دانلود انجام نشد.\n\n" +
+                `⏱ زمان: ${formatElapsed(
+                  elapsed
+                )}\n\n` +
+                "اگر مشکل ادامه داشت، گزارش اشکال را بزن.",
+              statusKeyboard()
+            );
+          } catch (error) {
+            console.error(
+              "Failed to update failed download message:",
+              error
+            );
+          }
+
+          return;
+        }
+
+        let status =
+          "⚙️ در حال آماده‌سازی...";
+
+        if (
+          job.status === "PROCESSING"
+        ) {
+          status =
+            "⚙️ در حال پردازش...";
+        } else if (
+          job.status === "DOWNLOADING"
+        ) {
+          status =
+            "📥 در حال دانلود...";
+        } else if (
+          job.status === "SENDING"
+        ) {
+          status =
+            "📤 فایل آماده شد؛ در حال ارسال...";
+        } else if (
+          job.status === "WAITING"
+        ) {
+          status =
+            "⏳ در صف پردازش...";
+        }
+
+        try {
+          await ctx.telegram.editMessageText(
+            ctx.chat.id,
+            messageId,
+            undefined,
+            `${status}\n\n` +
+              `⏱ زمان: ${formatElapsed(
+                elapsed
+              )}`,
+            statusKeyboard()
+          );
+        } catch (error) {
+          const message =
+            String(
+              error?.message || ""
+            );
+
+          if (
+            !message.includes(
+              "message is not modified"
+            )
+          ) {
+            console.error(
+              "Failed to update download status:",
+              error
+            );
+          }
+        }
+
+        watcher.timer =
+          setTimeout(
+            update,
+            2000
+          );
+      } catch (error) {
+        console.error(
+          "Download status watcher failed:",
+          error
+        );
+
+        watcher.timer =
+          setTimeout(
+            update,
+            5000
+          );
+      }
+    };
+
+    await update();
+  }
+
+  bot.action(
+    "download_report",
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        await ctx.reply(
+          "🐞 گزارش اشکال\n\n" +
+            "لطفاً مشکل دانلود را در یک پیام بنویس.\n\n" +
+            "مثلاً:\n" +
+            "«فایل دانلود نشد.»\n" +
+            "«فایل باز نمی‌شود.»\n" +
+            "«دانلود خیلی طول کشید.»"
+        );
+      } catch (error) {
+        console.error(
+          "Download report action failed:",
+          error
+        );
+      }
+    }
+  );
+
   bot.on("text", async (ctx) => {
     const text =
       ctx.message.text.trim();
@@ -41,7 +289,6 @@ function createDownloadHandler({
       "🌐 زبان",
       "👤 اطلاعات حساب",
       "🔙 بازگشت",
-
       "🧠 مدیریت مسابقه",
       "➕ افزودن سؤال",
       "🔙 پنل مدیریت",
@@ -49,7 +296,9 @@ function createDownloadHandler({
       "❌ لغو",
     ];
 
-    if (menuButtons.includes(text)) {
+    if (
+      menuButtons.includes(text)
+    ) {
       return;
     }
 
@@ -92,20 +341,28 @@ function createDownloadHandler({
             parsed.contentType,
         });
 
-      const request =
-        result.request;
-
       const job =
         result.job;
 
-      await ctx.reply(
-        `✅ درخواست شما ثبت شد.\n\n` +
-          `🆔 درخواست: ${request.request_id}\n` +
-          `⚙️ وظیفه: ${job.job_id}\n` +
-          `📱 پلتفرم: ${request.platform}\n` +
-          `⏳ وضعیت: در صف پردازش`,
-        mainMenu
-      );
+      const statusMessage =
+        await ctx.reply(
+          "⏳ درخواستت ثبت شد.\n\n" +
+            "⚙️ در حال آماده‌سازی فایل...\n\n" +
+            "⏱ زمان: 00:00",
+          statusKeyboard()
+        );
+
+      watchJob({
+        ctx,
+        jobId: job.id,
+        messageId:
+          statusMessage.message_id,
+      }).catch((error) => {
+        console.error(
+          "Failed to watch download:",
+          error
+        );
+      });
     } catch (error) {
       console.error(
         "Download request failed:",
