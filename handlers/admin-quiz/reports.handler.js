@@ -742,16 +742,54 @@ function createReportsHandler({
   );
 
   bot.action(
-    /^quiz_admin_report_edit:(\d+)$/,
-    async (ctx) => {
+  /^quiz_admin_report_edit:(\d+)$/,
+  async (ctx) => {
+    try {
+      const telegramUserId =
+        ctx.from?.id;
+
+      if (!telegramUserId) {
+        return;
+      }
+
+      const report =
+        await quizReportService.getReportById(
+          telegramUserId,
+          Number(ctx.match[1])
+        );
+
+      if (!report) {
+        await ctx.answerCbQuery(
+          "❌ گزارش پیدا نشد.",
+          {
+            show_alert: true,
+          }
+        );
+
+        return;
+      }
+
       await startEditQuestion(
         ctx,
-        Number(
-          ctx.match[1]
-        )
+        report.question_id
       );
+    } catch (error) {
+      console.error(
+        "Start quiz report edit failed:",
+        error
+      );
+
+      try {
+        await ctx.answerCbQuery(
+          "❌ ورود به ویرایش سؤال انجام نشد.",
+          {
+            show_alert: true,
+          }
+        );
+      } catch {}
     }
-  );
+  }
+);
 
   bot.action(
     /^quiz_admin_report_resolve:(\d+):(RESOLVED|REJECTED)$/,
