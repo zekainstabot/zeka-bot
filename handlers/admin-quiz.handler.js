@@ -91,15 +91,16 @@ async function quizAdminMenu(ctx) {
   }
 
   return Markup.keyboard([
-    ["➕ افزودن سؤال"],
-    ["📚 بانک سؤالات"],
-    ["🚨 گزارش‌های سؤالات"],
-    [
-      isSuperAdmin
-        ? "🔙 پنل Super Admin"
-        : "🔙 پنل مدیریت",
-    ],
-  ]).resize();
+  ["➕ افزودن سؤال"],
+  ["📚 بانک سؤالات"],
+  ["📥 ورود سؤال از سایت"],
+  ["🚨 گزارش‌های سؤالات"],
+  [
+    isSuperAdmin
+      ? "🔙 پنل Super Admin"
+      : "🔙 پنل مدیریت",
+  ],
+]).resize();
 }
 
 const cancelMenu = Markup.keyboard([
