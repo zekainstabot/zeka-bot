@@ -219,6 +219,8 @@ function createAdminHandler(
     handleAdminExit
   );
 
+  createAdminFortuneHandler(bot);
+
   createAdminQuizHandler(bot);
 }
 
