@@ -18,10 +18,6 @@ const {
   createAdminQuizHandler,
 } = require("./admin-quiz.handler");
 
-const {
-  createAdminFortuneHandler,
-} = require("./admin-fortune.handler");
-
 async function handleAdminCommand(
   ctx
 ) {
@@ -219,10 +215,6 @@ function createAdminHandler(
   bot.hears(
     "🔙 خروج از پنل مدیریت",
     handleAdminExit
-  );
-
-  createAdminFortuneHandler(
-    bot
   );
 
   createAdminQuizHandler(
