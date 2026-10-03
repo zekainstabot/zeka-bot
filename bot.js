@@ -22,6 +22,10 @@ const {
 } = require("./services/delivery.service");
 
 const {
+  setBot: setReportBot,
+} = require("./services/report.service");
+
+const {
   createBasicHandler,
 } = require("./handlers/basic.handler");
 
@@ -82,12 +86,17 @@ function createBot() {
   }
 
   if (!config.bot.token) {
-    throw new Error("BOT_TOKEN is not configured");
+    throw new Error(
+      "BOT_TOKEN is not configured"
+    );
   }
 
-  bot = new Telegraf(config.bot.token);
+  bot = new Telegraf(
+    config.bot.token
+  );
 
   setDeliveryBot(bot);
+  setReportBot(bot);
 
   createQuizHandler({
     bot,
