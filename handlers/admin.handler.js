@@ -3,6 +3,10 @@ const {
 } = require("telegraf");
 
 const {
+  mainMenu,
+} = require("../config/bot-menus");
+
+const {
   getAdminByTelegramId,
   getPermissions,
 } = require("../services/admin.service");
@@ -117,8 +121,13 @@ async function handleAdminExit(ctx) {
     return;
   }
 
+  reportAdminStates.delete(
+    String(telegramUserId)
+  );
+
   await ctx.reply(
-    "🔙 از پنل مدیریت خارج شدید."
+    "🔙 از پنل مدیریت خارج شدید.",
+    mainMenu
   );
 }
 
