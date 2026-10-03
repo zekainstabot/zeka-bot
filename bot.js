@@ -82,6 +82,10 @@ const {
   recoverDeliveredJobs,
 } = require("./services/delivery-recovery.service");
 
+const {
+  createFortuneHandler,
+} = require("./handlers/fortune.handler");
+
 let bot = null;
 
 function createBot() {
