@@ -2322,39 +2322,3 @@ function createAdminQuizHandler(
 module.exports = {
   createAdminQuizHandler,
 };
-  bot.action(
-    "quiz_admin_bank_back",
-    async (ctx) => {
-      try {
-        const telegramUserId =
-          ctx.from?.id;
-
-        if (!telegramUserId) {
-          return;
-        }
-
-        await ctx.answerCbQuery();
-
-        clearState(
-          telegramUserId
-        );
-
-        await ctx.reply(
-          "🧠 مدیریت مسابقه\n\n" +
-            "بخش موردنظر را انتخاب کنید.",
-          await quizAdminMenu(ctx)
-        );
-      } catch (error) {
-        console.error(
-          "Quiz bank back failed:",
-          error
-        );
-      }
-    }
-  );
-
-  bot.on(
-    "text",
-    handleAdminQuizText
-  );
-}
