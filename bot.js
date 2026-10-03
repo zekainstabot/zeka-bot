@@ -146,6 +146,10 @@ function createBot() {
     mainMenu,
   });
 
+  createFortuneHandler({
+  bot,
+});
+
   createHelpHandler({
     bot,
     mainMenu,
