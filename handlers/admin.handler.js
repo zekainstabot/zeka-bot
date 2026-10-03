@@ -85,8 +85,23 @@ async function handleAdminCommand(
 }
 
 async function handleAdminExit(
-  ctx
+  ctx,
+  next
 ) {
+  const admin =
+    await getAdminByTelegramId(
+      ctx.from?.id
+    );
+
+  if (
+    admin &&
+    admin.is_active &&
+    admin.role_key ===
+      "super_admin"
+  ) {
+    return next();
+  }
+
   await setUserCommands(
     ctx.telegram,
     ctx.from.id,
@@ -100,7 +115,8 @@ async function handleAdminExit(
 }
 
 async function handleQuizAdminMenu(
-  ctx
+  ctx,
+  next
 ) {
   const admin =
     await getAdminByTelegramId(
@@ -108,13 +124,20 @@ async function handleQuizAdminMenu(
     );
 
   if (
-    !admin ||
-    !admin.is_active ||
+    admin &&
+    admin.is_active &&
     admin.role_key ===
       "super_admin"
   ) {
+    return next();
+  }
+
+  if (
+    !admin ||
+    !admin.is_active
+  ) {
     await ctx.reply(
-      "⛔ این بخش برای Admin معمولی است."
+      "⛔ این بخش فقط برای Admin است."
     );
 
     return;
@@ -132,7 +155,8 @@ async function handleQuizAdminMenu(
 }
 
 async function handleBackToAdmin(
-  ctx
+  ctx,
+  next
 ) {
   const admin =
     await getAdminByTelegramId(
@@ -140,10 +164,17 @@ async function handleBackToAdmin(
     );
 
   if (
-    !admin ||
-    !admin.is_active ||
+    admin &&
+    admin.is_active &&
     admin.role_key ===
       "super_admin"
+  ) {
+    return next();
+  }
+
+  if (
+    !admin ||
+    !admin.is_active
   ) {
     await ctx.reply(
       "⛔ این بخش فقط برای Admin است."
