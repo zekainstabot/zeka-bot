@@ -2322,6 +2322,11 @@ function createAdminQuizHandler(
     "text",
     handleAdminQuizText
   );
+
+  bot.on(
+  "text",
+  handleImportQuestionsText
+);
 }
 
 module.exports = {
