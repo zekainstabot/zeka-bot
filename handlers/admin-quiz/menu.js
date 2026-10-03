@@ -2,9 +2,12 @@ const {
   Markup,
 } = require("telegraf");
 
+const adminQuizService = require(
+  "../../services/admin-quiz.service"
+);
+
 async function quizAdminMenu(
-  ctx,
-  adminQuizService
+  ctx
 ) {
   const telegramUserId =
     ctx.from?.id;
@@ -27,7 +30,7 @@ async function quizAdminMenu(
   return Markup.keyboard([
     ["➕ افزودن سؤال"],
     ["📚 بانک سؤالات"],
-["📥 ورود سؤال از سایت"],
+    ["📥 ورود سؤال از سایت"],
     ["🚨 گزارش‌های سؤالات"],
     [
       isSuperAdmin
