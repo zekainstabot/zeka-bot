@@ -277,15 +277,12 @@ async function removeAdmin(
 
   const result = await db.query(
     `
-      DELETE FROM admins
-      WHERE user_id = $1
-        AND role_id = (
-          SELECT id
-          FROM admin_roles
-          WHERE role_key = 'admin'
-          LIMIT 1
-        )
-      RETURNING *
+      DELETE FROM admins a
+      USING admin_roles r
+      WHERE a.user_id = $1
+        AND a.role_id = r.id
+        AND r.role_key <> 'super_admin'
+      RETURNING a.*
     `,
     [userId]
   );
