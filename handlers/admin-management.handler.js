@@ -2,6 +2,7 @@ const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin-management.service");
 const adminCoreService = require("../services/admin.service");
+
 const {
   setUserCommands,
 } = require("../services/command.service");
@@ -32,6 +33,7 @@ function accessManagementMenu() {
   return Markup.keyboard([
     ["👤 انتخاب ادمین"],
     ["📋 مشاهده دسترسی‌ها"],
+    ["➕ افزودن دسترسی", "➖ حذف دسترسی"],
     ["🔄 تغییر سطح ادمین"],
     ["🔙 مدیریت ادمین"],
   ])
@@ -84,7 +86,11 @@ function stateKey(ctx) {
   return String(ctx.from.id);
 }
 
-function startState(ctx, action, extra = {}) {
+function startState(
+  ctx,
+  action,
+  extra = {}
+) {
   states.set(
     stateKey(ctx),
     {
@@ -96,11 +102,15 @@ function startState(ctx, action, extra = {}) {
 }
 
 function getState(ctx) {
-  return states.get(stateKey(ctx));
+  return states.get(
+    stateKey(ctx)
+  );
 }
 
 function clearState(ctx) {
-  states.delete(stateKey(ctx));
+  states.delete(
+    stateKey(ctx)
+  );
 }
 
 function isExpired(state) {
@@ -109,16 +119,21 @@ function isExpired(state) {
   }
 
   return (
-    Date.now() - state.createdAt >
+    Date.now() -
+      state.createdAt >
     10 * 60 * 1000
   );
 }
 
-async function updateUserCommands(ctx, roleKey) {
+async function updateUserCommands(
+  ctx,
+  targetTelegramUserId,
+  roleKey
+) {
   try {
     await setUserCommands(
       ctx.telegram,
-      ctx.from.id,
+      Number(targetTelegramUserId),
       roleKey
     );
   } catch (error) {
@@ -129,7 +144,10 @@ async function updateUserCommands(ctx, roleKey) {
   }
 }
 
-function getErrorMessage(error, fallback) {
+function getErrorMessage(
+  error,
+  fallback
+) {
   if (!error) {
     return fallback;
   }
@@ -153,6 +171,12 @@ function getErrorMessage(error, fallback) {
     case "ROLE_UPDATE_FAILED":
       return "❌ تغییر سطح ادمین انجام نشد.";
 
+    case "PERMISSION_NOT_FOUND":
+      return "❌ این دسترسی وجود ندارد.";
+
+    case "PERMISSION_DENIED":
+      return "⛔ این عملیات برای شما مجاز نیست.";
+
     case "USER_ID_REQUIRED":
       return "❌ شناسه کاربر وارد نشده است.";
 
@@ -166,7 +190,7 @@ function getErrorMessage(error, fallback) {
 
 /*
  * =========================
- * Access
+ * Access Display
  * =========================
  */
 
@@ -189,32 +213,61 @@ async function showAdminAccess(
       return;
     }
 
-    const permissions =
-      result.permissions || [];
-
-    const roleTitle =
-      result.admin?.role_title ||
+    const role =
+      result.admin?.role_name ||
       result.admin?.role_key ||
       "نامشخص";
 
+    const permissions =
+      result.permissions || [];
+
+    const directPermissions =
+      result.directPermissions || [];
+
     let message =
       `👤 ادمین: ${telegramUserId}\n` +
-      `🔐 سطح: ${roleTitle}\n\n`;
+      `🔐 سطح: ${role}\n\n`;
+
+    message +=
+      "📋 دسترسی‌های نهایی:\n\n";
 
     if (!permissions.length) {
       message +=
-        "📋 هیچ دسترسی فعالی برای این سطح وجود ندارد.";
+        "❌ هیچ دسترسی فعالی ندارد.\n";
     } else {
-      message +=
-        "📋 دسترسی‌ها:\n\n";
-
       permissions.forEach(
         (permission, index) => {
           const name =
-            permission.title ||
-            permission.name ||
+            permission.permission_name ||
             permission.permission_key ||
-            permission.key ||
+            "نامشخص";
+
+          const source =
+            permission.source ===
+            "direct"
+              ? "👤 اختصاصی"
+              : "🔐 سطح ادمین";
+
+          message +=
+            `${index + 1}. ${name}\n` +
+            `   ${source}\n\n`;
+        }
+      );
+    }
+
+    message +=
+      "━━━━━━━━━━━━━━\n" +
+      "👤 دسترسی‌های اختصاصی این ادمین:\n\n";
+
+    if (!directPermissions.length) {
+      message +=
+        "❌ هیچ دسترسی اختصاصی ثبت نشده است.";
+    } else {
+      directPermissions.forEach(
+        (permission, index) => {
+          const name =
+            permission.permission_name ||
+            permission.permission_key ||
             "نامشخص";
 
           message +=
@@ -245,6 +298,73 @@ async function showAdminAccess(
 
 /*
  * =========================
+ * Permission List
+ * =========================
+ */
+
+async function showPermissionList(
+  ctx,
+  mode
+) {
+  try {
+    const permissions =
+      await adminService.getAllPermissions();
+
+    if (!permissions?.length) {
+      clearState(ctx);
+
+      await ctx.reply(
+        "❌ هیچ دسترسی‌ای در سیستم ثبت نشده است.",
+        accessManagementMenu()
+      );
+
+      return;
+    }
+
+    const title =
+      mode === "add"
+        ? "➕ افزودن دسترسی"
+        : "➖ حذف دسترسی";
+
+    let message =
+      `${title}\n\n`;
+
+    permissions.forEach(
+      (permission, index) => {
+        message +=
+          `${index + 1}. ` +
+          `${permission.permission_name || permission.permission_key}\n` +
+          `   🔑 ${permission.permission_key}\n\n`;
+      }
+    );
+
+    message +=
+      "🔹 کلید دسترسی موردنظر را ارسال کنید.";
+
+    await ctx.reply(
+      message,
+      cancelMenu()
+    );
+  } catch (error) {
+    console.error(
+      "showPermissionList error:",
+      error
+    );
+
+    clearState(ctx);
+
+    await ctx.reply(
+      getErrorMessage(
+        error,
+        "❌ دریافت لیست دسترسی‌ها انجام نشد."
+      ),
+      accessManagementMenu()
+    );
+  }
+}
+
+/*
+ * =========================
  * Cancel
  * =========================
  */
@@ -256,14 +376,22 @@ async function handleCancel(ctx) {
     return;
   }
 
-  const state = getState(ctx);
+  const state =
+    getState(ctx);
 
   clearState(ctx);
 
   if (
-    state?.action === "access_select" ||
-    state?.action === "role_select" ||
-    state?.action === "role_apply"
+    state?.action ===
+      "access_select" ||
+    state?.action ===
+      "role_select" ||
+    state?.action ===
+      "role_apply" ||
+    state?.action ===
+      "permission_select" ||
+    state?.action ===
+      "permission_apply"
   ) {
     await ctx.reply(
       "❌ عملیات لغو شد.",
@@ -310,10 +438,6 @@ async function handleAdminManagementText(
     return next();
   }
 
-  /*
-   * Cancel
-   */
-
   if (
     text === CANCEL_TEXT ||
     text === "/cancel"
@@ -321,10 +445,6 @@ async function handleAdminManagementText(
     await handleCancel(ctx);
     return;
   }
-
-  /*
-   * Timeout
-   */
 
   if (isExpired(state)) {
     clearState(ctx);
@@ -362,10 +482,6 @@ async function handleAdminManagementText(
     state.targetUserId =
       targetId;
 
-    /*
-     * View permissions
-     */
-
     if (
       state.nextAction ===
       "view_access"
@@ -379,10 +495,6 @@ async function handleAdminManagementText(
 
       return;
     }
-
-    /*
-     * Change role
-     */
 
     if (
       state.nextAction ===
@@ -418,8 +530,8 @@ async function handleAdminManagementText(
           (role, index) => {
             message +=
               `${index + 1}. ` +
-              `${role.title || role.name || role.role_key}\n` +
-              `   کلید: ${role.role_key}\n\n`;
+              `${role.role_name || role.role_key}\n` +
+              `   🔑 ${role.role_key}\n\n`;
           }
         );
 
@@ -450,6 +562,186 @@ async function handleAdminManagementText(
       return;
     }
 
+    if (
+      state.nextAction ===
+      "add_permission"
+    ) {
+      state.action =
+        "permission_select";
+
+      state.permissionMode =
+        "add";
+
+      states.set(
+        stateKey(ctx),
+        state
+      );
+
+      await showPermissionList(
+        ctx,
+        "add"
+      );
+
+      return;
+    }
+
+    if (
+      state.nextAction ===
+      "remove_permission"
+    ) {
+      state.action =
+        "permission_select";
+
+      state.permissionMode =
+        "remove";
+
+      states.set(
+        stateKey(ctx),
+        state
+      );
+
+      await showPermissionList(
+        ctx,
+        "remove"
+      );
+
+      return;
+    }
+
+    return;
+  }
+
+  /*
+   * =========================
+   * Permission Select
+   * =========================
+   */
+
+  if (
+    state.action ===
+    "permission_select"
+  ) {
+    const permissions =
+      await adminService.getAllPermissions();
+
+    const permission =
+      permissions.find(
+        (item) =>
+          item.permission_key ===
+            text ||
+          item.permission_name ===
+            text
+      );
+
+    if (!permission) {
+      await ctx.reply(
+        "❌ کلید دسترسی صحیح نیست.\n\nلطفاً یکی از کلیدهای نمایش داده‌شده را ارسال کنید.",
+        cancelMenu()
+      );
+
+      return;
+    }
+
+    state.action =
+      "permission_apply";
+
+    state.permissionKey =
+      permission.permission_key;
+
+    states.set(
+      stateKey(ctx),
+      state
+    );
+
+    const actionText =
+      state.permissionMode ===
+      "add"
+        ? "➕ افزودن"
+        : "➖ حذف";
+
+    await ctx.reply(
+      `⚠️ تأیید عملیات\n\n` +
+        `👤 ادمین: ${state.targetUserId}\n` +
+        `🔑 دسترسی: ${permission.permission_name || permission.permission_key}\n` +
+        `⚙️ عملیات: ${actionText}\n\n` +
+        `برای تأیید، کلید زیر را ارسال کنید:\n\n` +
+        `${permission.permission_key}`,
+      cancelMenu()
+    );
+
+    return;
+  }
+
+  /*
+   * =========================
+   * Permission Apply
+   * =========================
+   */
+
+  if (
+    state.action ===
+    "permission_apply"
+  ) {
+    if (
+      text !==
+      state.permissionKey
+    ) {
+      await ctx.reply(
+        `❌ مقدار صحیح را ارسال کنید:\n\n${state.permissionKey}`,
+        cancelMenu()
+      );
+
+      return;
+    }
+
+    try {
+      if (
+        state.permissionMode ===
+        "add"
+      ) {
+        await adminService.addPermission(
+          state.targetUserId,
+          state.permissionKey
+        );
+
+        clearState(ctx);
+
+        await ctx.reply(
+          "✅ دسترسی با موفقیت به ادمین اضافه شد.",
+          accessManagementMenu()
+        );
+
+        return;
+      }
+
+      await adminService.removePermission(
+        state.targetUserId,
+        state.permissionKey
+      );
+
+      clearState(ctx);
+
+      await ctx.reply(
+        "✅ دسترسی اختصاصی ادمین حذف شد.",
+        accessManagementMenu()
+      );
+    } catch (error) {
+      console.error(
+        "permission operation error:",
+        error
+      );
+
+      clearState(ctx);
+
+      await ctx.reply(
+        getErrorMessage(
+          error,
+          "❌ عملیات دسترسی انجام نشد."
+        ),
+        accessManagementMenu()
+      );
+    }
+
     return;
   }
 
@@ -470,9 +762,10 @@ async function handleAdminManagementText(
       const role =
         roles.find(
           (item) =>
-            item.role_key === text ||
-            item.name === text ||
-            item.title === text
+            item.role_key ===
+              text ||
+            item.role_name ===
+              text
         );
 
       if (!role) {
@@ -499,8 +792,7 @@ async function handleAdminManagementText(
         `⚠️ تغییر سطح ادمین\n\n` +
           `👤 ادمین: ${state.targetUserId}\n` +
           `🔐 سطح جدید: ${
-            role.title ||
-            role.name ||
+            role.role_name ||
             role.role_key
           }\n\n` +
           `برای تأیید، کلید زیر را ارسال کنید:\n\n` +
@@ -547,16 +839,16 @@ async function handleAdminManagementText(
     }
 
     try {
-      const result =
-        await adminService.changeAdminRole(
-          state.targetUserId,
-          state.roleKey
-        );
+      await adminService.changeAdminRole(
+        state.targetUserId,
+        state.roleKey
+      );
 
       clearState(ctx);
 
       await updateUserCommands(
         ctx,
+        state.targetUserId,
         state.roleKey
       );
 
@@ -604,10 +896,9 @@ async function handleAdminManagementText(
     }
 
     try {
-      const result =
-        await adminService.addAdmin(
-          Number(text)
-        );
+      await adminService.addAdmin(
+        Number(text)
+      );
 
       clearState(ctx);
 
@@ -796,11 +1087,9 @@ async function handleAdminManagementText(
  * =========================
  */
 
-function createAdminManagementHandler(bot) {
-  /*
-   * Main menu
-   */
-
+function createAdminManagementHandler(
+  bot
+) {
   bot.hears(
     "🛠 مدیریت ادمین",
     async (ctx) => {
@@ -818,10 +1107,6 @@ function createAdminManagementHandler(bot) {
       );
     }
   );
-
-  /*
-   * Add
-   */
 
   bot.hears(
     "➕ افزودن ادمین",
@@ -843,10 +1128,6 @@ function createAdminManagementHandler(bot) {
       );
     }
   );
-
-  /*
-   * List
-   */
 
   bot.hears(
     "👥 لیست ادمین‌ها",
@@ -883,7 +1164,7 @@ function createAdminManagementHandler(bot) {
                 : "🔴 غیرفعال";
 
             const role =
-              admin.role_title ||
+              admin.role_name ||
               admin.role_key ||
               "admin";
 
@@ -912,10 +1193,6 @@ function createAdminManagementHandler(bot) {
     }
   );
 
-  /*
-   * Access management
-   */
-
   bot.hears(
     "🔐 مدیریت سطح دسترسی",
     async (ctx) => {
@@ -933,10 +1210,6 @@ function createAdminManagementHandler(bot) {
       );
     }
   );
-
-  /*
-   * Select admin
-   */
 
   bot.hears(
     "👤 انتخاب ادمین",
@@ -958,10 +1231,6 @@ function createAdminManagementHandler(bot) {
       );
     }
   );
-
-  /*
-   * View permissions
-   */
 
   bot.hears(
     "📋 مشاهده دسترسی‌ها",
@@ -988,9 +1257,55 @@ function createAdminManagementHandler(bot) {
     }
   );
 
-  /*
-   * Change role
-   */
+  bot.hears(
+    "➕ افزودن دسترسی",
+    async (ctx) => {
+      if (
+        !(await requireSuperAdmin(ctx))
+      ) {
+        return;
+      }
+
+      startState(
+        ctx,
+        "access_select",
+        {
+          nextAction:
+            "add_permission",
+        }
+      );
+
+      await ctx.reply(
+        "👤 شناسه عددی ادمین را ارسال کنید.",
+        cancelMenu()
+      );
+    }
+  );
+
+  bot.hears(
+    "➖ حذف دسترسی",
+    async (ctx) => {
+      if (
+        !(await requireSuperAdmin(ctx))
+      ) {
+        return;
+      }
+
+      startState(
+        ctx,
+        "access_select",
+        {
+          nextAction:
+            "remove_permission",
+        }
+      );
+
+      await ctx.reply(
+        "👤 شناسه عددی ادمین را ارسال کنید.",
+        cancelMenu()
+      );
+    }
+  );
 
   bot.hears(
     "🔄 تغییر سطح ادمین",
@@ -1017,10 +1332,6 @@ function createAdminManagementHandler(bot) {
     }
   );
 
-  /*
-   * Back
-   */
-
   bot.hears(
     "🔙 مدیریت ادمین",
     async (ctx) => {
@@ -1038,10 +1349,6 @@ function createAdminManagementHandler(bot) {
       );
     }
   );
-
-  /*
-   * Enable
-   */
 
   bot.hears(
     "🟢 فعال کردن ادمین",
@@ -1064,10 +1371,6 @@ function createAdminManagementHandler(bot) {
     }
   );
 
-  /*
-   * Disable
-   */
-
   bot.hears(
     "🔴 غیرفعال کردن ادمین",
     async (ctx) => {
@@ -1088,10 +1391,6 @@ function createAdminManagementHandler(bot) {
       );
     }
   );
-
-  /*
-   * Remove
-   */
 
   bot.hears(
     "🗑 حذف ادمین",
@@ -1114,25 +1413,12 @@ function createAdminManagementHandler(bot) {
     }
   );
 
-  /*
-   * =========================
-   * CANCEL
-   * =========================
-   *
-   * این handler قبل از on("text")
-   * ثبت می‌شود.
-   */
-
   bot.hears(
     CANCEL_TEXT,
     async (ctx) => {
       await handleCancel(ctx);
     }
   );
-
-  /*
-   * Generic text
-   */
 
   bot.on(
     "text",
