@@ -96,7 +96,7 @@ async function requireReportViewPermission(
 ) {
   return adminManagementService.requirePermissionByTelegramId(
     telegramUserId,
-    "reports.view"
+    "reports"
   );
 }
 
@@ -105,7 +105,7 @@ async function requireReportManagePermission(
 ) {
   return adminManagementService.requirePermissionByTelegramId(
     telegramUserId,
-    "reports.manage"
+    "reports"
   );
 }
 
@@ -798,13 +798,13 @@ function createReportsHandler({
         }
 
         await startEditQuestion(
-  ctx,
-  report.question_id,
-  {
-    fromReport: true,
-    reportId: report.id,
-  }
-);
+          ctx,
+          report.question_id,
+          {
+            fromReport: true,
+            reportId: report.id,
+          }
+        );
       } catch (error) {
         console.error(
           "Start quiz report edit failed:",
