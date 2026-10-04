@@ -18,21 +18,37 @@ const {
   createAdminQuizHandler,
 } = require("./admin-quiz.handler");
 
-async function handleAdminCommand(
-  ctx
-) {
+async function handleAdminCommand(ctx) {
+  console.log(
+    "ADMIN COMMAND RECEIVED:",
+    ctx.from?.id
+  );
+
   try {
     const telegramUserId =
       ctx.from?.id;
 
     if (!telegramUserId) {
+      console.error(
+        "ADMIN COMMAND: Telegram user ID missing"
+      );
+
       return;
     }
+
+    console.log(
+      "ADMIN COMMAND: checking admin access..."
+    );
 
     const admin =
       await getAdminByTelegramId(
         telegramUserId
       );
+
+    console.log(
+      "ADMIN COMMAND: admin result:",
+      admin
+    );
 
     if (
       !admin ||
@@ -45,31 +61,47 @@ async function handleAdminCommand(
       return;
     }
 
-    await setUserCommands(
-      ctx.telegram,
-      telegramUserId,
-      "admin"
-    );
-
     await ctx.reply(
       "🛠️ پنل ادمین زکا\n\n" +
-        `👤 Role: ${admin.role_name}\n\n` +
+        `👤 Role: ${admin.role_name || admin.role_key}\n\n` +
         "از منوی زیر بخش موردنظر را انتخاب کنید.",
       Markup.keyboard([
         ["🧠 مدیریت مسابقه"],
         ["🔮 مدیریت فال"],
         ["🔙 خروج از پنل مدیریت"],
-      ]).resize()
+      ])
+        .resize()
+        .persistent()
     );
+
+    try {
+      await setUserCommands(
+        ctx.telegram,
+        telegramUserId,
+        "admin"
+      );
+    } catch (commandError) {
+      console.error(
+        "ADMIN COMMAND: set commands failed:",
+        commandError
+      );
+    }
   } catch (error) {
     console.error(
       "Admin command failed:",
       error
     );
 
-    await ctx.reply(
-      "❌ دریافت پنل ادمین انجام نشد."
-    );
+    try {
+      await ctx.reply(
+        "❌ دریافت پنل ادمین انجام نشد."
+      );
+    } catch (replyError) {
+      console.error(
+        "Admin command error reply failed:",
+        replyError
+      );
+    }
   }
 }
 
@@ -77,96 +109,134 @@ async function handleAdminExit(
   ctx,
   next
 ) {
-  const admin =
-    await getAdminByTelegramId(
-      ctx.from?.id
+  try {
+    const admin =
+      await getAdminByTelegramId(
+        ctx.from?.id
+      );
+
+    if (
+      admin &&
+      admin.is_active &&
+      admin.role_key ===
+        "super_admin"
+    ) {
+      return next();
+    }
+
+    try {
+      await setUserCommands(
+        ctx.telegram,
+        ctx.from.id,
+        "user"
+      );
+    } catch (commandError) {
+      console.error(
+        "Admin exit set commands failed:",
+        commandError
+      );
+    }
+
+    await ctx.reply(
+      "🔙 از پنل مدیریت خارج شدید.",
+      mainMenu
     );
-
-  if (
-    admin &&
-    admin.is_active &&
-    admin.role_key ===
-      "super_admin"
-  ) {
-    return next();
+  } catch (error) {
+    console.error(
+      "Admin exit failed:",
+      error
+    );
   }
-
-  await setUserCommands(
-    ctx.telegram,
-    ctx.from.id,
-    "user"
-  );
-
-  await ctx.reply(
-    "🔙 از پنل مدیریت خارج شدید.",
-    mainMenu
-  );
 }
 
 async function handleQuizAdminMenu(
   ctx,
   next
 ) {
-  const admin =
-    await getAdminByTelegramId(
-      ctx.from?.id
-    );
+  try {
+    const admin =
+      await getAdminByTelegramId(
+        ctx.from?.id
+      );
 
-  if (
-    !admin ||
-    !admin.is_active
-  ) {
+    if (
+      !admin ||
+      !admin.is_active
+    ) {
+      await ctx.reply(
+        "⛔ این بخش فقط برای Admin است."
+      );
+
+      return;
+    }
+
     await ctx.reply(
-      "⛔ این بخش فقط برای Admin است."
+      "🧠 مدیریت مسابقه\n\n" +
+        "بخش موردنظر را انتخاب کنید.",
+      Markup.keyboard([
+        ["➕ افزودن سؤال"],
+        ["🚨 گزارش‌های سؤالات"],
+        ["🔙 پنل ادمین"],
+      ])
+        .resize()
+        .persistent()
+    );
+  } catch (error) {
+    console.error(
+      "Admin quiz menu failed:",
+      error
     );
 
-    return;
+    if (next) {
+      return next();
+    }
   }
-
-  await ctx.reply(
-    "🧠 مدیریت مسابقه\n\n" +
-      "بخش موردنظر را انتخاب کنید.",
-    Markup.keyboard([
-      ["➕ افزودن سؤال"],
-      ["🚨 گزارش‌های سؤالات"],
-      ["🔙 پنل ادمین"],
-    ]).resize()
-  );
 }
 
 async function handleBackToAdmin(
   ctx,
   next
 ) {
-  const admin =
-    await getAdminByTelegramId(
-      ctx.from?.id
-    );
+  try {
+    const admin =
+      await getAdminByTelegramId(
+        ctx.from?.id
+      );
 
-  if (
-    !admin ||
-    !admin.is_active
-  ) {
+    if (
+      !admin ||
+      !admin.is_active
+    ) {
+      await ctx.reply(
+        "⛔ این بخش فقط برای Admin است."
+      );
+
+      return;
+    }
+
     await ctx.reply(
-      "⛔ این بخش فقط برای Admin است."
+      "🛠️ پنل ادمین",
+      Markup.keyboard([
+        ["🧠 مدیریت مسابقه"],
+        ["🔮 مدیریت فال"],
+        ["🔙 خروج از پنل مدیریت"],
+      ])
+        .resize()
+        .persistent()
+    );
+  } catch (error) {
+    console.error(
+      "Back to admin failed:",
+      error
     );
 
-    return;
+    if (next) {
+      return next();
+    }
   }
-
-  await ctx.reply(
-    "🛠️ پنل ادمین",
-    Markup.keyboard([
-      ["🧠 مدیریت مسابقه"],
-      ["🔮 مدیریت فال"],
-      ["🔙 خروج از پنل مدیریت"],
-    ]).resize()
-  );
 }
 
-function createAdminHandler(
-  bot
-) {
+function createAdminHandler(bot) {
   bot.command(
     "admin",
     handleAdminCommand
