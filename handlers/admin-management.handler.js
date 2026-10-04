@@ -61,8 +61,7 @@ function adminSettingsMenu() {
 
 function accessManagementMenu() {
   return Markup.keyboard([
-    ["📋 مشاهده دسترسی‌ها"],
-    ["➕ افزودن دسترسی", "➖ حذف دسترسی"],
+    ["🔄 بازنشانی همه"],
     ["🔙 تنظیمات ادمین"],
   ]).resize();
 }
@@ -104,22 +103,45 @@ function buildAdminList(admins) {
   return Markup.keyboard(buttons).resize();
 }
 
-function buildPermissionList(
-  permissions,
-  action
-) {
+function getPermissionStatusIcon(permission) {
+  if (permission.override_enabled === true) {
+    return "🟢";
+  }
+
+  if (permission.override_enabled === false) {
+    return "🔴";
+  }
+
+  return "⚪";
+}
+
+function getPermissionStatusText(permission) {
+  if (permission.override_enabled === true) {
+    return "فعال";
+  }
+
+  if (permission.override_enabled === false) {
+    return "غیرفعال";
+  }
+
+  return "پیش‌فرض";
+}
+
+function buildPermissionToggleMenu(permissions) {
   const buttons = [];
 
-  permissions.forEach(
-    (permission, index) => {
-      buttons.push([
-        `${index + 1}️⃣ ${permission.permission_name}`,
-      ]);
-    }
-  );
+  permissions.forEach((permission, index) => {
+    buttons.push([
+      `${getPermissionStatusIcon(permission)} ${index + 1}️⃣ ${permission.permission_name}`,
+    ]);
+  });
 
   buttons.push([
-    "🔙 مدیریت دسترسی",
+    "🔄 بازنشانی همه",
+  ]);
+
+  buttons.push([
+    "🔙 تنظیمات ادمین",
   ]);
 
   return Markup.keyboard(buttons).resize();
@@ -179,27 +201,21 @@ async function requirePermission(
   }
 }
 
-async function requireView(
-  ctx
-) {
+async function requireView(ctx) {
   return requirePermission(
     ctx,
     PERMISSION_VIEW
   );
 }
 
-async function requireManage(
-  ctx
-) {
+async function requireManage(ctx) {
   return requirePermission(
     ctx,
     PERMISSION_MANAGE
   );
 }
 
-async function showAdminManagementMenu(
-  ctx
-) {
+async function showAdminManagementMenu(ctx) {
   if (!(await requireView(ctx))) {
     return;
   }
@@ -213,9 +229,7 @@ async function showAdminManagementMenu(
   );
 }
 
-async function showAdminList(
-  ctx
-) {
+async function showAdminList(ctx) {
   if (!(await requireView(ctx))) {
     return;
   }
@@ -231,9 +245,7 @@ async function showAdminList(
           "super_admin"
       );
 
-    if (
-      !visibleAdmins.length
-    ) {
+    if (!visibleAdmins.length) {
       await ctx.reply(
         "👥 هیچ ادمین معمولی‌ای وجود ندارد.",
         managementMenu()
@@ -260,17 +272,13 @@ async function showAdminList(
     visibleAdmins.forEach(
       (admin, index) => {
         text +=
-          `${index + 1}️⃣ ${
-            getAdminDisplayName(
-              admin,
-              index
-            )
-          }\n`;
+          `${index + 1}️⃣ ${getAdminDisplayName(
+            admin,
+            index
+          )}\n`;
 
         text +=
-          `   نقش: ${
-            admin.role_name
-          }\n`;
+          `   نقش: ${admin.role_name}\n`;
 
         text +=
           `   وضعیت: ${
@@ -353,13 +361,10 @@ async function showAdminSettings(
         `👤 ${
           admin.display_name ||
           (admin.username
-            ? "@" +
-              admin.username
+            ? "@" + admin.username
             : "ادمین")
         }\n` +
-        `🎭 نقش: ${
-          admin.role_name
-        }\n` +
+        `🎭 نقش: ${admin.role_name}\n` +
         `📌 وضعیت: ${
           admin.is_active
             ? "🟢 فعال"
@@ -406,20 +411,29 @@ async function showAdminInfo(
     const admin =
       access.admin;
 
+    const user =
+      access.user || {};
+
     await ctx.reply(
       "📋 اطلاعات ادمین\n\n" +
         `👤 نام: ${
           admin.display_name ||
+          user.display_name ||
           "ثبت نشده"
         }\n` +
         `🔹 Username: ${
-          admin.username
+          admin.username ||
+          user.username
             ? "@" +
-              admin.username
+              (
+                admin.username ||
+                user.username
+              )
             : "ثبت نشده"
         }\n` +
         `🎭 نقش: ${
-          admin.role_name
+          admin.role_name ||
+          "ثبت نشده"
         }\n` +
         `📌 وضعیت: ${
           admin.is_active
@@ -456,33 +470,157 @@ async function showAccessManagement(
     return;
   }
 
-  setState(
-    ctx.from.id,
-    {
-      step: "permissionMenu",
-      targetUserId:
-        targetTelegramUserId,
-    }
-  );
+  try {
+    const access =
+      await adminManagementService.getPermissionMatrix(
+        targetTelegramUserId
+      );
 
-  await ctx.reply(
-    "🔐 مدیریت دسترسی\n\n" +
-      "عملیات موردنظر را انتخاب کنید:",
-    accessManagementMenu()
-  );
+    if (!access?.admin) {
+      await ctx.reply(
+        "❌ ادمین پیدا نشد.",
+        managementMenu()
+      );
+
+      return;
+    }
+
+    if (
+      access.admin.role_key ===
+      "super_admin"
+    ) {
+      clearState(ctx.from.id);
+
+      await ctx.reply(
+        "⛔ دسترسی‌های Super Admin قابل ویرایش نیست.",
+        managementMenu()
+      );
+
+      return;
+    }
+
+    const permissions =
+      access.permissions || [];
+
+    if (!permissions.length) {
+      setState(
+        ctx.from.id,
+        {
+          step: "permissionToggle",
+          targetUserId:
+            targetTelegramUserId,
+          choices: [],
+        }
+      );
+
+      await ctx.reply(
+        "🔐 مدیریت دسترسی\n\n" +
+          "❌ هیچ Permissionای در سیستم ثبت نشده است.",
+        accessManagementMenu()
+      );
+
+      return;
+    }
+
+    setState(
+      ctx.from.id,
+      {
+        step: "permissionToggle",
+        targetUserId:
+          targetTelegramUserId,
+        choices:
+          permissions.map(
+            (permission) =>
+              permission.permission_key
+          ),
+      }
+    );
+
+    let text =
+      "🔐 مدیریت دسترسی\n\n";
+
+    text +=
+      `👤 ${
+        access.admin.display_name ||
+        (access.admin.username
+          ? "@" +
+            access.admin.username
+          : "ادمین")
+      }\n`;
+
+    text +=
+      `🎭 نقش: ${
+        access.admin.role_name ||
+        "نامشخص"
+      }\n\n`;
+
+    text +=
+      "وضعیت هر Permission:\n";
+
+    text +=
+      "🟢 فعال = Override روشن\n";
+
+    text +=
+      "🔴 غیرفعال = Override خاموش\n";
+
+    text +=
+      "⚪ پیش‌فرض = تبعیت از Role/Direct\n\n";
+
+    permissions.forEach(
+      (permission, index) => {
+        text +=
+          `${getPermissionStatusIcon(
+            permission
+          )} ${index + 1}️⃣ ${
+            permission.permission_name
+          }`;
+
+        text +=
+          `\n   🔑 ${permission.permission_key}`;
+
+        text +=
+          `\n   📌 وضعیت: ${getPermissionStatusText(
+            permission
+          )}`;
+
+        text += "\n\n";
+      }
+    );
+
+    text +=
+      "روی هر گزینه بزنید تا وضعیت آن تغییر کند.";
+
+    await ctx.reply(
+      text,
+      buildPermissionToggleMenu(
+        permissions
+      )
+    );
+  } catch (error) {
+    console.error(
+      "Access management failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت دسترسی‌های ادمین انجام نشد.",
+      adminSettingsMenu()
+    );
+  }
 }
 
-async function showPermissions(
+async function togglePermission(
   ctx,
-  targetTelegramUserId
+  targetTelegramUserId,
+  permissionKey
 ) {
-  if (!(await requireView(ctx))) {
+  if (!(await requireManage(ctx))) {
     return;
   }
 
   try {
     const access =
-      await adminManagementService.getAdminAccess(
+      await adminManagementService.getPermissionMatrix(
         targetTelegramUserId
       );
 
@@ -494,149 +632,163 @@ async function showPermissions(
       return;
     }
 
-    const permissions =
-      access.permissions || [];
+    if (
+      access.admin.role_key ===
+      "super_admin"
+    ) {
+      clearState(ctx.from.id);
 
-    if (!permissions.length) {
       await ctx.reply(
-        "📋 این ادمین هیچ دسترسی‌ای ندارد.",
-        accessManagementMenu()
+        "⛔ دسترسی Super Admin قابل ویرایش نیست.",
+        managementMenu()
       );
 
       return;
     }
 
-    let text =
-      "📋 دسترسی‌های ادمین\n\n";
+    const permission =
+      (access.permissions || []).find(
+        (item) =>
+          item.permission_key ===
+          permissionKey
+      );
 
-    permissions.forEach(
-      (permission, index) => {
-        text +=
-          `${index + 1}. ${
-            permission.permission_name
-          }\n`;
+    if (!permission) {
+      await ctx.reply(
+        "❌ Permission موردنظر پیدا نشد."
+      );
 
-        text +=
-          `   🔑 ${
-            permission.permission_key
-          }\n`;
+      return;
+    }
 
-        text +=
-          `   📌 منبع: ${
-            permission.source ===
-            "direct"
-              ? "مستقیم"
-              : "نقش"
-          }\n\n`;
-      }
-    );
+    let message;
 
-    await ctx.reply(
-      text,
-      accessManagementMenu()
+    if (
+      permission.override_enabled ===
+      undefined ||
+      permission.override_enabled ===
+      null
+    ) {
+      await adminManagementService.setPermissionOverride(
+        targetTelegramUserId,
+        permissionKey,
+        true
+      );
+
+      message =
+        "🟢 دسترسی به‌صورت Override فعال شد.";
+    } else if (
+      permission.override_enabled ===
+      true
+    ) {
+      await adminManagementService.setPermissionOverride(
+        targetTelegramUserId,
+        permissionKey,
+        false
+      );
+
+      message =
+        "🔴 دسترسی به‌صورت Override غیرفعال شد.";
+    } else {
+      await adminManagementService.resetPermissionOverride(
+        targetTelegramUserId,
+        permissionKey
+      );
+
+      message =
+        "⚪ Override حذف شد و دسترسی به حالت پیش‌فرض برگشت.";
+    }
+
+    await ctx.reply(message);
+
+    await showAccessManagement(
+      ctx,
+      targetTelegramUserId
     );
   } catch (error) {
     console.error(
-      "Show permissions failed:",
+      "Toggle permission failed:",
       error
     );
 
-    await ctx.reply(
-      "❌ دریافت دسترسی‌ها انجام نشد."
-    );
+    throw error;
   }
 }
 
-async function startPermissionChange(
+async function resetAllPermissionOverrides(
   ctx,
-  targetTelegramUserId,
-  action
+  targetTelegramUserId
 ) {
   if (!(await requireManage(ctx))) {
     return;
   }
 
   try {
-    let permissions;
+    const access =
+      await adminManagementService.getPermissionMatrix(
+        targetTelegramUserId
+      );
 
-    if (action === "add") {
-      const current =
-        await adminManagementService.getDirectPermissions(
-          targetTelegramUserId
-        );
-
-      const all =
-        await adminManagementService.getAllPermissions();
-
-      const currentKeys =
-        new Set(
-          current.map(
-            (item) =>
-              item.permission_key
-          )
-        );
-
-      permissions =
-        all.filter(
-          (item) =>
-            !currentKeys.has(
-              item.permission_key
-            )
-        );
-    } else {
-      permissions =
-        await adminManagementService.getDirectPermissions(
-          targetTelegramUserId
-        );
-    }
-
-    if (!permissions.length) {
+    if (!access?.admin) {
       await ctx.reply(
-        action === "add"
-          ? "ℹ️ دسترسی جدیدی برای افزودن وجود ندارد."
-          : "ℹ️ هیچ دسترسی مستقیم برای حذف وجود ندارد.",
-        accessManagementMenu()
+        "❌ ادمین پیدا نشد."
       );
 
       return;
     }
 
-    setState(
-      ctx.from.id,
-      {
-        step:
-          action === "add"
-            ? "addPermission"
-            : "removePermission",
-        targetUserId:
+    if (
+      access.admin.role_key ===
+      "super_admin"
+    ) {
+      clearState(ctx.from.id);
+
+      await ctx.reply(
+        "⛔ دسترسی‌های Super Admin قابل ویرایش نیست.",
+        managementMenu()
+      );
+
+      return;
+    }
+
+    const permissions =
+      access.permissions || [];
+
+    let resetCount = 0;
+
+    for (const permission of permissions) {
+      if (
+        permission.override_enabled !==
+          undefined &&
+        permission.override_enabled !==
+          null
+      ) {
+        await adminManagementService.resetPermissionOverride(
           targetTelegramUserId,
-        choices:
-          permissions.map(
-            (permission) =>
-              permission.permission_key
-          ),
+          permission.permission_key
+        );
+
+        resetCount++;
       }
-    );
+    }
 
     await ctx.reply(
-      action === "add"
-        ? "➕ دسترسی موردنظر را انتخاب کنید:"
-        : "➖ دسترسی مستقیم موردنظر را انتخاب کنید:",
-      buildPermissionList(
-        permissions,
-        action
-      )
+      resetCount > 0
+        ? `🔄 ${resetCount} Override بازنشانی شد.`
+        : "ℹ️ هیچ Overrideای برای بازنشانی وجود نداشت."
+    );
+
+    await showAccessManagement(
+      ctx,
+      targetTelegramUserId
     );
   } catch (error) {
     console.error(
-      "Permission change start failed:",
+      "Reset all permission overrides failed:",
       error
     );
 
-    await ctx.reply(
-      "❌ دریافت لیست دسترسی‌ها انجام نشد.",
-      accessManagementMenu()
-    );
+    throw error;
   }
 }
 
@@ -703,9 +855,7 @@ async function showRoles(
   }
 }
 
-async function addAdmin(
-  ctx
-) {
+async function addAdmin(ctx) {
   if (!(await requireManage(ctx))) {
     return;
   }
@@ -823,15 +973,27 @@ async function handleText(
 
     if (
       state.step ===
-      "addPermission" ||
-      state.step ===
-      "removePermission"
+      "permissionToggle"
     ) {
       if (
-        !(await requireManage(ctx))
+        text ===
+        "🔄 بازنشانی همه"
       ) {
-        clearState(
-          telegramUserId
+        await resetAllPermissionOverrides(
+          ctx,
+          state.targetUserId
+        );
+
+        return;
+      }
+
+      if (
+        text ===
+        "🔙 تنظیمات ادمین"
+      ) {
+        await showAdminSettings(
+          ctx,
+          state.targetUserId
         );
 
         return;
@@ -864,57 +1026,10 @@ async function handleText(
           selectedIndex - 1
         ];
 
-      if (
-        state.step ===
-        "addPermission"
-      ) {
-        await adminManagementService.addPermission(
-          state.targetUserId,
-          permissionKey
-        );
-
-        clearState(
-          telegramUserId
-        );
-
-        await ctx.reply(
-          "✅ دسترسی اضافه شد.",
-          accessManagementMenu()
-        );
-
-        setState(
-          telegramUserId,
-          {
-            step: "permissionMenu",
-            targetUserId:
-              state.targetUserId,
-          }
-        );
-
-        return;
-      }
-
-      await adminManagementService.removePermission(
+      await togglePermission(
+        ctx,
         state.targetUserId,
         permissionKey
-      );
-
-      clearState(
-        telegramUserId
-      );
-
-      await ctx.reply(
-        "✅ دسترسی مستقیم حذف شد.",
-        accessManagementMenu()
-      );
-
-      setState(
-        telegramUserId,
-        {
-          step: "permissionMenu",
-          targetUserId:
-            state.targetUserId,
-        }
       );
 
       return;
@@ -929,6 +1044,18 @@ async function handleText(
       ) {
         clearState(
           telegramUserId
+        );
+
+        return;
+      }
+
+      if (
+        text ===
+        "🔙 تنظیمات ادمین"
+      ) {
+        await showAdminSettings(
+          ctx,
+          state.targetUserId
         );
 
         return;
@@ -1024,63 +1151,6 @@ async function handleText(
         "✅ ادمین با موفقیت اضافه شد.",
         managementMenu()
       );
-
-      return;
-    }
-
-    if (
-      state.step ===
-      "permissionMenu"
-    ) {
-      if (
-        text ===
-        "📋 مشاهده دسترسی‌ها"
-      ) {
-        await showPermissions(
-          ctx,
-          state.targetUserId
-        );
-
-        return;
-      }
-
-      if (
-        text ===
-        "➕ افزودن دسترسی"
-      ) {
-        await startPermissionChange(
-          ctx,
-          state.targetUserId,
-          "add"
-        );
-
-        return;
-      }
-
-      if (
-        text ===
-        "➖ حذف دسترسی"
-      ) {
-        await startPermissionChange(
-          ctx,
-          state.targetUserId,
-          "remove"
-        );
-
-        return;
-      }
-
-      if (
-        text ===
-        "🔙 تنظیمات ادمین"
-      ) {
-        await showAdminSettings(
-          ctx,
-          state.targetUserId
-        );
-
-        return;
-      }
 
       return;
     }
