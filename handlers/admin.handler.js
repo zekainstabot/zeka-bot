@@ -6,9 +6,12 @@ const {
   mainMenu,
 } = require("../config/bot-menus");
 
+const adminService =
+  require("../services/admin.service");
+
 const {
   getAdminByTelegramId,
-} = require("../services/admin.service");
+} = adminService;
 
 const {
   setUserCommands,
@@ -18,7 +21,123 @@ const {
   createAdminQuizHandler,
 } = require("./admin-quiz.handler");
 
-async function handleAdminCommand(ctx) {
+const {
+  createAdminManagementHandler,
+} = require("./admin-management.handler");
+
+async function getAdminPanelData(
+  telegramUserId
+) {
+  const admin =
+    await getAdminByTelegramId(
+      telegramUserId
+    );
+
+  if (
+    !admin ||
+    !admin.is_active
+  ) {
+    return null;
+  }
+
+  const permissions = {};
+
+  const permissionKeys = [
+    "admins",
+    "games.quiz",
+    "features.fortune.manage",
+  ];
+
+  for (
+    const permissionKey of permissionKeys
+  ) {
+    permissions[permissionKey] =
+      await adminService.hasPermission(
+        admin.user_id,
+        permissionKey
+      );
+  }
+
+  return {
+    admin,
+    permissions,
+  };
+}
+
+function buildAdminMainMenu(
+  permissions
+) {
+  const buttons = [];
+
+  if (
+    permissions.admins
+  ) {
+    buttons.push([
+      "🛠 مدیریت ادمین",
+    ]);
+  }
+
+  if (
+    permissions["games.quiz"]
+  ) {
+    buttons.push([
+      "🧠 مدیریت مسابقه",
+    ]);
+  }
+
+  if (
+    permissions[
+      "features.fortune.manage"
+    ]
+  ) {
+    buttons.push([
+      "🔮 مدیریت فال",
+    ]);
+  }
+
+  buttons.push([
+    "🔙 خروج از پنل مدیریت",
+  ]);
+
+  return Markup.keyboard(
+    buttons
+  )
+    .resize()
+    .persistent();
+}
+
+async function showAdminMainMenu(
+  ctx
+) {
+  const data =
+    await getAdminPanelData(
+      ctx.from?.id
+    );
+
+  if (!data) {
+    await ctx.reply(
+      "⛔ شما دسترسی به پنل ادمین ندارید."
+    );
+
+    return;
+  }
+
+  await ctx.reply(
+    "🛠️ پنل ادمین زکا\n\n" +
+      `👤 Role: ${
+        data.admin.role_name ||
+        data.admin.role_key
+      }\n\n` +
+      "از منوی زیر بخش موردنظر را انتخاب کنید.",
+    buildAdminMainMenu(
+      data.permissions
+    )
+  );
+}
+
+async function handleAdminCommand(
+  ctx
+) {
   console.log(
     "ADMIN COMMAND RECEIVED:",
     ctx.from?.id
@@ -40,20 +159,17 @@ async function handleAdminCommand(ctx) {
       "ADMIN COMMAND: checking admin access..."
     );
 
-    const admin =
-      await getAdminByTelegramId(
+    const data =
+      await getAdminPanelData(
         telegramUserId
       );
 
     console.log(
       "ADMIN COMMAND: admin result:",
-      admin
+      data?.admin
     );
 
-    if (
-      !admin ||
-      !admin.is_active
-    ) {
+    if (!data) {
       await ctx.reply(
         "⛔ شما دسترسی به پنل ادمین ندارید."
       );
@@ -61,17 +177,8 @@ async function handleAdminCommand(ctx) {
       return;
     }
 
-    await ctx.reply(
-      "🛠️ پنل ادمین زکا\n\n" +
-        `👤 Role: ${admin.role_name || admin.role_key}\n\n` +
-        "از منوی زیر بخش موردنظر را انتخاب کنید.",
-      Markup.keyboard([
-        ["🧠 مدیریت مسابقه"],
-        ["🔮 مدیریت فال"],
-        ["🔙 خروج از پنل مدیریت"],
-      ])
-        .resize()
-        .persistent()
+    await showAdminMainMenu(
+      ctx
     );
 
     try {
@@ -80,7 +187,9 @@ async function handleAdminCommand(ctx) {
         telegramUserId,
         "admin"
       );
-    } catch (commandError) {
+    } catch (
+      commandError
+    ) {
       console.error(
         "ADMIN COMMAND: set commands failed:",
         commandError
@@ -96,7 +205,9 @@ async function handleAdminCommand(ctx) {
       await ctx.reply(
         "❌ دریافت پنل ادمین انجام نشد."
       );
-    } catch (replyError) {
+    } catch (
+      replyError
+    ) {
       console.error(
         "Admin command error reply failed:",
         replyError
@@ -130,7 +241,9 @@ async function handleAdminExit(
         ctx.from.id,
         "user"
       );
-    } catch (commandError) {
+    } catch (
+      commandError
+    ) {
       console.error(
         "Admin exit set commands failed:",
         commandError
@@ -154,17 +267,19 @@ async function handleQuizAdminMenu(
   next
 ) {
   try {
-    const admin =
-      await getAdminByTelegramId(
+    const data =
+      await getAdminPanelData(
         ctx.from?.id
       );
 
     if (
-      !admin ||
-      !admin.is_active
+      !data ||
+      !data.permissions[
+        "games.quiz"
+      ]
     ) {
       await ctx.reply(
-        "⛔ این بخش فقط برای Admin است."
+        "⛔ شما دسترسی مدیریت مسابقه را ندارید."
       );
 
       return;
@@ -193,20 +308,52 @@ async function handleQuizAdminMenu(
   }
 }
 
+async function handleAdminManagementMenu(
+  ctx
+) {
+  try {
+    const data =
+      await getAdminPanelData(
+        ctx.from?.id
+      );
+
+    if (
+      !data ||
+      !data.permissions.admins
+    ) {
+      await ctx.reply(
+        "⛔ شما دسترسی مدیریت ادمین را ندارید."
+      );
+
+      return;
+    }
+
+    await adminManagementHandler(
+      ctx
+    );
+  } catch (error) {
+    console.error(
+      "Admin management menu failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت مدیریت ادمین انجام نشد."
+    );
+  }
+}
+
 async function handleBackToAdmin(
   ctx,
   next
 ) {
   try {
-    const admin =
-      await getAdminByTelegramId(
+    const data =
+      await getAdminPanelData(
         ctx.from?.id
       );
 
-    if (
-      !admin ||
-      !admin.is_active
-    ) {
+    if (!data) {
       await ctx.reply(
         "⛔ این بخش فقط برای Admin است."
       );
@@ -214,15 +361,8 @@ async function handleBackToAdmin(
       return;
     }
 
-    await ctx.reply(
-      "🛠️ پنل ادمین",
-      Markup.keyboard([
-        ["🧠 مدیریت مسابقه"],
-        ["🔮 مدیریت فال"],
-        ["🔙 خروج از پنل مدیریت"],
-      ])
-        .resize()
-        .persistent()
+    await showAdminMainMenu(
+      ctx
     );
   } catch (error) {
     console.error(
@@ -236,15 +376,110 @@ async function handleBackToAdmin(
   }
 }
 
-function createAdminHandler(bot) {
+async function handleFortuneAdminMenu(
+  ctx
+) {
+  try {
+    const data =
+      await getAdminPanelData(
+        ctx.from?.id
+      );
+
+    if (
+      !data ||
+      !data.permissions[
+        "features.fortune.manage"
+      ]
+    ) {
+      await ctx.reply(
+        "⛔ شما دسترسی مدیریت فال را ندارید."
+      );
+
+      return;
+    }
+
+    await ctx.reply(
+      "🔮 مدیریت فال\n\n" +
+        "برای ورود به مدیریت فال از گزینه‌های موجود استفاده کنید."
+    );
+
+    await ctx.reply(
+      "🔮 مدیریت فال",
+      Markup.keyboard([
+        ["➕ افزودن فال دستی"],
+        ["📥 ورود فال از سایت"],
+        [
+          "📚 بانک فال‌ها",
+          "📊 آمار فال‌ها",
+        ],
+        ["🔙 پنل ادمین"],
+      ])
+        .resize()
+        .persistent()
+    );
+  } catch (error) {
+    console.error(
+      "Admin fortune menu failed:",
+      error
+    );
+  }
+}
+
+let adminManagementHandler = null;
+
+async function initializeAdminManagementHandler(
+  bot
+) {
+  if (
+    adminManagementHandler
+  ) {
+    return;
+  }
+
+  const module =
+    require(
+      "./admin-management.handler"
+    );
+
+  if (
+    typeof module.handleAdminManagementMenu ===
+    "function"
+  ) {
+    adminManagementHandler =
+      module.handleAdminManagementMenu;
+  }
+}
+
+function createAdminHandler(
+  bot
+) {
+  initializeAdminManagementHandler(
+    bot
+  ).catch((error) => {
+    console.error(
+      "Admin management handler initialization failed:",
+      error
+    );
+  });
+
   bot.command(
     "admin",
     handleAdminCommand
   );
 
   bot.hears(
+    "🛠 مدیریت ادمین",
+    handleAdminManagementMenu
+  );
+
+  bot.hears(
     "🧠 مدیریت مسابقه",
     handleQuizAdminMenu
+  );
+
+  bot.hears(
+    "🔮 مدیریت فال",
+    handleFortuneAdminMenu
   );
 
   bot.hears(
@@ -260,9 +495,14 @@ function createAdminHandler(bot) {
   createAdminQuizHandler(
     bot
   );
+
+  createAdminManagementHandler(
+    bot
+  );
 }
 
 module.exports = {
   handleAdminCommand,
   createAdminHandler,
+  showAdminMainMenu,
 };
