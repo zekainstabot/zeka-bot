@@ -28,6 +28,8 @@ const {
 
 const CANCEL_TEXT = "❌ لغو";
 
+const IMPORT_BUTTON = "📥 ورود سؤال از سایت";
+
 const BANK_PAGE_SIZE = 5;
 
 function importCancelMenu() {
