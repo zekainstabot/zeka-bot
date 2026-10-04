@@ -1,33 +1,95 @@
 const adminService = require("../services/admin.service");
 
-const { createAdminManagementHandler } = require("./admin-management.handler");
-const { createAdminQuizHandler } = require("./admin-quiz.handler");
-const { createAdminProHandler } = require("./admin-pro.handler");
-const { createAdminFortuneHandler } = require("./admin-fortune.handler");
+const {
+  createAdminManagementHandler,
+} = require("./admin-management.handler");
+
+const {
+  createAdminQuizHandler,
+} = require("./admin-quiz.handler");
+
+const {
+  createAdminProHandler,
+} = require("./admin-pro.handler");
+
+const {
+  createAdminFortuneHandler,
+} = require("./admin-fortune.handler");
+
+const {
+  createAdminUsersHandler,
+} = require("./admin-users.handler");
+
+const {
+  createAdminCreditsHandler,
+} = require("./admin-credits.handler");
 
 const PERMISSION_BUTTONS = [
-  { permission: "users", button: "👥 مدیریت کاربران" },
-  { permission: "settings", button: "⚙️ تنظیمات" },
-  { permission: "requests", button: "📥 مدیریت درخواست‌ها" },
-  { permission: "credits", button: "💳 مدیریت اعتبار" },
-  { permission: "rewards", button: "🎁 مدیریت جوایز" },
-  { permission: "platforms", button: "🌐 مدیریت پلتفرم‌ها" },
-  { permission: "features", button: "✨ مدیریت امکانات" },
-  { permission: "support", button: "🆘 پشتیبانی" },
-  { permission: "monitoring", button: "📊 مانیتورینگ" },
-  { permission: "admins", button: "🛠 مدیریت ادمین" },
-  { permission: "reports", button: "📋 گزارش‌ها" },
-  { permission: "bug_reports", button: "🐞 گزارش مشکلات" },
-  { permission: "games.quiz", button: "🧠 مدیریت مسابقه" },
-  { permission: "pro", button: "💎 مدیریت Pro" },
-  { permission: "features.fortune.manage", button: "🔮 مدیریت فال" },
+  {
+    permission: "users",
+    button: "👥 مدیریت کاربران",
+  },
+  {
+    permission: "settings",
+    button: "⚙️ تنظیمات",
+  },
+  {
+    permission: "requests",
+    button: "📥 مدیریت درخواست‌ها",
+  },
+  {
+    permission: "credits",
+    button: "💳 مدیریت اعتبار",
+  },
+  {
+    permission: "rewards",
+    button: "🎁 مدیریت جوایز",
+  },
+  {
+    permission: "platforms",
+    button: "🌐 مدیریت پلتفرم‌ها",
+  },
+  {
+    permission: "features",
+    button: "✨ مدیریت امکانات",
+  },
+  {
+    permission: "support",
+    button: "🆘 پشتیبانی",
+  },
+  {
+    permission: "monitoring",
+    button: "📊 مانیتورینگ",
+  },
+  {
+    permission: "admins",
+    button: "🛠 مدیریت ادمین",
+  },
+  {
+    permission: "reports",
+    button: "📋 گزارش‌ها",
+  },
+  {
+    permission: "bug_reports",
+    button: "🐞 گزارش مشکلات",
+  },
+  {
+    permission: "games.quiz",
+    button: "🧠 مدیریت مسابقه",
+  },
+  {
+    permission: "pro",
+    button: "💎 مدیریت Pro",
+  },
+  {
+    permission: "features.fortune.manage",
+    button: "🔮 مدیریت فال",
+  },
 ];
 
 const UNIMPLEMENTED_BUTTONS = [
-  "👥 مدیریت کاربران",
   "⚙️ تنظیمات",
   "📥 مدیریت درخواست‌ها",
-  "💳 مدیریت اعتبار",
   "🎁 مدیریت جوایز",
   "🌐 مدیریت پلتفرم‌ها",
   "✨ مدیریت امکانات",
@@ -125,6 +187,7 @@ async function showAdminPanel(ctx) {
     await ctx.reply(
       "❌ شما دسترسی به پنل مدیریت ندارید."
     );
+
     return;
   }
 
@@ -190,6 +253,7 @@ async function handleUnavailableAdminSection(ctx) {
       await ctx.reply(
         "⛔ دسترسی به پنل مدیریت ندارید."
       );
+
       return;
     }
 
@@ -203,13 +267,12 @@ async function handleUnavailableAdminSection(ctx) {
       await ctx.reply(
         "⛔ شما به این بخش دسترسی ندارید."
       );
+
       return;
     }
 
     await ctx.reply(
-      `⏳ بخش «${button}» هنوز Handler عملیاتی ندارد.
-
-Permission این بخش فعال است، اما منطق مدیریتی آن باید در Handler اختصاصی خودش پیاده‌سازی شود.`
+      `⏳ بخش «${button}» هنوز Handler عملیاتی ندارد.\n\nPermission این بخش فعال است، اما منطق مدیریتی آن باید در Handler اختصاصی خودش پیاده‌سازی شود.`
     );
   } catch (error) {
     console.error(
@@ -239,6 +302,18 @@ function createAdminHandler(bot) {
     handleAdminExit
   );
 
+  createAdminManagementHandler(bot);
+
+  createAdminQuizHandler(bot);
+
+  createAdminProHandler(bot);
+
+  createAdminFortuneHandler(bot);
+
+  createAdminUsersHandler(bot);
+
+  createAdminCreditsHandler(bot);
+
   for (
     const button of UNIMPLEMENTED_BUTTONS
   ) {
@@ -247,11 +322,6 @@ function createAdminHandler(bot) {
       handleUnavailableAdminSection
     );
   }
-
-  createAdminManagementHandler(bot);
-  createAdminQuizHandler(bot);
-  createAdminProHandler(bot);
-  createAdminFortuneHandler(bot);
 }
 
 module.exports = {
