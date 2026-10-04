@@ -100,7 +100,6 @@ console.log(
     admin,
     permissions,
   };
-}
 
 function buildAdminMainMenu(
   permissions
