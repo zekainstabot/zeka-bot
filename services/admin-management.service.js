@@ -26,6 +26,7 @@ async function getAdminAccess(
     const error = new Error(
       "User not found"
     );
+
     error.code = "USER_NOT_FOUND";
     throw error;
   }
@@ -39,8 +40,8 @@ async function getAdminAccess(
     const error = new Error(
       "Admin not found"
     );
-    error.code =
-      "ADMIN_ACCESS_DENIED";
+
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -54,11 +55,17 @@ async function getAdminAccess(
       user.id
     );
 
+  const overrides =
+    await adminManagementRepository.getPermissionOverrides(
+      user.id
+    );
+
   return {
     user,
     admin,
     permissions,
     directPermissions,
+    overrides,
   };
 }
 
@@ -76,9 +83,7 @@ async function requirePermissionByTelegramId(
       "User not found"
     );
 
-    error.code =
-      "ADMIN_ACCESS_DENIED";
-
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -95,9 +100,7 @@ async function requirePermissionByTelegramId(
       "Admin access denied"
     );
 
-    error.code =
-      "ADMIN_ACCESS_DENIED";
-
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -119,11 +122,8 @@ async function requirePermissionByTelegramId(
       `Permission denied: ${permissionKey}`
     );
 
-    error.code =
-      "PERMISSION_DENIED";
-
-    error.permission =
-      permissionKey;
+    error.code = "PERMISSION_DENIED";
+    error.permission = permissionKey;
 
     throw error;
   }
@@ -148,9 +148,7 @@ async function getDirectPermissions(
       "User not found"
     );
 
-    error.code =
-      "USER_NOT_FOUND";
-
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -159,6 +157,201 @@ async function getDirectPermissions(
   );
 }
 
+/*
+ * دریافت تمام دسترسی‌ها همراه با وضعیت مؤثر
+ *
+ * این تابع برای UI مدیریت دسترسی استفاده می‌شود.
+ */
+async function getPermissionMatrix(
+  telegramUserId
+) {
+  const user =
+    await adminManagementRepository.findUserByTelegramId(
+      telegramUserId
+    );
+
+  if (!user) {
+    const error = new Error(
+      "User not found"
+    );
+
+    error.code = "USER_NOT_FOUND";
+    throw error;
+  }
+
+  const admin =
+    await adminManagementRepository.findAdminByUserId(
+      user.id
+    );
+
+  if (!admin) {
+    const error = new Error(
+      "Admin not found"
+    );
+
+    error.code = "ADMIN_ACCESS_DENIED";
+    throw error;
+  }
+
+  return {
+    user,
+    admin,
+    permissions:
+      await adminManagementRepository.getAdminPermissions(
+        user.id
+      ),
+  };
+}
+
+/*
+ * تغییر وضعیت Override
+ *
+ * true  = اجباراً فعال
+ * false = اجباراً غیرفعال
+ */
+async function setPermissionOverride(
+  telegramUserId,
+  permissionKey,
+  isEnabled
+) {
+  const user =
+    await adminManagementRepository.findUserByTelegramId(
+      telegramUserId
+    );
+
+  if (!user) {
+    const error = new Error(
+      "User not found"
+    );
+
+    error.code = "USER_NOT_FOUND";
+    throw error;
+  }
+
+  const admin =
+    await adminManagementRepository.findAdminByUserId(
+      user.id
+    );
+
+  if (!admin) {
+    const error = new Error(
+      "Admin not found"
+    );
+
+    error.code = "ADMIN_ACCESS_DENIED";
+    throw error;
+  }
+
+  if (
+    admin.role_key ===
+    "super_admin"
+  ) {
+    const error = new Error(
+      "Super Admin permissions cannot be modified"
+    );
+
+    error.code = "SUPER_ADMIN_REQUIRED";
+    throw error;
+  }
+
+  if (
+    typeof permissionKey !==
+      "string" ||
+    !permissionKey.trim()
+  ) {
+    const error = new Error(
+      "Invalid permission key"
+    );
+
+    error.code = "INVALID_PERMISSION";
+    throw error;
+  }
+
+  return adminManagementRepository.setPermissionOverride(
+    user.id,
+    permissionKey.trim(),
+    Boolean(isEnabled)
+  );
+}
+
+/*
+ * حذف Override
+ *
+ * بعد از این کار دسترسی دوباره
+ * از Role / Direct Permission محاسبه می‌شود.
+ *
+ * یعنی حالت ⚪ پیش‌فرض
+ */
+async function resetPermissionOverride(
+  telegramUserId,
+  permissionKey
+) {
+  const user =
+    await adminManagementRepository.findUserByTelegramId(
+      telegramUserId
+    );
+
+  if (!user) {
+    const error = new Error(
+      "User not found"
+    );
+
+    error.code = "USER_NOT_FOUND";
+    throw error;
+  }
+
+  const admin =
+    await adminManagementRepository.findAdminByUserId(
+      user.id
+    );
+
+  if (!admin) {
+    const error = new Error(
+      "Admin not found"
+    );
+
+    error.code = "ADMIN_ACCESS_DENIED";
+    throw error;
+  }
+
+  if (
+    admin.role_key ===
+    "super_admin"
+  ) {
+    const error = new Error(
+      "Super Admin permissions cannot be modified"
+    );
+
+    error.code = "SUPER_ADMIN_REQUIRED";
+    throw error;
+  }
+
+  if (
+    typeof permissionKey !==
+      "string" ||
+    !permissionKey.trim()
+  ) {
+    const error = new Error(
+      "Invalid permission key"
+    );
+
+    error.code = "INVALID_PERMISSION";
+    throw error;
+  }
+
+  return adminManagementRepository.removePermissionOverride(
+    user.id,
+    permissionKey.trim()
+  );
+}
+
+/*
+ * Legacy:
+ * افزودن Direct Permission
+ *
+ * فعلاً نگه داشته شده تا بخش‌های قدیمی
+ * پنل از کار نیفتند.
+ */
 async function addPermission(
   telegramUserId,
   permissionKey
@@ -173,9 +366,7 @@ async function addPermission(
       "User not found"
     );
 
-    error.code =
-      "USER_NOT_FOUND";
-
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -189,9 +380,7 @@ async function addPermission(
       "Admin not found"
     );
 
-    error.code =
-      "ADMIN_ACCESS_DENIED";
-
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -203,9 +392,7 @@ async function addPermission(
       "Super Admin permissions cannot be modified"
     );
 
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
+    error.code = "SUPER_ADMIN_REQUIRED";
     throw error;
   }
 
@@ -215,6 +402,10 @@ async function addPermission(
   );
 }
 
+/*
+ * Legacy:
+ * حذف Direct Permission
+ */
 async function removePermission(
   telegramUserId,
   permissionKey
@@ -229,9 +420,7 @@ async function removePermission(
       "User not found"
     );
 
-    error.code =
-      "USER_NOT_FOUND";
-
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -245,9 +434,7 @@ async function removePermission(
       "Admin not found"
     );
 
-    error.code =
-      "ADMIN_ACCESS_DENIED";
-
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -259,9 +446,7 @@ async function removePermission(
       "Super Admin permissions cannot be modified"
     );
 
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
+    error.code = "SUPER_ADMIN_REQUIRED";
     throw error;
   }
 
@@ -285,9 +470,7 @@ async function changeAdminRole(
       "User not found"
     );
 
-    error.code =
-      "USER_NOT_FOUND";
-
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -301,9 +484,7 @@ async function changeAdminRole(
       "Admin not found"
     );
 
-    error.code =
-      "ADMIN_ACCESS_DENIED";
-
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -315,9 +496,7 @@ async function changeAdminRole(
       "Super Admin role cannot be changed"
     );
 
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
+    error.code = "SUPER_ADMIN_REQUIRED";
     throw error;
   }
 
@@ -329,9 +508,7 @@ async function changeAdminRole(
       "Cannot assign Super Admin role"
     );
 
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
+    error.code = "SUPER_ADMIN_REQUIRED";
     throw error;
   }
 
@@ -354,9 +531,7 @@ async function addAdmin(
       "User not found"
     );
 
-    error.code =
-      "USER_NOT_FOUND";
-
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -370,9 +545,7 @@ async function addAdmin(
       "User is already an admin"
     );
 
-    error.code =
-      "ALREADY_ADMIN";
-
+    error.code = "ALREADY_ADMIN";
     throw error;
   }
 
@@ -395,9 +568,7 @@ async function setAdminActive(
       "User not found"
     );
 
-    error.code =
-      "USER_NOT_FOUND";
-
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -411,9 +582,7 @@ async function setAdminActive(
       "Admin not found"
     );
 
-    error.code =
-      "ADMIN_ACCESS_DENIED";
-
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -425,9 +594,7 @@ async function setAdminActive(
       "Super Admin cannot be disabled"
     );
 
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
+    error.code = "SUPER_ADMIN_REQUIRED";
     throw error;
   }
 
@@ -450,9 +617,7 @@ async function removeAdmin(
       "User not found"
     );
 
-    error.code =
-      "USER_NOT_FOUND";
-
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -466,9 +631,7 @@ async function removeAdmin(
       "Admin not found"
     );
 
-    error.code =
-      "ADMIN_ACCESS_DENIED";
-
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -480,9 +643,7 @@ async function removeAdmin(
       "Super Admin cannot be removed"
     );
 
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
+    error.code = "SUPER_ADMIN_REQUIRED";
     throw error;
   }
 
@@ -504,9 +665,7 @@ async function setReportAdmin(
       "User not found"
     );
 
-    error.code =
-      "USER_NOT_FOUND";
-
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -520,9 +679,7 @@ async function setReportAdmin(
       "Admin not found"
     );
 
-    error.code =
-      "ADMIN_ACCESS_DENIED";
-
+    error.code = "ADMIN_ACCESS_DENIED";
     throw error;
   }
 
@@ -534,9 +691,7 @@ async function setReportAdmin(
       "Super Admin cannot be selected as report admin"
     );
 
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
+    error.code = "SUPER_ADMIN_REQUIRED";
     throw error;
   }
 
@@ -557,15 +712,26 @@ async function setReportAdmin(
 module.exports = {
   listAdmins,
   getRoles,
+
   getAdminAccess,
   requirePermissionByTelegramId,
+
   getAllPermissions,
   getDirectPermissions,
+
+  getPermissionMatrix,
+
+  setPermissionOverride,
+  resetPermissionOverride,
+
+  // Legacy
   addPermission,
   removePermission,
+
   changeAdminRole,
   addAdmin,
   setAdminActive,
   removeAdmin,
+
   setReportAdmin,
 };
