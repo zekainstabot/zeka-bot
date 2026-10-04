@@ -108,6 +108,23 @@ async function listRoles() {
   return result.rows;
 }
 
+/*
+ * تمام دسترسی‌ها + وضعیت مؤثر هر دسترسی
+ *
+ * priority:
+ *
+ * 1. override
+ * 2. direct permission
+ * 3. role permission
+ * 4. disabled
+ *
+ * source:
+ *
+ * override
+ * direct
+ * role
+ * none
+ */
 async function getAdminPermissions(
   userId
 ) {
@@ -115,37 +132,76 @@ async function getAdminPermissions(
 
   const result = await db.query(
     `
-      SELECT DISTINCT
+      SELECT
         p.id,
         p.permission_key,
         p.permission_name,
         p.description,
-        'role' AS source
+
+        CASE
+          WHEN ov.is_enabled IS NOT NULL
+            THEN ov.is_enabled
+
+          WHEN aup.permission_id IS NOT NULL
+            THEN TRUE
+
+          WHEN arp.permission_id IS NOT NULL
+            THEN TRUE
+
+          ELSE FALSE
+        END AS is_enabled,
+
+        CASE
+          WHEN ov.is_enabled IS NOT NULL
+            THEN 'override'
+
+          WHEN aup.permission_id IS NOT NULL
+            THEN 'direct'
+
+          WHEN arp.permission_id IS NOT NULL
+            THEN 'role'
+
+          ELSE 'none'
+        END AS source,
+
+        CASE
+          WHEN ov.is_enabled IS NOT NULL
+            THEN ov.is_enabled
+          ELSE NULL
+        END AS override_enabled,
+
+        CASE
+          WHEN aup.permission_id IS NOT NULL
+            THEN TRUE
+          ELSE FALSE
+        END AS direct_enabled,
+
+        CASE
+          WHEN arp.permission_id IS NOT NULL
+            THEN TRUE
+          ELSE FALSE
+        END AS role_enabled
+
       FROM admins a
-      JOIN admin_role_permissions arp
+
+      CROSS JOIN admin_permissions p
+
+      LEFT JOIN admin_role_permissions arp
         ON arp.role_id = a.role_id
-      JOIN admin_permissions p
-        ON p.id = arp.permission_id
-      WHERE a.user_id = $1
-        AND a.is_active = TRUE
+       AND arp.permission_id = p.id
 
-      UNION
-
-      SELECT DISTINCT
-        p.id,
-        p.permission_key,
-        p.permission_name,
-        p.description,
-        'direct' AS source
-      FROM admins a
-      JOIN admin_user_permissions aup
+      LEFT JOIN admin_user_permissions aup
         ON aup.admin_id = a.id
-      JOIN admin_permissions p
-        ON p.id = aup.permission_id
-      WHERE a.user_id = $1
-        AND a.is_active = TRUE
+       AND aup.permission_id = p.id
 
-      ORDER BY permission_key ASC
+      LEFT JOIN admin_user_permission_overrides ov
+        ON ov.admin_id = a.id
+       AND ov.permission_id = p.id
+
+      WHERE a.user_id = $1
+
+      ORDER BY
+        p.permission_key ASC
     `,
     [userId]
   );
@@ -171,7 +227,8 @@ async function getDirectPermissions(
       JOIN admin_permissions p
         ON p.id = aup.permission_id
       WHERE a.user_id = $1
-      ORDER BY p.permission_key ASC
+      ORDER BY
+        p.permission_key ASC
     `,
     [userId]
   );
@@ -190,11 +247,172 @@ async function getAllPermissions() {
         permission_name,
         description
       FROM admin_permissions
-      ORDER BY permission_key ASC
+      ORDER BY
+        permission_key ASC
     `
   );
 
   return result.rows;
+}
+
+/*
+ * گرفتن Override های ثبت‌شده برای یک ادمین
+ */
+async function getPermissionOverrides(
+  userId
+) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        p.id,
+        p.permission_key,
+        p.permission_name,
+        p.description,
+        ov.is_enabled,
+        ov.created_at,
+        ov.updated_at
+      FROM admins a
+      JOIN admin_user_permission_overrides ov
+        ON ov.admin_id = a.id
+      JOIN admin_permissions p
+        ON p.id = ov.permission_id
+      WHERE a.user_id = $1
+      ORDER BY
+        p.permission_key ASC
+    `,
+    [userId]
+  );
+
+  return result.rows;
+}
+
+/*
+ * گرفتن وضعیت یک دسترسی خاص
+ */
+async function getPermissionOverride(
+  userId,
+  permissionKey
+) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        ov.id,
+        ov.admin_id,
+        ov.permission_id,
+        p.permission_key,
+        ov.is_enabled,
+        ov.created_at,
+        ov.updated_at
+      FROM admins a
+      JOIN admin_user_permission_overrides ov
+        ON ov.admin_id = a.id
+      JOIN admin_permissions p
+        ON p.id = ov.permission_id
+      WHERE a.user_id = $1
+        AND p.permission_key = $2
+      LIMIT 1
+    `,
+    [
+      userId,
+      permissionKey,
+    ]
+  );
+
+  return result.rows[0] || null;
+}
+
+/*
+ * فعال/غیرفعال کردن Override
+ */
+async function setPermissionOverride(
+  userId,
+  permissionKey,
+  isEnabled
+) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      INSERT INTO admin_user_permission_overrides (
+        admin_id,
+        permission_id,
+        is_enabled
+      )
+      SELECT
+        a.id,
+        p.id,
+        $3
+      FROM admins a
+      JOIN admin_permissions p
+        ON p.permission_key = $2
+      WHERE a.user_id = $1
+
+      ON CONFLICT (
+        admin_id,
+        permission_id
+      )
+      DO UPDATE SET
+        is_enabled = EXCLUDED.is_enabled,
+        updated_at = NOW()
+
+      RETURNING
+        id,
+        admin_id,
+        permission_id,
+        is_enabled,
+        created_at,
+        updated_at
+    `,
+    [
+      userId,
+      permissionKey,
+      Boolean(isEnabled),
+    ]
+  );
+
+  return result.rows[0] || null;
+}
+
+/*
+ * حذف Override
+ *
+ * بعد از حذف:
+ * دسترسی دوباره از Role یا Direct Permission
+ * محاسبه می‌شود.
+ */
+async function removePermissionOverride(
+  userId,
+  permissionKey
+) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      DELETE FROM admin_user_permission_overrides ov
+      USING admins a,
+            admin_permissions p
+      WHERE ov.admin_id = a.id
+        AND ov.permission_id = p.id
+        AND a.user_id = $1
+        AND p.permission_key = $2
+
+      RETURNING
+        ov.id,
+        ov.admin_id,
+        ov.permission_id,
+        ov.is_enabled
+    `,
+    [
+      userId,
+      permissionKey,
+    ]
+  );
+
+  return result.rows[0] || null;
 }
 
 async function setAdminRole(
@@ -213,18 +431,24 @@ async function setAdminRole(
       WHERE a.user_id = $1
         AND r.role_key = $2
         AND r.role_key <> 'super_admin'
+
       RETURNING
         a.*,
         r.role_key,
         r.role_name
     `,
-    [userId, roleKey]
+    [
+      userId,
+      roleKey,
+    ]
   );
 
   return result.rows[0] || null;
 }
 
-async function createAdmin(userId) {
+async function createAdmin(
+  userId
+) {
   const db = getClient();
 
   const result = await db.query(
@@ -290,6 +514,12 @@ async function removeAdmin(
   return result.rows[0] || null;
 }
 
+/*
+ * Legacy direct permission
+ *
+ * این توابع فعلاً حفظ شده‌اند تا
+ * بخش‌های قدیمی پنل خراب نشوند.
+ */
 async function addDirectPermission(
   userId,
   permissionKey
@@ -309,11 +539,13 @@ async function addDirectPermission(
       JOIN admin_permissions p
         ON p.permission_key = $2
       WHERE a.user_id = $1
+
       ON CONFLICT (
         admin_id,
         permission_id
       )
       DO NOTHING
+
       RETURNING *
     `,
     [
@@ -340,6 +572,7 @@ async function removeDirectPermission(
         AND aup.permission_id = p.id
         AND a.user_id = $1
         AND p.permission_key = $2
+
       RETURNING aup.*
     `,
     [
@@ -361,6 +594,11 @@ module.exports = {
   getAdminPermissions,
   getDirectPermissions,
   getAllPermissions,
+
+  getPermissionOverrides,
+  getPermissionOverride,
+  setPermissionOverride,
+  removePermissionOverride,
 
   setAdminRole,
   createAdmin,
