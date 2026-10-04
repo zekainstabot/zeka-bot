@@ -21,40 +21,54 @@ function createBasicHandler({
           ctx.from
         );
 
-      const admin =
-        await getAdminByTelegramId(
-          ctx.from.id
-        );
-
       let role = "user";
 
-      if (
-        admin &&
-        admin.is_active
-      ) {
+      try {
+        const admin =
+          await getAdminByTelegramId(
+            ctx.from.id
+          );
+
         if (
-          admin.role_key ===
-          "super_admin"
+          admin &&
+          admin.is_active
         ) {
-          role = "super_admin";
-        } else if (
-          admin.role_key ===
-          "admin"
-        ) {
-          role = "admin";
+          if (
+            admin.role_key ===
+            "super_admin"
+          ) {
+            role = "super_admin";
+          } else if (
+            admin.role_key ===
+            "admin"
+          ) {
+            role = "admin";
+          }
         }
+      } catch (error) {
+        console.error(
+          "Start admin lookup failed:",
+          error
+        );
       }
 
-      await setUserCommands(
-        ctx.telegram,
-        ctx.from.id,
-        role
-      );
+      try {
+        await setUserCommands(
+          ctx.telegram,
+          ctx.from.id,
+          role
+        );
+      } catch (error) {
+        console.error(
+          "Start set user commands failed:",
+          error
+        );
+      }
 
       const name =
-        user.display_name ||
-        user.username ||
-        ctx.from.first_name ||
+        user?.display_name ||
+        user?.username ||
+        ctx.from?.first_name ||
         "دوست";
 
       await ctx.reply(
@@ -69,9 +83,19 @@ function createBasicHandler({
         error
       );
 
-      await ctx.reply(
-        "❌ در ثبت اطلاعات شما مشکلی پیش آمد.\nلطفاً دوباره تلاش کنید."
-      );
+      try {
+        await ctx.reply(
+          "سلام 👋\n\n" +
+            "به زکا خوش آمدی.\n\n" +
+            "🔗 برای دانلود، فقط لینک محتوای موردنظرت رو همینجا ارسال کن.",
+          mainMenu
+        );
+      } catch (replyError) {
+        console.error(
+          "Start fallback reply failed:",
+          replyError
+        );
+      }
     }
   });
 
