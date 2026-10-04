@@ -25,6 +25,42 @@ const {
   createAdminManagementHandler,
 } = require("./admin-management.handler");
 
+const PERMISSION_KEYS = [
+  "users",
+  "settings",
+  "requests",
+  "credits",
+  "rewards",
+  "platforms",
+  "features",
+  "support",
+  "monitoring",
+  "admins",
+  "reports",
+  "bug_reports",
+  "games.quiz",
+  "pro",
+  "features.fortune.manage",
+];
+
+const PERMISSION_BUTTONS = {
+  users: "👥 کاربران",
+  settings: "⚙️ تنظیمات",
+  requests: "📥 درخواست‌ها",
+  credits: "💳 اعتبارها",
+  rewards: "🎁 پاداش‌ها",
+  platforms: "🌐 پلتفرم‌ها",
+  features: "✨ قابلیت‌ها",
+  support: "🆘 پشتیبانی",
+  monitoring: "📊 مانیتورینگ",
+  admins: "🛠 مدیریت ادمین",
+  reports: "📋 گزارش‌ها",
+  bug_reports: "🐛 گزارش مشکل",
+  "games.quiz": "🧠 مدیریت مسابقه",
+  pro: "💎 مدیریت Pro",
+  "features.fortune.manage": "🔮 مدیریت فال",
+};
+
 async function getAdminPanelData(
   telegramUserId
 ) {
@@ -42,14 +78,8 @@ async function getAdminPanelData(
 
   const permissions = {};
 
-  const permissionKeys = [
-    "admins",
-    "games.quiz",
-    "features.fortune.manage",
-  ];
-
   for (
-    const permissionKey of permissionKeys
+    const permissionKey of PERMISSION_KEYS
   ) {
     permissions[permissionKey] =
       await adminService.hasPermission(
@@ -69,30 +99,37 @@ function buildAdminMainMenu(
 ) {
   const buttons = [];
 
-  if (
-    permissions.admins
-  ) {
-    buttons.push([
-      "🛠 مدیریت ادمین",
-    ]);
-  }
+  const permissionOrder = [
+    "users",
+    "settings",
+    "requests",
+    "credits",
+    "rewards",
+    "platforms",
+    "features",
+    "support",
+    "monitoring",
+    "admins",
+    "reports",
+    "bug_reports",
+    "games.quiz",
+    "pro",
+    "features.fortune.manage",
+  ];
 
-  if (
-    permissions["games.quiz"]
+  for (
+    const permissionKey of permissionOrder
   ) {
-    buttons.push([
-      "🧠 مدیریت مسابقه",
-    ]);
-  }
-
-  if (
-    permissions[
-      "features.fortune.manage"
-    ]
-  ) {
-    buttons.push([
-      "🔮 مدیریت فال",
-    ]);
+    if (
+      permissions[permissionKey] &&
+      PERMISSION_BUTTONS[permissionKey]
+    ) {
+      buttons.push([
+        PERMISSION_BUTTONS[
+          permissionKey
+        ],
+      ]);
+    }
   }
 
   buttons.push([
