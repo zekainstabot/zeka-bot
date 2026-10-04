@@ -59,7 +59,7 @@ async function listPendingReports(
 ) {
   await adminManagementService.requirePermissionByTelegramId(
     telegramUserId,
-    "reports.view"
+    "reports"
   );
 
   const normalizedReason = normalizeReason(
@@ -78,7 +78,7 @@ async function countPendingReports(
 ) {
   await adminManagementService.requirePermissionByTelegramId(
     telegramUserId,
-    "reports.view"
+    "reports"
   );
 
   const normalizedReason = normalizeReason(
@@ -95,7 +95,7 @@ async function countPendingReportsByReason(
 ) {
   await adminManagementService.requirePermissionByTelegramId(
     telegramUserId,
-    "reports.view"
+    "reports"
   );
 
   return quizReportRepository.countPendingReportsByReason();
@@ -107,7 +107,7 @@ async function getReportById(
 ) {
   await adminManagementService.requirePermissionByTelegramId(
     telegramUserId,
-    "reports.view"
+    "reports"
   );
 
   return quizReportRepository.getReportById(
@@ -124,7 +124,7 @@ async function resolveReport(
   const admin =
     await adminManagementService.requirePermissionByTelegramId(
       telegramUserId,
-      "reports.manage"
+      "reports"
     );
 
   const allowedStatuses = [
