@@ -1635,20 +1635,19 @@ async function handleAdminQuizText(
     }
 
     if (
-      state.mode ===
-        "EDIT" ||
-      state.mode ===
-        "EDIT_DIRECT"
-    ) {
-      await handleEditQuestionStep(
-        ctx,
-        telegramUserId,
-        state,
-        text
-      );
+  state.mode === "EDIT" ||
+  state.mode === "EDIT_DIRECT" ||
+  state.mode === "EDIT_REPORT"
+) {
+  await handleEditQuestionStep(
+    ctx,
+    telegramUserId,
+    state,
+    text
+  );
 
-      return;
-    }
+  return;
+}
 
     await handleAddQuestionStep(
       ctx,
