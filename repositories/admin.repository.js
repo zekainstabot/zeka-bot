@@ -64,8 +64,6 @@ async function findByUserId(userId) {
         a.*,
         u.telegram_user_id,
         u.username,
-        u.first_name,
-        u.last_name,
         u.display_name,
         ar.role_key,
         ar.role_name
