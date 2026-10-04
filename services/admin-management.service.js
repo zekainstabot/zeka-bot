@@ -1,11 +1,53 @@
-const adminRepository = require("../repositories/admin-management.repository");
+const adminRepository = require(
+  "../repositories/admin-management.repository"
+);
 
 async function listAdmins() {
   return adminRepository.listAdmins();
 }
 
-async function addAdmin(
-  telegramUserId
+async function getRoles() {
+  return adminRepository.listRoles();
+}
+
+async function getAdminAccess(telegramUserId) {
+  const user =
+    await adminRepository.findUserByTelegramId(
+      telegramUserId
+    );
+
+  if (!user) {
+    const error = new Error("User not found");
+    error.code = "USER_NOT_FOUND";
+    throw error;
+  }
+
+  const admin =
+    await adminRepository.findAdminByUserId(
+      user.id
+    );
+
+  if (!admin) {
+    const error = new Error("Admin not found");
+    error.code = "ADMIN_NOT_FOUND";
+    throw error;
+  }
+
+  const permissions =
+    await adminRepository.getAdminPermissions(
+      user.id
+    );
+
+  return {
+    user,
+    admin,
+    permissions,
+  };
+}
+
+async function changeAdminRole(
+  telegramUserId,
+  roleKey
 ) {
   const user =
     await adminRepository.findUserByTelegramId(
@@ -13,13 +55,73 @@ async function addAdmin(
     );
 
   if (!user) {
-    const error = new Error(
-      "User not found"
+    const error = new Error("User not found");
+    error.code = "USER_NOT_FOUND";
+    throw error;
+  }
+
+  const admin =
+    await adminRepository.findAdminByUserId(
+      user.id
     );
 
-    error.code =
-      "USER_NOT_FOUND";
+  if (!admin) {
+    const error = new Error("Admin not found");
+    error.code = "ADMIN_NOT_FOUND";
+    throw error;
+  }
 
+  if (admin.role_key === "super_admin") {
+    const error = new Error(
+      "Super Admin is protected"
+    );
+    error.code = "SUPER_ADMIN_PROTECTED";
+    throw error;
+  }
+
+  const roles =
+    await adminRepository.listRoles();
+
+  const role =
+    roles.find(
+      (item) => item.role_key === roleKey
+    );
+
+  if (!role) {
+    const error = new Error("Invalid role");
+    error.code = "INVALID_ROLE";
+    throw error;
+  }
+
+  const updated =
+    await adminRepository.setAdminRole(
+      user.id,
+      roleKey
+    );
+
+  if (!updated) {
+    const error = new Error(
+      "Role update failed"
+    );
+    error.code = "ROLE_UPDATE_FAILED";
+    throw error;
+  }
+
+  return {
+    user,
+    admin: updated,
+  };
+}
+
+async function addAdmin(telegramUserId) {
+  const user =
+    await adminRepository.findUserByTelegramId(
+      telegramUserId
+    );
+
+  if (!user) {
+    const error = new Error("User not found");
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -32,10 +134,7 @@ async function addAdmin(
     const error = new Error(
       "User is already an admin"
     );
-
-    error.code =
-      "ALREADY_ADMIN";
-
+    error.code = "ALREADY_ADMIN";
     throw error;
   }
 
@@ -54,13 +153,8 @@ async function setAdminActive(
     );
 
   if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code =
-      "USER_NOT_FOUND";
-
+    const error = new Error("User not found");
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -70,27 +164,16 @@ async function setAdminActive(
     );
 
   if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code =
-      "ADMIN_NOT_FOUND";
-
+    const error = new Error("Admin not found");
+    error.code = "ADMIN_NOT_FOUND";
     throw error;
   }
 
-  if (
-    admin.role_key ===
-    "super_admin"
-  ) {
+  if (admin.role_key === "super_admin") {
     const error = new Error(
       "Super Admin is protected"
     );
-
-    error.code =
-      "SUPER_ADMIN_PROTECTED";
-
+    error.code = "SUPER_ADMIN_PROTECTED";
     throw error;
   }
 
@@ -100,22 +183,15 @@ async function setAdminActive(
   );
 }
 
-async function removeAdmin(
-  telegramUserId
-) {
+async function removeAdmin(telegramUserId) {
   const user =
     await adminRepository.findUserByTelegramId(
       telegramUserId
     );
 
   if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code =
-      "USER_NOT_FOUND";
-
+    const error = new Error("User not found");
+    error.code = "USER_NOT_FOUND";
     throw error;
   }
 
@@ -125,27 +201,16 @@ async function removeAdmin(
     );
 
   if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code =
-      "ADMIN_NOT_FOUND";
-
+    const error = new Error("Admin not found");
+    error.code = "ADMIN_NOT_FOUND";
     throw error;
   }
 
-  if (
-    admin.role_key ===
-    "super_admin"
-  ) {
+  if (admin.role_key === "super_admin") {
     const error = new Error(
       "Super Admin is protected"
     );
-
-    error.code =
-      "SUPER_ADMIN_PROTECTED";
-
+    error.code = "SUPER_ADMIN_PROTECTED";
     throw error;
   }
 
@@ -156,6 +221,9 @@ async function removeAdmin(
 
 module.exports = {
   listAdmins,
+  getRoles,
+  getAdminAccess,
+  changeAdminRole,
   addAdmin,
   setAdminActive,
   removeAdmin,
