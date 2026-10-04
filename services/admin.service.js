@@ -169,6 +169,157 @@ async function getDirectPermissions(
   );
 }
 
+async function getPermissionOverride(
+  userId,
+  permissionKey
+) {
+  if (!userId || !permissionKey) {
+    return null;
+  }
+
+  return adminRepository.getPermissionOverride(
+    userId,
+    permissionKey
+  );
+}
+
+async function getPermissionOverrides(
+  userId
+) {
+  if (!userId) {
+    return [];
+  }
+
+  return adminRepository.getPermissionOverridesByUserId(
+    userId
+  );
+}
+
+async function setPermissionOverride(
+  userId,
+  permissionKey,
+  isEnabled
+) {
+  if (!userId) {
+    throw new Error(
+      "User ID is required"
+    );
+  }
+
+  if (!permissionKey) {
+    throw new Error(
+      "Permission key is required"
+    );
+  }
+
+  const admin =
+    await adminRepository.findByUserId(
+      userId
+    );
+
+  if (!admin) {
+    const error = new Error(
+      "Admin not found"
+    );
+
+    error.code =
+      "ADMIN_NOT_FOUND";
+
+    throw error;
+  }
+
+  if (
+    admin.role_key === "super_admin"
+  ) {
+    const error = new Error(
+      "Super Admin permissions cannot be modified"
+    );
+
+    error.code =
+      "SUPER_ADMIN_PROTECTED";
+
+    throw error;
+  }
+
+  const permissions =
+    await adminRepository.getAllPermissions();
+
+  const exists =
+    permissions.some(
+      (item) =>
+        item.permission_key ===
+        permissionKey
+    );
+
+  if (!exists) {
+    const error = new Error(
+      "Permission not found"
+    );
+
+    error.code =
+      "PERMISSION_NOT_FOUND";
+
+    throw error;
+  }
+
+  return adminRepository.setPermissionOverride(
+    userId,
+    permissionKey,
+    isEnabled
+  );
+}
+
+async function resetPermissionOverride(
+  userId,
+  permissionKey
+) {
+  if (!userId) {
+    throw new Error(
+      "User ID is required"
+    );
+  }
+
+  if (!permissionKey) {
+    throw new Error(
+      "Permission key is required"
+    );
+  }
+
+  const admin =
+    await adminRepository.findByUserId(
+      userId
+    );
+
+  if (!admin) {
+    const error = new Error(
+      "Admin not found"
+    );
+
+    error.code =
+      "ADMIN_NOT_FOUND";
+
+    throw error;
+  }
+
+  if (
+    admin.role_key === "super_admin"
+  ) {
+    const error = new Error(
+      "Super Admin permissions cannot be modified"
+    );
+
+    error.code =
+      "SUPER_ADMIN_PROTECTED";
+
+    throw error;
+  }
+
+  return adminRepository.removePermissionOverride(
+    userId,
+    permissionKey
+  );
+}
+
 async function addPermission(
   userId,
   permissionKey
@@ -214,11 +365,11 @@ async function addPermission(
     throw error;
   }
 
-  const permission =
+  const permissions =
     await adminRepository.getAllPermissions();
 
   const exists =
-    permission.some(
+    permissions.some(
       (item) =>
         item.permission_key ===
         permissionKey
@@ -309,6 +460,11 @@ module.exports = {
   getPermissions,
   getAllPermissions,
   getDirectPermissions,
+
+  getPermissionOverride,
+  getPermissionOverrides,
+  setPermissionOverride,
+  resetPermissionOverride,
 
   addPermission,
   removePermission,
