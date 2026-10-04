@@ -1,10 +1,18 @@
 const adminService = require("./admin.service");
+
 const adminQuizRepository = require(
   "../repositories/admin-quiz.repository"
 );
 
+const adminManagementService = require(
+  "./admin-management.service"
+);
+
 const QUIZ_MANAGE_PERMISSION =
   "games.quiz.manage";
+
+const REPORT_MANAGE_PERMISSION =
+  "reports.manage";
 
 async function requireQuizPermission(
   telegramUserId
@@ -46,6 +54,15 @@ async function requireQuizPermission(
   }
 
   return admin;
+}
+
+async function requireReportManagePermission(
+  telegramUserId
+) {
+  return adminManagementService.requirePermissionByTelegramId(
+    telegramUserId,
+    REPORT_MANAGE_PERMISSION
+  );
 }
 
 async function createQuestion({
@@ -96,6 +113,33 @@ async function getQuestionById(
   questionId
 ) {
   await requireQuizPermission(
+    telegramUserId
+  );
+
+  const question =
+    await adminQuizRepository.getQuestionById(
+      questionId
+    );
+
+  if (!question) {
+    const error = new Error(
+      "Question not found"
+    );
+
+    error.code =
+      "QUESTION_NOT_FOUND";
+
+    throw error;
+  }
+
+  return question;
+}
+
+async function getQuestionByIdForReport(
+  telegramUserId,
+  questionId
+) {
+  await requireReportManagePermission(
     telegramUserId
   );
 
@@ -219,6 +263,55 @@ async function updateQuestion({
   });
 }
 
+async function updateQuestionFromReport({
+  telegramUserId,
+  questionId,
+  category,
+  difficulty,
+  questionText,
+  optionA,
+  optionB,
+  optionC,
+  optionD,
+  correctOption,
+  explanation = null,
+}) {
+  const admin =
+    await requireReportManagePermission(
+      telegramUserId
+    );
+
+  const question =
+    await adminQuizRepository.getQuestionById(
+      questionId
+    );
+
+  if (!question) {
+    const error = new Error(
+      "Question not found"
+    );
+
+    error.code =
+      "QUESTION_NOT_FOUND";
+
+    throw error;
+  }
+
+  return adminQuizRepository.updateQuestion({
+    questionId,
+    category,
+    difficulty,
+    questionText,
+    optionA,
+    optionB,
+    optionC,
+    optionD,
+    correctOption,
+    explanation,
+    updatedBy: admin.user_id,
+  });
+}
+
 async function updateQuestionStatus({
   telegramUserId,
   questionId,
@@ -254,12 +347,15 @@ async function updateQuestionStatus({
 
 module.exports = {
   requireQuizPermission,
+  requireReportManagePermission,
   createQuestion,
   countActiveQuestions,
   getQuestionById,
+  getQuestionByIdForReport,
   listQuestions,
   countQuestions,
   listCategories,
   updateQuestion,
+  updateQuestionFromReport,
   updateQuestionStatus,
 };
