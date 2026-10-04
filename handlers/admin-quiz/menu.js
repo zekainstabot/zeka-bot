@@ -6,6 +6,10 @@ const adminQuizService = require(
   "../../services/admin-quiz.service"
 );
 
+const adminManagementService = require(
+  "../../services/admin-management.service"
+);
+
 async function quizAdminMenu(
   ctx
 ) {
@@ -13,6 +17,7 @@ async function quizAdminMenu(
     ctx.from?.id;
 
   let isSuperAdmin = false;
+  let canViewReports = false;
 
   if (telegramUserId) {
     try {
@@ -25,19 +30,38 @@ async function quizAdminMenu(
         admin.role_key ===
         "super_admin";
     } catch {}
+
+    try {
+      await adminManagementService.requirePermissionByTelegramId(
+        telegramUserId,
+        "reports.view"
+      );
+
+      canViewReports = true;
+    } catch {}
   }
 
-  return Markup.keyboard([
+  const buttons = [
     ["➕ افزودن سؤال"],
     ["📚 بانک سؤالات"],
     ["📥 ورود سؤال از سایت"],
-    ["🚨 گزارش‌های سؤالات"],
-    [
-      isSuperAdmin
-        ? "🔙 پنل Super Admin"
-        : "🔙 پنل مدیریت",
-    ],
-  ]).resize();
+  ];
+
+  if (canViewReports) {
+    buttons.push([
+      "🚨 گزارش‌های سؤالات",
+    ]);
+  }
+
+  buttons.push([
+    isSuperAdmin
+      ? "🔙 پنل Super Admin"
+      : "🔙 پنل مدیریت",
+  ]);
+
+  return Markup.keyboard(
+    buttons
+  ).resize();
 }
 
 module.exports = {
