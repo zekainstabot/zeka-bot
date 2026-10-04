@@ -1,18 +1,66 @@
 const adminRepository = require("../repositories/admin.repository");
 
+const PERMISSION_ALIASES = {
+  "users.view": "users",
+  "users.manage": "users",
+  "settings.view": "settings",
+  "settings.manage": "settings",
+  "requests.view": "requests",
+  "requests.manage": "requests",
+  "credits.view": "credits",
+  "credits.manage": "credits",
+  "rewards.view": "rewards",
+  "rewards.manage": "rewards",
+  "platforms.view": "platforms",
+  "platforms.manage": "platforms",
+  "features.view": "features",
+  "features.manage": "features",
+  "support.view": "support",
+  "support.manage": "support",
+  "monitoring.view": "monitoring",
+  "admins.view": "admins",
+  "admins.manage": "admins",
+  "reports.view": "reports",
+  "reports.manage": "reports",
+  "games.quiz.manage": "games.quiz",
+  "pro.manage": "pro",
+};
+
+function normalizePermissionKey(permissionKey) {
+  if (
+    typeof permissionKey !== "string" ||
+    !permissionKey.trim()
+  ) {
+    return null;
+  }
+
+  const key = permissionKey.trim();
+
+  return (
+    PERMISSION_ALIASES[key] ||
+    key
+  );
+}
+
 async function getAdminByUserId(userId) {
   return adminRepository.findByUserId(userId);
 }
 
-async function getAdminByTelegramId(telegramUserId) {
-  return adminRepository.findByTelegramId(telegramUserId);
+async function getAdminByTelegramId(
+  telegramUserId
+) {
+  return adminRepository.findByTelegramId(
+    telegramUserId
+  );
 }
 
 async function isAdmin(userId) {
   return adminRepository.isAdmin(userId);
 }
 
-async function isAdminByTelegramId(telegramUserId) {
+async function isAdminByTelegramId(
+  telegramUserId
+) {
   return adminRepository.isAdminByTelegramId(
     telegramUserId
   );
@@ -26,22 +74,37 @@ async function hasPermission(
     return false;
   }
 
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
+  if (!normalizedKey) {
+    return false;
+  }
+
   const admin =
     await adminRepository.findByUserId(
       userId
     );
 
-  if (!admin || !admin.is_active) {
+  if (
+    !admin ||
+    !admin.is_active
+  ) {
     return false;
   }
 
-  if (admin.role_key === "super_admin") {
+  if (
+    admin.role_key ===
+    "super_admin"
+  ) {
     return true;
   }
 
   return adminRepository.hasPermission(
     userId,
-    permissionKey
+    normalizedKey
   );
 }
 
@@ -50,7 +113,9 @@ async function requirePermission(
   permissionKey
 ) {
   const admin =
-    await getAdminByUserId(userId);
+    await getAdminByUserId(
+      userId
+    );
 
   if (
     !admin ||
@@ -67,27 +132,44 @@ async function requirePermission(
   }
 
   if (
-    admin.role_key === "super_admin"
+    admin.role_key ===
+    "super_admin"
   ) {
     return admin;
+  }
+
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
+  if (!normalizedKey) {
+    const error = new Error(
+      "Permission key is required"
+    );
+
+    error.code =
+      "PERMISSION_DENIED";
+
+    throw error;
   }
 
   const allowed =
     await hasPermission(
       userId,
-      permissionKey
+      normalizedKey
     );
 
   if (!allowed) {
     const error = new Error(
-      `Permission denied: ${permissionKey}`
+      `Permission denied: ${normalizedKey}`
     );
 
     error.code =
       "PERMISSION_DENIED";
 
     error.permission =
-      permissionKey;
+      normalizedKey;
 
     throw error;
   }
@@ -177,9 +259,14 @@ async function getPermissionOverride(
     return null;
   }
 
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
   return adminRepository.getPermissionOverride(
     userId,
-    permissionKey
+    normalizedKey
   );
 }
 
@@ -206,7 +293,12 @@ async function setPermissionOverride(
     );
   }
 
-  if (!permissionKey) {
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
+  if (!normalizedKey) {
     throw new Error(
       "Permission key is required"
     );
@@ -229,7 +321,8 @@ async function setPermissionOverride(
   }
 
   if (
-    admin.role_key === "super_admin"
+    admin.role_key ===
+    "super_admin"
   ) {
     const error = new Error(
       "Super Admin permissions cannot be modified"
@@ -248,7 +341,7 @@ async function setPermissionOverride(
     permissions.some(
       (item) =>
         item.permission_key ===
-        permissionKey
+        normalizedKey
     );
 
   if (!exists) {
@@ -264,7 +357,7 @@ async function setPermissionOverride(
 
   return adminRepository.setPermissionOverride(
     userId,
-    permissionKey,
+    normalizedKey,
     isEnabled
   );
 }
@@ -279,7 +372,12 @@ async function resetPermissionOverride(
     );
   }
 
-  if (!permissionKey) {
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
+  if (!normalizedKey) {
     throw new Error(
       "Permission key is required"
     );
@@ -302,7 +400,8 @@ async function resetPermissionOverride(
   }
 
   if (
-    admin.role_key === "super_admin"
+    admin.role_key ===
+    "super_admin"
   ) {
     const error = new Error(
       "Super Admin permissions cannot be modified"
@@ -316,7 +415,7 @@ async function resetPermissionOverride(
 
   return adminRepository.removePermissionOverride(
     userId,
-    permissionKey
+    normalizedKey
   );
 }
 
@@ -330,7 +429,12 @@ async function addPermission(
     );
   }
 
-  if (!permissionKey) {
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
+  if (!normalizedKey) {
     throw new Error(
       "Permission key is required"
     );
@@ -353,7 +457,8 @@ async function addPermission(
   }
 
   if (
-    admin.role_key === "super_admin"
+    admin.role_key ===
+    "super_admin"
   ) {
     const error = new Error(
       "Super Admin permissions cannot be modified"
@@ -372,7 +477,7 @@ async function addPermission(
     permissions.some(
       (item) =>
         item.permission_key ===
-        permissionKey
+        normalizedKey
     );
 
   if (!exists) {
@@ -388,7 +493,7 @@ async function addPermission(
 
   return adminRepository.addDirectPermission(
     userId,
-    permissionKey
+    normalizedKey
   );
 }
 
@@ -402,7 +507,12 @@ async function removePermission(
     );
   }
 
-  if (!permissionKey) {
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
+  if (!normalizedKey) {
     throw new Error(
       "Permission key is required"
     );
@@ -425,7 +535,8 @@ async function removePermission(
   }
 
   if (
-    admin.role_key === "super_admin"
+    admin.role_key ===
+    "super_admin"
   ) {
     const error = new Error(
       "Super Admin permissions cannot be modified"
@@ -439,7 +550,7 @@ async function removePermission(
 
   return adminRepository.removeDirectPermission(
     userId,
-    permissionKey
+    normalizedKey
   );
 }
 
