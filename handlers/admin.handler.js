@@ -25,40 +25,27 @@ const {
   createAdminManagementHandler,
 } = require("./admin-management.handler");
 
+const {
+  createAdminProHandler,
+} = require("./admin-pro.handler");
+
+const {
+  createAdminFortuneHandler,
+} = require("./admin-fortune.handler");
+
 const PERMISSION_KEYS = [
-  "users",
-  "settings",
-  "requests",
-  "credits",
-  "rewards",
-  "platforms",
-  "features",
-  "support",
-  "monitoring",
   "admins",
-  "reports",
-  "bug_reports",
   "games.quiz",
-  "pro",
   "features.fortune.manage",
+  "pro",
 ];
 
 const PERMISSION_BUTTONS = {
-  users: "👥 کاربران",
-  settings: "⚙️ تنظیمات",
-  requests: "📥 درخواست‌ها",
-  credits: "💳 اعتبارها",
-  rewards: "🎁 پاداش‌ها",
-  platforms: "🌐 پلتفرم‌ها",
-  features: "✨ قابلیت‌ها",
-  support: "🆘 پشتیبانی",
-  monitoring: "📊 مانیتورینگ",
   admins: "🛠 مدیریت ادمین",
-  reports: "📋 گزارش‌ها",
-  bug_reports: "🐛 گزارش مشکل",
   "games.quiz": "🧠 مدیریت مسابقه",
+  "features.fortune.manage":
+    "🔮 مدیریت فال",
   pro: "💎 مدیریت Pro",
-  "features.fortune.manage": "🔮 مدیریت فال",
 };
 
 async function getAdminPanelData(
@@ -99,26 +86,8 @@ function buildAdminMainMenu(
 ) {
   const buttons = [];
 
-  const permissionOrder = [
-    "users",
-    "settings",
-    "requests",
-    "credits",
-    "rewards",
-    "platforms",
-    "features",
-    "support",
-    "monitoring",
-    "admins",
-    "reports",
-    "bug_reports",
-    "games.quiz",
-    "pro",
-    "features.fortune.manage",
-  ];
-
   for (
-    const permissionKey of permissionOrder
+    const permissionKey of PERMISSION_KEYS
   ) {
     if (
       permissions[permissionKey] &&
@@ -175,36 +144,18 @@ async function showAdminMainMenu(
 async function handleAdminCommand(
   ctx
 ) {
-  console.log(
-    "ADMIN COMMAND RECEIVED:",
-    ctx.from?.id
-  );
-
   try {
     const telegramUserId =
       ctx.from?.id;
 
     if (!telegramUserId) {
-      console.error(
-        "ADMIN COMMAND: Telegram user ID missing"
-      );
-
       return;
     }
-
-    console.log(
-      "ADMIN COMMAND: checking admin access..."
-    );
 
     const data =
       await getAdminPanelData(
         telegramUserId
       );
-
-    console.log(
-      "ADMIN COMMAND: admin result:",
-      data?.admin
-    );
 
     if (!data) {
       await ctx.reply(
@@ -224,12 +175,10 @@ async function handleAdminCommand(
         telegramUserId,
         "admin"
       );
-    } catch (
-      commandError
-    ) {
+    } catch (error) {
       console.error(
         "ADMIN COMMAND: set commands failed:",
-        commandError
+        error
       );
     }
   } catch (error) {
@@ -238,18 +187,9 @@ async function handleAdminCommand(
       error
     );
 
-    try {
-      await ctx.reply(
-        "❌ دریافت پنل ادمین انجام نشد."
-      );
-    } catch (
-      replyError
-    ) {
-      console.error(
-        "Admin command error reply failed:",
-        replyError
-      );
-    }
+    await ctx.reply(
+      "❌ دریافت پنل ادمین انجام نشد."
+    );
   }
 }
 
@@ -278,12 +218,10 @@ async function handleAdminExit(
         ctx.from.id,
         "user"
       );
-    } catch (
-      commandError
-    ) {
+    } catch (error) {
       console.error(
         "Admin exit set commands failed:",
-        commandError
+        error
       );
     }
 
@@ -295,87 +233,6 @@ async function handleAdminExit(
     console.error(
       "Admin exit failed:",
       error
-    );
-  }
-}
-
-async function handleQuizAdminMenu(
-  ctx,
-  next
-) {
-  try {
-    const data =
-      await getAdminPanelData(
-        ctx.from?.id
-      );
-
-    if (
-      !data ||
-      !data.permissions[
-        "games.quiz"
-      ]
-    ) {
-      await ctx.reply(
-        "⛔ شما دسترسی مدیریت مسابقه را ندارید."
-      );
-
-      return;
-    }
-
-    await ctx.reply(
-      "🧠 مدیریت مسابقه\n\n" +
-        "بخش موردنظر را انتخاب کنید.",
-      Markup.keyboard([
-        ["➕ افزودن سؤال"],
-        ["🚨 گزارش‌های سؤالات"],
-        ["🔙 پنل ادمین"],
-      ])
-        .resize()
-        .persistent()
-    );
-  } catch (error) {
-    console.error(
-      "Admin quiz menu failed:",
-      error
-    );
-
-    if (next) {
-      return next();
-    }
-  }
-}
-
-async function handleAdminManagementMenu(
-  ctx
-) {
-  try {
-    const data =
-      await getAdminPanelData(
-        ctx.from?.id
-      );
-
-    if (
-      !data ||
-      !data.permissions.admins
-    ) {
-      await ctx.reply(
-        "⛔ شما دسترسی مدیریت ادمین را ندارید."
-      );
-
-      return;
-    }
-
-    await adminManagementHandler(
-      ctx
-    );
-  } catch (error) {
-    console.error(
-      "Admin management menu failed:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ دریافت مدیریت ادمین انجام نشد."
     );
   }
 }
@@ -413,110 +270,12 @@ async function handleBackToAdmin(
   }
 }
 
-async function handleFortuneAdminMenu(
-  ctx
-) {
-  try {
-    const data =
-      await getAdminPanelData(
-        ctx.from?.id
-      );
-
-    if (
-      !data ||
-      !data.permissions[
-        "features.fortune.manage"
-      ]
-    ) {
-      await ctx.reply(
-        "⛔ شما دسترسی مدیریت فال را ندارید."
-      );
-
-      return;
-    }
-
-    await ctx.reply(
-      "🔮 مدیریت فال\n\n" +
-        "برای ورود به مدیریت فال از گزینه‌های موجود استفاده کنید."
-    );
-
-    await ctx.reply(
-      "🔮 مدیریت فال",
-      Markup.keyboard([
-        ["➕ افزودن فال دستی"],
-        ["📥 ورود فال از سایت"],
-        [
-          "📚 بانک فال‌ها",
-          "📊 آمار فال‌ها",
-        ],
-        ["🔙 پنل ادمین"],
-      ])
-        .resize()
-        .persistent()
-    );
-  } catch (error) {
-    console.error(
-      "Admin fortune menu failed:",
-      error
-    );
-  }
-}
-
-let adminManagementHandler = null;
-
-async function initializeAdminManagementHandler(
-  bot
-) {
-  if (
-    adminManagementHandler
-  ) {
-    return;
-  }
-
-  const module =
-    require(
-      "./admin-management.handler"
-    );
-
-  if (
-    typeof module.handleAdminManagementMenu ===
-    "function"
-  ) {
-    adminManagementHandler =
-      module.handleAdminManagementMenu;
-  }
-}
-
 function createAdminHandler(
   bot
 ) {
-  initializeAdminManagementHandler(
-    bot
-  ).catch((error) => {
-    console.error(
-      "Admin management handler initialization failed:",
-      error
-    );
-  });
-
   bot.command(
     "admin",
     handleAdminCommand
-  );
-
-  bot.hears(
-    "🛠 مدیریت ادمین",
-    handleAdminManagementMenu
-  );
-
-  bot.hears(
-    "🧠 مدیریت مسابقه",
-    handleQuizAdminMenu
-  );
-
-  bot.hears(
-    "🔮 مدیریت فال",
-    handleFortuneAdminMenu
   );
 
   bot.hears(
@@ -529,11 +288,19 @@ function createAdminHandler(
     handleAdminExit
   );
 
+  createAdminManagementHandler(
+    bot
+  );
+
   createAdminQuizHandler(
     bot
   );
 
-  createAdminManagementHandler(
+  createAdminProHandler(
+    bot
+  );
+
+  createAdminFortuneHandler(
     bot
   );
 }
