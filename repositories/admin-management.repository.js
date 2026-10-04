@@ -664,4 +664,5 @@ module.exports = {
 
   addDirectPermission,
   removeDirectPermission,
+getActiveAdminsWithPermission,
 };
