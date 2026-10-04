@@ -1589,8 +1589,9 @@ async function handleAdminQuizText(
     text === "/cancel"
   ) {
     const wasEditing =
-      state.mode === "EDIT" ||
-      state.mode === "EDIT_DIRECT";
+  state.mode === "EDIT" ||
+  state.mode === "EDIT_DIRECT" ||
+  state.mode === "EDIT_REPORT";
 
     const wasSearching =
       state.mode ===
