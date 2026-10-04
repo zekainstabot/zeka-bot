@@ -63,10 +63,12 @@ async function getPermissionsByUserId(userId) {
 
   const result = await db.query(
     `
-      SELECT
+      SELECT DISTINCT
+        p.id,
         p.permission_key,
         p.permission_name,
-        p.description
+        p.description,
+        'role' AS source
       FROM admins a
       JOIN admin_role_permissions arp
         ON arp.role_id = a.role_id
@@ -74,6 +76,87 @@ async function getPermissionsByUserId(userId) {
         ON p.id = arp.permission_id
       WHERE a.user_id = $1
         AND a.is_active = TRUE
+
+      UNION
+
+      SELECT DISTINCT
+        p.id,
+        p.permission_key,
+        p.permission_name,
+        p.description,
+        'direct' AS source
+      FROM admins a
+      JOIN admin_user_permissions aup
+        ON aup.admin_id = a.id
+      JOIN admin_permissions p
+        ON p.id = aup.permission_id
+      WHERE a.user_id = $1
+        AND a.is_active = TRUE
+
+      ORDER BY permission_key ASC
+    `,
+    [userId]
+  );
+
+  return result.rows;
+}
+
+async function getAllPermissions() {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        id,
+        permission_key,
+        permission_name,
+        description
+      FROM admin_permissions
+      ORDER BY permission_key ASC
+    `
+  );
+
+  return result.rows;
+}
+
+async function getDirectPermissionsByAdminId(adminId) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        p.id,
+        p.permission_key,
+        p.permission_name,
+        p.description
+      FROM admin_user_permissions aup
+      JOIN admin_permissions p
+        ON p.id = aup.permission_id
+      WHERE aup.admin_id = $1
+      ORDER BY p.permission_key ASC
+    `,
+    [adminId]
+  );
+
+  return result.rows;
+}
+
+async function getDirectPermissionsByUserId(userId) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        p.id,
+        p.permission_key,
+        p.permission_name,
+        p.description
+      FROM admins a
+      JOIN admin_user_permissions aup
+        ON aup.admin_id = a.id
+      JOIN admin_permissions p
+        ON p.id = aup.permission_id
+      WHERE a.user_id = $1
       ORDER BY p.permission_key ASC
     `,
     [userId]
@@ -89,19 +172,90 @@ async function hasPermission(userId, permissionKey) {
     `
       SELECT 1
       FROM admins a
-      JOIN admin_role_permissions arp
-        ON arp.role_id = a.role_id
-      JOIN admin_permissions p
-        ON p.id = arp.permission_id
+      JOIN admin_roles r
+        ON r.id = a.role_id
+      LEFT JOIN admin_role_permissions arp
+        ON arp.role_id = r.id
+      LEFT JOIN admin_permissions rp
+        ON rp.id = arp.permission_id
+      LEFT JOIN admin_user_permissions aup
+        ON aup.admin_id = a.id
+      LEFT JOIN admin_permissions dp
+        ON dp.id = aup.permission_id
       WHERE a.user_id = $1
         AND a.is_active = TRUE
-        AND p.permission_key = $2
+        AND (
+          r.role_key = 'super_admin'
+          OR rp.permission_key = $2
+          OR dp.permission_key = $2
+        )
       LIMIT 1
     `,
     [userId, permissionKey]
   );
 
   return result.rowCount > 0;
+}
+
+async function addDirectPermission(
+  userId,
+  permissionKey
+) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      INSERT INTO admin_user_permissions (
+        admin_id,
+        permission_id
+      )
+      SELECT
+        a.id,
+        p.id
+      FROM admins a
+      JOIN admin_permissions p
+        ON p.permission_key = $2
+      WHERE a.user_id = $1
+      ON CONFLICT (
+        admin_id,
+        permission_id
+      )
+      DO NOTHING
+      RETURNING
+        id,
+        admin_id,
+        permission_id
+    `,
+    [userId, permissionKey]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function removeDirectPermission(
+  userId,
+  permissionKey
+) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      DELETE FROM admin_user_permissions aup
+      USING admins a,
+            admin_permissions p
+      WHERE aup.admin_id = a.id
+        AND aup.permission_id = p.id
+        AND a.user_id = $1
+        AND p.permission_key = $2
+      RETURNING
+        aup.id,
+        aup.admin_id,
+        aup.permission_id
+    `,
+    [userId, permissionKey]
+  );
+
+  return result.rows[0] || null;
 }
 
 async function create({
@@ -167,22 +321,46 @@ async function updateLastLogin(userId) {
 
 async function isAdmin(userId) {
   const admin = await findByUserId(userId);
-  return Boolean(admin && admin.is_active);
+
+  return Boolean(
+    admin &&
+    admin.is_active
+  );
 }
 
-async function isAdminByTelegramId(telegramUserId) {
-  const admin = await findByTelegramId(telegramUserId);
-  return Boolean(admin && admin.is_active);
+async function isAdminByTelegramId(
+  telegramUserId
+) {
+  const admin =
+    await findByTelegramId(
+      telegramUserId
+    );
+
+  return Boolean(
+    admin &&
+    admin.is_active
+  );
 }
 
 module.exports = {
   findByUserId,
   findByTelegramId,
+
   getPermissionsByUserId,
+  getAllPermissions,
+
+  getDirectPermissionsByAdminId,
+  getDirectPermissionsByUserId,
+
   hasPermission,
+
+  addDirectPermission,
+  removeDirectPermission,
+
   create,
   setActive,
   updateLastLogin,
+
   isAdmin,
   isAdminByTelegramId,
 };
