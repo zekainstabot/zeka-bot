@@ -13,12 +13,30 @@ async function isAdmin(userId) {
 }
 
 async function isAdminByTelegramId(telegramUserId) {
-  return adminRepository.isAdminByTelegramId(telegramUserId);
+  return adminRepository.isAdminByTelegramId(
+    telegramUserId
+  );
 }
 
-async function hasPermission(userId, permissionKey) {
+async function hasPermission(
+  userId,
+  permissionKey
+) {
   if (!userId || !permissionKey) {
     return false;
+  }
+
+  const admin =
+    await adminRepository.findByUserId(
+      userId
+    );
+
+  if (!admin || !admin.is_active) {
+    return false;
+  }
+
+  if (admin.role_key === "super_admin") {
+    return true;
   }
 
   return adminRepository.hasPermission(
@@ -27,27 +45,49 @@ async function hasPermission(userId, permissionKey) {
   );
 }
 
-async function requirePermission(userId, permissionKey) {
-  const admin = await getAdminByUserId(userId);
+async function requirePermission(
+  userId,
+  permissionKey
+) {
+  const admin =
+    await getAdminByUserId(userId);
 
-  if (!admin || !admin.is_active) {
-    const error = new Error("Admin access denied");
-    error.code = "ADMIN_ACCESS_DENIED";
+  if (
+    !admin ||
+    !admin.is_active
+  ) {
+    const error = new Error(
+      "Admin access denied"
+    );
+
+    error.code =
+      "ADMIN_ACCESS_DENIED";
+
     throw error;
   }
 
-  const allowed = await hasPermission(
-    userId,
-    permissionKey
-  );
+  if (
+    admin.role_key === "super_admin"
+  ) {
+    return admin;
+  }
+
+  const allowed =
+    await hasPermission(
+      userId,
+      permissionKey
+    );
 
   if (!allowed) {
     const error = new Error(
       `Permission denied: ${permissionKey}`
     );
 
-    error.code = "PERMISSION_DENIED";
-    error.permission = permissionKey;
+    error.code =
+      "PERMISSION_DENIED";
+
+    error.permission =
+      permissionKey;
 
     throw error;
   }
@@ -60,7 +100,9 @@ async function createAdmin({
   roleKey = "admin",
 }) {
   if (!userId) {
-    throw new Error("User ID is required");
+    throw new Error(
+      "User ID is required"
+    );
   }
 
   return adminRepository.create({
@@ -69,9 +111,14 @@ async function createAdmin({
   });
 }
 
-async function setAdminActive(userId, isActive) {
+async function setAdminActive(
+  userId,
+  isActive
+) {
   if (!userId) {
-    throw new Error("User ID is required");
+    throw new Error(
+      "User ID is required"
+    );
   }
 
   return adminRepository.setActive(
@@ -80,15 +127,23 @@ async function setAdminActive(userId, isActive) {
   );
 }
 
-async function updateLastLogin(userId) {
+async function updateLastLogin(
+  userId
+) {
   if (!userId) {
-    throw new Error("User ID is required");
+    throw new Error(
+      "User ID is required"
+    );
   }
 
-  return adminRepository.updateLastLogin(userId);
+  return adminRepository.updateLastLogin(
+    userId
+  );
 }
 
-async function getPermissions(userId) {
+async function getPermissions(
+  userId
+) {
   if (!userId) {
     return [];
   }
@@ -98,15 +153,163 @@ async function getPermissions(userId) {
   );
 }
 
+async function getAllPermissions() {
+  return adminRepository.getAllPermissions();
+}
+
+async function getDirectPermissions(
+  userId
+) {
+  if (!userId) {
+    return [];
+  }
+
+  return adminRepository.getDirectPermissionsByUserId(
+    userId
+  );
+}
+
+async function addPermission(
+  userId,
+  permissionKey
+) {
+  if (!userId) {
+    throw new Error(
+      "User ID is required"
+    );
+  }
+
+  if (!permissionKey) {
+    throw new Error(
+      "Permission key is required"
+    );
+  }
+
+  const admin =
+    await adminRepository.findByUserId(
+      userId
+    );
+
+  if (!admin) {
+    const error = new Error(
+      "Admin not found"
+    );
+
+    error.code =
+      "ADMIN_NOT_FOUND";
+
+    throw error;
+  }
+
+  if (
+    admin.role_key === "super_admin"
+  ) {
+    const error = new Error(
+      "Super Admin permissions cannot be modified"
+    );
+
+    error.code =
+      "SUPER_ADMIN_PROTECTED";
+
+    throw error;
+  }
+
+  const permission =
+    await adminRepository.getAllPermissions();
+
+  const exists =
+    permission.some(
+      (item) =>
+        item.permission_key ===
+        permissionKey
+    );
+
+  if (!exists) {
+    const error = new Error(
+      "Permission not found"
+    );
+
+    error.code =
+      "PERMISSION_NOT_FOUND";
+
+    throw error;
+  }
+
+  return adminRepository.addDirectPermission(
+    userId,
+    permissionKey
+  );
+}
+
+async function removePermission(
+  userId,
+  permissionKey
+) {
+  if (!userId) {
+    throw new Error(
+      "User ID is required"
+    );
+  }
+
+  if (!permissionKey) {
+    throw new Error(
+      "Permission key is required"
+    );
+  }
+
+  const admin =
+    await adminRepository.findByUserId(
+      userId
+    );
+
+  if (!admin) {
+    const error = new Error(
+      "Admin not found"
+    );
+
+    error.code =
+      "ADMIN_NOT_FOUND";
+
+    throw error;
+  }
+
+  if (
+    admin.role_key === "super_admin"
+  ) {
+    const error = new Error(
+      "Super Admin permissions cannot be modified"
+    );
+
+    error.code =
+      "SUPER_ADMIN_PROTECTED";
+
+    throw error;
+  }
+
+  return adminRepository.removeDirectPermission(
+    userId,
+    permissionKey
+  );
+}
+
 module.exports = {
   getAdminByUserId,
   getAdminByTelegramId,
+
   isAdmin,
   isAdminByTelegramId,
+
   hasPermission,
   requirePermission,
+
   createAdmin,
   setAdminActive,
   updateLastLogin,
+
   getPermissions,
+  getAllPermissions,
+  getDirectPermissions,
+
+  addPermission,
+  removePermission,
 };
