@@ -20,6 +20,7 @@ const CANCEL_TEXT = "❌ لغو";
 function adminManagementMenu() {
   return Markup.keyboard([
     ["➕ افزودن ادمین", "👥 لیست ادمین‌ها"],
+    ["🐞 تنظیم ادمین گزارش"],
     ["🔐 مدیریت سطح دسترسی"],
     ["🟢 فعال کردن ادمین", "🔴 غیرفعال کردن ادمین"],
     ["🗑 حذف ادمین"],
@@ -28,7 +29,6 @@ function adminManagementMenu() {
     .resize()
     .oneTime(false);
 }
-
 function accessManagementMenu() {
   return Markup.keyboard([
     ["👤 انتخاب ادمین"],
