@@ -24,6 +24,10 @@ const {
   createAdminCreditsHandler,
 } = require("./admin-credits.handler");
 
+const {
+  createAdminRewardsHandler,
+} = require("./admin-rewards.handler");
+
 const PERMISSION_BUTTONS = [
   {
     permission: "users",
@@ -115,18 +119,28 @@ function buildAdminMenu(permissions) {
     }
   }
 
-  buttons.push("🔙 خروج از پنل مدیریت");
+  buttons.push(
+    "🔙 خروج از پنل مدیریت"
+  );
 
   const rows = [];
 
-  for (let i = 0; i < buttons.length; i += 2) {
-    rows.push(buttons.slice(i, i + 2));
+  for (
+    let i = 0;
+    i < buttons.length;
+    i += 2
+  ) {
+    rows.push(
+      buttons.slice(i, i + 2)
+    );
   }
 
   return rows;
 }
 
-async function getAdminPanelData(telegramUserId) {
+async function getAdminPanelData(
+  telegramUserId
+) {
   const admin =
     await adminService.getAdminByTelegramId(
       telegramUserId
@@ -151,7 +165,8 @@ async function getAdminPanelData(telegramUserId) {
         error
       );
 
-      permissions[item.permission] = false;
+      permissions[item.permission] =
+        false;
     }
   }
 
@@ -220,7 +235,9 @@ async function handleAdminExit(ctx) {
   );
 }
 
-async function handleUnavailableAdminSection(ctx) {
+async function handleUnavailableAdminSection(
+  ctx
+) {
   const button =
     ctx.message?.text;
 
@@ -313,6 +330,8 @@ function createAdminHandler(bot) {
   createAdminUsersHandler(bot);
 
   createAdminCreditsHandler(bot);
+
+  createAdminRewardsHandler(bot);
 
   for (
     const button of UNIMPLEMENTED_BUTTONS
