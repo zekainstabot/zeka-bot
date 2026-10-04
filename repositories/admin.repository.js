@@ -1,583 +1,407 @@
-const { getClient } = require("../database/client");
+const db = require("../database");
 
-async function findByUserId(userId) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
+const adminRepository = {
+  async getAdminByTelegramUserId(telegramUserId) {
+    const result = await db.query(
+      `
       SELECT
-        a.id,
-        a.user_id,
-        a.role_id,
-        a.is_active,
-        a.last_login_at,
-        a.created_at,
-        a.updated_at,
-        r.role_key,
-        r.role_name,
-        r.description AS role_description
+        a.*,
+        u.id AS user_id,
+        u.telegram_user_id,
+        u.username,
+        u.first_name,
+        u.last_name,
+        ar.name AS role_name,
+        ar.display_name AS role_display_name
       FROM admins a
-      JOIN admin_roles r
-        ON r.id = a.role_id
-      WHERE a.user_id = $1
-      LIMIT 1
-    `,
-    [userId]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function findByTelegramId(telegramUserId) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      SELECT
-        a.id,
-        a.user_id,
-        a.role_id,
-        a.is_active,
-        a.last_login_at,
-        a.created_at,
-        a.updated_at,
-        r.role_key,
-        r.role_name,
-        r.description AS role_description
-      FROM admins a
-      JOIN users u
-        ON u.id = a.user_id
-      JOIN admin_roles r
-        ON r.id = a.role_id
+      JOIN users u ON u.id = a.user_id
+      LEFT JOIN admin_roles ar ON ar.id = a.role_id
       WHERE u.telegram_user_id = $1
       LIMIT 1
-    `,
-    [telegramUserId]
-  );
+      `,
+      [telegramUserId]
+    );
 
-  return result.rows[0] || null;
-}
+    return result.rows[0] || null;
+  },
 
-async function getPermissionsByUserId(userId) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
+  async getAdminByUserId(userId) {
+    const result = await db.query(
+      `
       SELECT
-        p.id,
-        p.permission_key,
-        p.permission_name,
-        p.description,
-
-        CASE
-          WHEN ov.is_enabled IS NOT NULL
-            THEN ov.is_enabled
-
-          WHEN dp.permission_id IS NOT NULL
-            THEN TRUE
-
-          WHEN rp.permission_id IS NOT NULL
-            THEN TRUE
-
-          ELSE FALSE
-        END AS is_enabled,
-
-        CASE
-          WHEN ov.is_enabled IS NOT NULL
-            THEN 'override'
-
-          WHEN dp.permission_id IS NOT NULL
-            THEN 'direct'
-
-          WHEN rp.permission_id IS NOT NULL
-            THEN 'role'
-
-          ELSE 'none'
-        END AS source,
-
-        CASE
-          WHEN ov.is_enabled IS NOT NULL
-            THEN ov.is_enabled
-          ELSE NULL
-        END AS override_enabled,
-
-        CASE
-          WHEN rp.permission_id IS NOT NULL
-            THEN TRUE
-          ELSE FALSE
-        END AS role_enabled,
-
-        CASE
-          WHEN dp.permission_id IS NOT NULL
-            THEN TRUE
-          ELSE FALSE
-        END AS direct_enabled
-
+        a.*,
+        ar.name AS role_name,
+        ar.display_name AS role_display_name
       FROM admins a
+      LEFT JOIN admin_roles ar ON ar.id = a.role_id
+      WHERE a.user_id = $1
+      LIMIT 1
+      `,
+      [userId]
+    );
 
-      CROSS JOIN admin_permissions p
+    return result.rows[0] || null;
+  },
 
-      LEFT JOIN admin_role_permissions arp
-        ON arp.role_id = a.role_id
-       AND arp.permission_id = p.id
+  async getAdminById(adminId) {
+    const result = await db.query(
+      `
+      SELECT
+        a.*,
+        u.telegram_user_id,
+        u.username,
+        u.first_name,
+        u.last_name,
+        ar.name AS role_name,
+        ar.display_name AS role_display_name
+      FROM admins a
+      JOIN users u ON u.id = a.user_id
+      LEFT JOIN admin_roles ar ON ar.id = a.role_id
+      WHERE a.id = $1
+      LIMIT 1
+      `,
+      [adminId]
+    );
 
-      LEFT JOIN admin_user_permissions aup
-        ON aup.admin_id = a.id
-       AND aup.permission_id = p.id
+    return result.rows[0] || null;
+  },
 
+  async getAdmins() {
+    const result = await db.query(
+      `
+      SELECT
+        a.*,
+        u.telegram_user_id,
+        u.username,
+        u.first_name,
+        u.last_name,
+        ar.name AS role_name,
+        ar.display_name AS role_display_name
+      FROM admins a
+      JOIN users u ON u.id = a.user_id
+      LEFT JOIN admin_roles ar ON ar.id = a.role_id
+      ORDER BY a.created_at ASC, a.id ASC
+      `
+    );
+
+    return result.rows;
+  },
+
+  async createAdmin(userId, roleId = null) {
+    const result = await db.query(
+      `
+      INSERT INTO admins (
+        user_id,
+        role_id,
+        is_active
+      )
+      VALUES ($1, $2, TRUE)
+      RETURNING *
+      `,
+      [userId, roleId]
+    );
+
+    return result.rows[0];
+  },
+
+  async updateAdminRole(adminId, roleId) {
+    const result = await db.query(
+      `
+      UPDATE admins
+      SET
+        role_id = $2,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [adminId, roleId]
+    );
+
+    return result.rows[0] || null;
+  },
+
+  async setAdminActive(adminId, isActive) {
+    const result = await db.query(
+      `
+      UPDATE admins
+      SET
+        is_active = $2,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [adminId, isActive]
+    );
+
+    return result.rows[0] || null;
+  },
+
+  async deleteAdmin(adminId) {
+    const result = await db.query(
+      `
+      DELETE FROM admins
+      WHERE id = $1
+      RETURNING *
+      `,
+      [adminId]
+    );
+
+    return result.rows[0] || null;
+  },
+
+  async getPermissionsByUserId(userId) {
+    const result = await db.query(
+      `
+      SELECT
+        p.key,
+        p.name,
+        p.description,
+        CASE
+          WHEN EXISTS (
+            SELECT 1
+            FROM admin_user_permission_overrides ov
+            WHERE ov.admin_id = a.id
+              AND ov.permission_id = p.id
+              AND ov.is_enabled = TRUE
+          ) THEN TRUE
+          WHEN EXISTS (
+            SELECT 1
+            FROM admin_user_permissions aup
+            WHERE aup.admin_id = a.id
+              AND aup.permission_id = p.id
+          ) THEN TRUE
+          WHEN EXISTS (
+            SELECT 1
+            FROM admin_role_permissions arp
+            WHERE arp.role_id = a.role_id
+              AND arp.permission_id = p.id
+          ) THEN TRUE
+          ELSE FALSE
+        END AS allowed
+      FROM admins a
       LEFT JOIN admin_user_permission_overrides ov
         ON ov.admin_id = a.id
-       AND ov.permission_id = p.id
-
+      LEFT JOIN admin_user_permissions aup
+        ON aup.admin_id = a.id
+      LEFT JOIN admin_role_permissions arp
+        ON arp.role_id = a.role_id
+      CROSS JOIN admin_permissions p
       WHERE a.user_id = $1
+      GROUP BY
+        a.id,
+        a.role_id,
+        p.id,
+        p.key,
+        p.name,
+        p.description
+      ORDER BY p.id ASC
+      `,
+      [userId]
+    );
+
+    return result.rows;
+  },
+
+  async hasPermission(userId, permissionKey) {
+    const result = await db.query(
+      `
+      SELECT
+        CASE
+          WHEN ar.name = 'super_admin' THEN TRUE
+          WHEN EXISTS (
+            SELECT 1
+            FROM admin_user_permission_overrides ov
+            WHERE ov.admin_id = a.id
+              AND ov.permission_id = p.id
+              AND ov.is_enabled = TRUE
+          ) THEN TRUE
+          WHEN EXISTS (
+            SELECT 1
+            FROM admin_user_permissions aup
+            WHERE aup.admin_id = a.id
+              AND aup.permission_id = p.id
+          ) THEN TRUE
+          WHEN EXISTS (
+            SELECT 1
+            FROM admin_role_permissions arp
+            WHERE arp.role_id = a.role_id
+              AND arp.permission_id = p.id
+          ) THEN TRUE
+          ELSE FALSE
+        END AS allowed
+      FROM admins a
+      LEFT JOIN admin_roles ar
+        ON ar.id = a.role_id
+      CROSS JOIN admin_permissions p
+      WHERE a.user_id = $1
+        AND p.key = $2
         AND a.is_active = TRUE
+      LIMIT 1
+      `,
+      [userId, permissionKey]
+    );
 
-      ORDER BY p.permission_key ASC
-    `,
-    [userId]
-  );
+    return result.rows[0]?.allowed === true;
+  },
 
-  return result.rows;
-}
-
-async function getAllPermissions() {
-  const db = getClient();
-
-  const result = await db.query(
-    `
+  async getAllPermissions() {
+    const result = await db.query(
+      `
       SELECT
         id,
-        permission_key,
-        permission_name,
+        key,
+        name,
         description
       FROM admin_permissions
-      ORDER BY permission_key ASC
-    `
-  );
+      ORDER BY id ASC
+      `
+    );
 
-  return result.rows;
-}
+    return result.rows;
+  },
 
-async function getDirectPermissionsByAdminId(adminId) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
+  async getPermissionByKey(permissionKey) {
+    const result = await db.query(
+      `
       SELECT
-        p.id,
-        p.permission_key,
-        p.permission_name,
-        p.description
-      FROM admin_user_permissions aup
-      JOIN admin_permissions p
-        ON p.id = aup.permission_id
-      WHERE aup.admin_id = $1
-      ORDER BY p.permission_key ASC
-    `,
-    [adminId]
-  );
-
-  return result.rows;
-}
-
-async function getDirectPermissionsByUserId(userId) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      SELECT
-        p.id,
-        p.permission_key,
-        p.permission_name,
-        p.description
-      FROM admins a
-      JOIN admin_user_permissions aup
-        ON aup.admin_id = a.id
-      JOIN admin_permissions p
-        ON p.id = aup.permission_id
-      WHERE a.user_id = $1
-      ORDER BY p.permission_key ASC
-    `,
-    [userId]
-  );
-
-  return result.rows;
-}
-
-async function getPermissionOverride(
-  userId,
-  permissionKey
-) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      SELECT
-        ov.id,
-        ov.admin_id,
-        ov.permission_id,
-        ov.is_enabled,
-        ov.created_at,
-        ov.updated_at
-      FROM admins a
-      JOIN admin_user_permission_overrides ov
-        ON ov.admin_id = a.id
-      JOIN admin_permissions p
-        ON p.id = ov.permission_id
-      WHERE a.user_id = $1
-        AND p.permission_key = $2
+        id,
+        key,
+        name,
+        description
+      FROM admin_permissions
+      WHERE key = $1
       LIMIT 1
-    `,
-    [userId, permissionKey]
-  );
+      `,
+      [permissionKey]
+    );
 
-  return result.rows[0] || null;
-}
+    return result.rows[0] || null;
+  },
 
-async function getPermissionOverridesByUserId(userId) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      SELECT
-        p.id,
-        p.permission_key,
-        p.permission_name,
-        p.description,
-        ov.is_enabled,
-        ov.created_at,
-        ov.updated_at
-      FROM admins a
-      JOIN admin_user_permission_overrides ov
-        ON ov.admin_id = a.id
-      JOIN admin_permissions p
-        ON p.id = ov.permission_id
-      WHERE a.user_id = $1
-      ORDER BY p.permission_key ASC
-    `,
-    [userId]
-  );
-
-  return result.rows;
-}
-
-async function setPermissionOverride(
-  userId,
-  permissionKey,
-  isEnabled
-) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      INSERT INTO admin_user_permission_overrides (
-        admin_id,
-        permission_id,
-        is_enabled
-      )
-      SELECT
-        a.id,
-        p.id,
-        $3
-      FROM admins a
-      JOIN admin_permissions p
-        ON p.permission_key = $2
-      WHERE a.user_id = $1
-
-      ON CONFLICT (
+  async addPermissionToAdmin(adminId, permissionId) {
+    const result = await db.query(
+      `
+      INSERT INTO admin_user_permissions (
         admin_id,
         permission_id
       )
-      DO UPDATE SET
-        is_enabled = EXCLUDED.is_enabled,
-        updated_at = NOW()
+      VALUES ($1, $2)
+      ON CONFLICT DO NOTHING
+      RETURNING *
+      `,
+      [adminId, permissionId]
+    );
 
-      RETURNING
+    return result.rows[0] || null;
+  },
+
+  async removePermissionFromAdmin(adminId, permissionId) {
+    const result = await db.query(
+      `
+      DELETE FROM admin_user_permissions
+      WHERE admin_id = $1
+        AND permission_id = $2
+      RETURNING *
+      `,
+      [adminId, permissionId]
+    );
+
+    return result.rows[0] || null;
+  },
+
+  async getPermissionOverride(adminId, permissionId) {
+    const result = await db.query(
+      `
+      SELECT
         id,
         admin_id,
         permission_id,
         is_enabled,
         created_at,
         updated_at
-    `,
-    [
-      userId,
-      permissionKey,
-      Boolean(isEnabled),
-    ]
-  );
+      FROM admin_user_permission_overrides
+      WHERE admin_id = $1
+        AND permission_id = $2
+      LIMIT 1
+      `,
+      [adminId, permissionId]
+    );
 
-  return result.rows[0] || null;
-}
+    return result.rows[0] || null;
+  },
 
-async function removePermissionOverride(
-  userId,
-  permissionKey
-) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      DELETE FROM admin_user_permission_overrides ov
-      USING admins a,
-            admin_permissions p
-      WHERE ov.admin_id = a.id
-        AND ov.permission_id = p.id
-        AND a.user_id = $1
-        AND p.permission_key = $2
-      RETURNING
+  async getPermissionOverrides(adminId) {
+    const result = await db.query(
+      `
+      SELECT
         ov.id,
         ov.admin_id,
         ov.permission_id,
-        ov.is_enabled
-    `,
-    [userId, permissionKey]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function hasPermission(
-  userId,
-  permissionKey
-) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      SELECT
-        CASE
-
-          /*
-           * Explicit user override always wins.
-           */
-          WHEN ov.is_enabled IS NOT NULL
-            THEN ov.is_enabled
-
-          /*
-           * No override:
-           * direct permission or role permission grants access.
-           */
-          WHEN dp.permission_id IS NOT NULL
-            THEN TRUE
-
-          WHEN rp.permission_id IS NOT NULL
-            THEN TRUE
-
-          ELSE FALSE
-
-        END AS allowed
-
-      FROM admins a
-
-      JOIN admin_roles r
-        ON r.id = a.role_id
-
+        ov.is_enabled,
+        ov.created_at,
+        ov.updated_at,
+        p.key AS permission_key,
+        p.name AS permission_name,
+        p.description AS permission_description
+      FROM admin_user_permission_overrides ov
       JOIN admin_permissions p
-        ON p.permission_key = $2
-
-      LEFT JOIN admin_role_permissions arp
-        ON arp.role_id = a.role_id
-       AND arp.permission_id = p.id
-
-      LEFT JOIN admin_user_permissions aup
-        ON aup.admin_id = a.id
-       AND aup.permission_id = p.id
-
-      LEFT JOIN admin_user_permission_overrides ov
-        ON ov.admin_id = a.id
-       AND ov.permission_id = p.id
-
-      WHERE a.user_id = $1
-        AND a.is_active = TRUE
-
-      LIMIT 1
-    `,
-    [userId, permissionKey]
-  );
-
-  if (!result.rows.length) {
-    return false;
-  }
-
-  return result.rows[0].allowed === true;
-}
-
-async function addDirectPermission(
-  userId,
-  permissionKey
-) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      INSERT INTO admin_user_permissions (
-        admin_id,
-        permission_id
-      )
-      SELECT
-        a.id,
-        p.id
-      FROM admins a
-      JOIN admin_permissions p
-        ON p.permission_key = $2
-      WHERE a.user_id = $1
-      ON CONFLICT (
-        admin_id,
-        permission_id
-      )
-      DO NOTHING
-      RETURNING
-        id,
-        admin_id,
-        permission_id
-    `,
-    [userId, permissionKey]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function removeDirectPermission(
-  userId,
-  permissionKey
-) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      DELETE FROM admin_user_permissions aup
-      USING admins a,
-            admin_permissions p
-      WHERE aup.admin_id = a.id
-        AND aup.permission_id = p.id
-        AND a.user_id = $1
-        AND p.permission_key = $2
-      RETURNING
-        aup.id,
-        aup.admin_id,
-        aup.permission_id
-    `,
-    [userId, permissionKey]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function create({
-  userId,
-  roleKey = "admin",
-}) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      INSERT INTO admins (
-        user_id,
-        role_id
-      )
-      SELECT
-        $1,
-        r.id
-      FROM admin_roles r
-      WHERE r.role_key = $2
-      RETURNING *
-    `,
-    [userId, roleKey]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function setActive(
-  userId,
-  isActive
-) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      UPDATE admins
-      SET
-        is_active = $2,
-        updated_at = NOW()
-      WHERE user_id = $1
-      RETURNING *
-    `,
-    [userId, Boolean(isActive)]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function updateLastLogin(
-  userId
-) {
-  const db = getClient();
-
-  const result = await db.query(
-    `
-      UPDATE admins
-      SET
-        last_login_at = NOW(),
-        updated_at = NOW()
-      WHERE user_id = $1
-      RETURNING *
-    `,
-    [userId]
-  );
-
-  return result.rows[0] || null;
-}
-
-async function isAdmin(userId) {
-  const admin =
-    await findByUserId(userId);
-
-  return Boolean(
-    admin &&
-    admin.is_active
-  );
-}
-
-async function isAdminByTelegramId(
-  telegramUserId
-) {
-  const admin =
-    await findByTelegramId(
-      telegramUserId
+        ON p.id = ov.permission_id
+      WHERE ov.admin_id = $1
+      ORDER BY p.id ASC
+      `,
+      [adminId]
     );
 
-  return Boolean(
-    admin &&
-    admin.is_active
-  );
-}
+    return result.rows;
+  },
 
-module.exports = {
-  findByUserId,
-  findByTelegramId,
+  async setPermissionOverride(adminId, permissionId, isEnabled) {
+    const result = await db.query(
+      `
+      INSERT INTO admin_user_permission_overrides (
+        admin_id,
+        permission_id,
+        is_enabled
+      )
+      VALUES ($1, $2, $3)
+      ON CONFLICT (admin_id, permission_id)
+      DO UPDATE SET
+        is_enabled = EXCLUDED.is_enabled,
+        updated_at = NOW()
+      RETURNING *
+      `,
+      [adminId, permissionId, isEnabled]
+    );
 
-  getPermissionsByUserId,
-  getAllPermissions,
+    return result.rows[0];
+  },
 
-  getDirectPermissionsByAdminId,
-  getDirectPermissionsByUserId,
+  async resetPermissionOverride(adminId, permissionId) {
+    const result = await db.query(
+      `
+      DELETE FROM admin_user_permission_overrides
+      WHERE admin_id = $1
+        AND permission_id = $2
+      RETURNING *
+      `,
+      [adminId, permissionId]
+    );
 
-  getPermissionOverride,
-  getPermissionOverridesByUserId,
-  setPermissionOverride,
-  removePermissionOverride,
+    return result.rows[0] || null;
+  },
 
-  hasPermission,
+  async resetAllPermissionOverrides(adminId) {
+    const result = await db.query(
+      `
+      DELETE FROM admin_user_permission_overrides
+      WHERE admin_id = $1
+      RETURNING *
+      `,
+      [adminId]
+    );
 
-  addDirectPermission,
-  removeDirectPermission,
-
-  create,
-  setActive,
-  updateLastLogin,
-
-  isAdmin,
-  isAdminByTelegramId,
+    return result.rows;
+  },
 };
+
+module.exports = adminRepository;
