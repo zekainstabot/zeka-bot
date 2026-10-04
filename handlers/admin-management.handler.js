@@ -1387,28 +1387,6 @@ async function handleText(
 
       if (
         text ===
-        "🐞 تنظیم ادمین گزارش"
-      ) {
-        if (
-          !(await requireManage(ctx))
-        ) {
-          return;
-        }
-
-        await adminManagementService.setReportAdmin(
-          state.targetUserId
-        );
-
-        await ctx.reply(
-          "🐞 این ادمین به‌عنوان ادمین گزارش تنظیم شد.",
-          adminSettingsMenu()
-        );
-
-        return;
-      }
-
-      if (
-        text ===
         "🗑 حذف ادمین"
       ) {
         if (
