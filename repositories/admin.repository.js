@@ -11,8 +11,8 @@ const adminRepository = {
         u.username,
         u.first_name,
         u.last_name,
-        ar.name AS role_name,
-        ar.display_name AS role_display_name
+        ar.role_key,
+        ar.role_name
       FROM admins a
       JOIN users u ON u.id = a.user_id
       LEFT JOIN admin_roles ar ON ar.id = a.role_id
@@ -30,8 +30,8 @@ const adminRepository = {
       `
       SELECT
         a.*,
-        ar.name AS role_name,
-        ar.display_name AS role_display_name
+        ar.role_key,
+        ar.role_name
       FROM admins a
       LEFT JOIN admin_roles ar ON ar.id = a.role_id
       WHERE a.user_id = $1
@@ -52,8 +52,8 @@ const adminRepository = {
         u.username,
         u.first_name,
         u.last_name,
-        ar.name AS role_name,
-        ar.display_name AS role_display_name
+        ar.role_key,
+        ar.role_name
       FROM admins a
       JOIN users u ON u.id = a.user_id
       LEFT JOIN admin_roles ar ON ar.id = a.role_id
@@ -75,8 +75,8 @@ const adminRepository = {
         u.username,
         u.first_name,
         u.last_name,
-        ar.name AS role_name,
-        ar.display_name AS role_display_name
+        ar.role_key,
+        ar.role_name
       FROM admins a
       JOIN users u ON u.id = a.user_id
       LEFT JOIN admin_roles ar ON ar.id = a.role_id
@@ -153,8 +153,8 @@ const adminRepository = {
     const result = await db.query(
       `
       SELECT
-        p.key,
-        p.name,
+        p.permission_key,
+        p.permission_name,
         p.description,
         CASE
           WHEN EXISTS (
@@ -162,37 +162,42 @@ const adminRepository = {
             FROM admin_user_permission_overrides ov
             WHERE ov.admin_id = a.id
               AND ov.permission_id = p.id
+              AND ov.is_enabled = FALSE
+          ) THEN FALSE
+
+          WHEN EXISTS (
+            SELECT 1
+            FROM admin_user_permission_overrides ov
+            WHERE ov.admin_id = a.id
+              AND ov.permission_id = p.id
               AND ov.is_enabled = TRUE
           ) THEN TRUE
+
           WHEN EXISTS (
             SELECT 1
             FROM admin_user_permissions aup
             WHERE aup.admin_id = a.id
               AND aup.permission_id = p.id
           ) THEN TRUE
+
           WHEN EXISTS (
             SELECT 1
             FROM admin_role_permissions arp
             WHERE arp.role_id = a.role_id
               AND arp.permission_id = p.id
           ) THEN TRUE
+
           ELSE FALSE
         END AS allowed
       FROM admins a
-      LEFT JOIN admin_user_permission_overrides ov
-        ON ov.admin_id = a.id
-      LEFT JOIN admin_user_permissions aup
-        ON aup.admin_id = a.id
-      LEFT JOIN admin_role_permissions arp
-        ON arp.role_id = a.role_id
       CROSS JOIN admin_permissions p
       WHERE a.user_id = $1
       GROUP BY
         a.id,
         a.role_id,
         p.id,
-        p.key,
-        p.name,
+        p.permission_key,
+        p.permission_name,
         p.description
       ORDER BY p.id ASC
       `,
@@ -207,7 +212,16 @@ const adminRepository = {
       `
       SELECT
         CASE
-          WHEN ar.name = 'super_admin' THEN TRUE
+          WHEN ar.role_key = 'super_admin' THEN TRUE
+
+          WHEN EXISTS (
+            SELECT 1
+            FROM admin_user_permission_overrides ov
+            WHERE ov.admin_id = a.id
+              AND ov.permission_id = p.id
+              AND ov.is_enabled = FALSE
+          ) THEN FALSE
+
           WHEN EXISTS (
             SELECT 1
             FROM admin_user_permission_overrides ov
@@ -215,18 +229,21 @@ const adminRepository = {
               AND ov.permission_id = p.id
               AND ov.is_enabled = TRUE
           ) THEN TRUE
+
           WHEN EXISTS (
             SELECT 1
             FROM admin_user_permissions aup
             WHERE aup.admin_id = a.id
               AND aup.permission_id = p.id
           ) THEN TRUE
+
           WHEN EXISTS (
             SELECT 1
             FROM admin_role_permissions arp
             WHERE arp.role_id = a.role_id
               AND arp.permission_id = p.id
           ) THEN TRUE
+
           ELSE FALSE
         END AS allowed
       FROM admins a
@@ -234,7 +251,7 @@ const adminRepository = {
         ON ar.id = a.role_id
       CROSS JOIN admin_permissions p
       WHERE a.user_id = $1
-        AND p.key = $2
+        AND p.permission_key = $2
         AND a.is_active = TRUE
       LIMIT 1
       `,
@@ -249,8 +266,8 @@ const adminRepository = {
       `
       SELECT
         id,
-        key,
-        name,
+        permission_key,
+        permission_name,
         description
       FROM admin_permissions
       ORDER BY id ASC
@@ -265,11 +282,11 @@ const adminRepository = {
       `
       SELECT
         id,
-        key,
-        name,
+        permission_key,
+        permission_name,
         description
       FROM admin_permissions
-      WHERE key = $1
+      WHERE permission_key = $1
       LIMIT 1
       `,
       [permissionKey]
@@ -340,8 +357,8 @@ const adminRepository = {
         ov.is_enabled,
         ov.created_at,
         ov.updated_at,
-        p.key AS permission_key,
-        p.name AS permission_name,
+        p.permission_key,
+        p.permission_name,
         p.description AS permission_description
       FROM admin_user_permission_overrides ov
       JOIN admin_permissions p
