@@ -567,6 +567,80 @@ async function removeDirectPermission(
   return result.rows[0] || null;
 }
 
+async function getActiveAdminsWithPermission(
+  permissionKey
+) {
+  const db = getClient();
+  const normalizedKey =
+    normalizePermissionKey(permissionKey);
+
+  const result = await db.query(
+    `
+      SELECT DISTINCT
+        u.telegram_user_id,
+        u.username,
+        u.display_name,
+        a.id AS admin_id,
+        r.role_key
+      FROM admins a
+      JOIN users u
+        ON u.id = a.user_id
+      LEFT JOIN admin_roles r
+        ON r.id = a.role_id
+      JOIN admin_permissions p
+        ON p.permission_key = $1
+      WHERE a.is_active = TRUE
+        AND (
+          r.role_key = 'super_admin'
+
+          OR (
+            NOT EXISTS (
+              SELECT 1
+              FROM admin_user_permission_overrides ov
+              WHERE ov.admin_id = a.id
+                AND ov.permission_id = p.id
+                AND ov.is_enabled = FALSE
+            )
+
+            AND (
+              EXISTS (
+                SELECT 1
+                FROM admin_user_permission_overrides ov
+                WHERE ov.admin_id = a.id
+                  AND ov.permission_id = p.id
+                  AND ov.is_enabled = TRUE
+              )
+
+              OR EXISTS (
+                SELECT 1
+                FROM admin_user_permissions aup
+                WHERE aup.admin_id = a.id
+                  AND aup.permission_id = p.id
+              )
+
+              OR EXISTS (
+                SELECT 1
+                FROM admin_role_permissions arp
+                WHERE arp.role_id = a.role_id
+                  AND arp.permission_id = p.id
+              )
+            )
+          )
+        )
+      ORDER BY
+        CASE
+          WHEN r.role_key = 'super_admin' THEN 1
+          WHEN r.role_key = 'admin' THEN 2
+          ELSE 3
+        END,
+        a.id ASC
+    `,
+    [normalizedKey]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   listAdmins,
   findUserByTelegramId,
