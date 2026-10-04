@@ -616,5 +616,4 @@ module.exports = {
   setAdminActive,
   removeAdmin,
 
-  setReportAdmin,
 };
