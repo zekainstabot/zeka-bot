@@ -1,5 +1,35 @@
 const db = require("../database");
 
+const PERMISSION_ALIASES = {
+  "users.view": "users",
+  "users.manage": "users",
+  "settings.view": "settings",
+  "settings.manage": "settings",
+  "requests.view": "requests",
+  "requests.manage": "requests",
+  "credits.view": "credits",
+  "credits.manage": "credits",
+  "rewards.view": "rewards",
+  "rewards.manage": "rewards",
+  "platforms.view": "platforms",
+  "platforms.manage": "platforms",
+  "features.view": "features",
+  "features.manage": "features",
+  "support.view": "support",
+  "support.manage": "support",
+  "monitoring.view": "monitoring",
+  "admins.view": "admins",
+  "admins.manage": "admins",
+  "reports.view": "reports",
+  "reports.manage": "reports",
+  "games.quiz.manage": "games.quiz",
+  "pro.manage": "pro",
+};
+
+function normalizePermissionKey(permissionKey) {
+  return PERMISSION_ALIASES[permissionKey] || permissionKey;
+}
+
 const adminRepository = {
   async getAdminByTelegramUserId(telegramUserId) {
     const result = await db.query(
@@ -208,6 +238,8 @@ const adminRepository = {
   },
 
   async hasPermission(userId, permissionKey) {
+    const normalizedKey = normalizePermissionKey(permissionKey);
+
     const result = await db.query(
       `
       SELECT
@@ -255,7 +287,7 @@ const adminRepository = {
         AND a.is_active = TRUE
       LIMIT 1
       `,
-      [userId, permissionKey]
+      [userId, normalizedKey]
     );
 
     return result.rows[0]?.allowed === true;
@@ -278,6 +310,8 @@ const adminRepository = {
   },
 
   async getPermissionByKey(permissionKey) {
+    const normalizedKey = normalizePermissionKey(permissionKey);
+
     const result = await db.query(
       `
       SELECT
@@ -289,7 +323,7 @@ const adminRepository = {
       WHERE permission_key = $1
       LIMIT 1
       `,
-      [permissionKey]
+      [normalizedKey]
     );
 
     return result.rows[0] || null;
