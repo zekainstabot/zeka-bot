@@ -1438,29 +1438,53 @@ async function handleEditQuestionStep(
         state.data;
 
       const updated =
-        await adminQuizService.updateQuestion({
-          telegramUserId,
-          questionId:
-            state.questionId,
-          category:
-            data.category,
-          difficulty:
-            data.difficulty,
-          questionText:
-            data.questionText,
-          optionA:
-            data.optionA,
-          optionB:
-            data.optionB,
-          optionC:
-            data.optionC,
-          optionD:
-            data.optionD,
-          correctOption:
-            data.correctOption,
-          explanation:
-            data.explanation,
-        });
+  state.mode === "EDIT_REPORT"
+    ? await adminQuizService.updateQuestionFromReport({
+        telegramUserId,
+        questionId:
+          state.questionId,
+        category:
+          data.category,
+        difficulty:
+          data.difficulty,
+        questionText:
+          data.questionText,
+        optionA:
+          data.optionA,
+        optionB:
+          data.optionB,
+        optionC:
+          data.optionC,
+        optionD:
+          data.optionD,
+        correctOption:
+          data.correctOption,
+        explanation:
+          data.explanation,
+      })
+    : await adminQuizService.updateQuestion({
+        telegramUserId,
+        questionId:
+          state.questionId,
+        category:
+          data.category,
+        difficulty:
+          data.difficulty,
+        questionText:
+          data.questionText,
+        optionA:
+          data.optionA,
+        optionB:
+          data.optionB,
+        optionC:
+          data.optionC,
+        optionD:
+          data.optionD,
+        correctOption:
+          data.correctOption,
+        explanation:
+          data.explanation,
+      });
 
       const mode =
         state.mode;
