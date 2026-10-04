@@ -9,10 +9,10 @@ const adminManagementService = require(
 );
 
 const QUIZ_MANAGE_PERMISSION =
-  "games.quiz.manage";
+  "games.quiz";
 
 const REPORT_MANAGE_PERMISSION =
-  "reports.manage";
+  "reports";
 
 async function requireQuizPermission(
   telegramUserId
