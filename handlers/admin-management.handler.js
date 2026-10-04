@@ -68,6 +68,10 @@ const PERMISSION_ORDER = [
     name: "گزارش‌ها",
   },
   {
+  key: "bug_reports",
+  name: "گزارش مشکل",
+},
+  {
     key: "games.quiz",
     name: "مسابقه",
   },
