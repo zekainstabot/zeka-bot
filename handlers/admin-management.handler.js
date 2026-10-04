@@ -10,8 +10,72 @@ const adminManagementStates = new Map();
 
 const CANCEL_TEXT = "❌ لغو";
 
-const PERMISSION_VIEW = "admins.view";
-const PERMISSION_MANAGE = "admins.manage";
+/*
+ * Permission جدید مدیریت ادمین
+ *
+ * همه Permission های قدیمی در Repository
+ * به این کلیدها تبدیل می‌شوند.
+ */
+const PERMISSION_VIEW = "admins";
+const PERMISSION_MANAGE = "admins";
+
+/*
+ * ترتیب و نام نمایشی Permission ها
+ */
+const PERMISSION_ORDER = [
+  {
+    key: "users",
+    name: "کاربران",
+  },
+  {
+    key: "settings",
+    name: "تنظیمات",
+  },
+  {
+    key: "requests",
+    name: "درخواست‌ها",
+  },
+  {
+    key: "credits",
+    name: "اعتبارها",
+  },
+  {
+    key: "rewards",
+    name: "پاداش‌ها",
+  },
+  {
+    key: "platforms",
+    name: "پلتفرم‌ها",
+  },
+  {
+    key: "features",
+    name: "قابلیت‌ها",
+  },
+  {
+    key: "support",
+    name: "پشتیبانی",
+  },
+  {
+    key: "monitoring",
+    name: "مانیتورینگ",
+  },
+  {
+    key: "admins",
+    name: "مدیران",
+  },
+  {
+    key: "reports",
+    name: "گزارش‌ها",
+  },
+  {
+    key: "games.quiz",
+    name: "مسابقه",
+  },
+  {
+    key: "pro",
+    name: "Pro",
+  },
+];
 
 function getState(telegramUserId) {
   return (
@@ -72,7 +136,10 @@ function cancelMenu() {
   ]).resize();
 }
 
-function getAdminDisplayName(admin, index) {
+function getAdminDisplayName(
+  admin,
+  index
+) {
   if (admin.display_name) {
     return admin.display_name;
   }
@@ -84,57 +151,107 @@ function getAdminDisplayName(admin, index) {
   return `ادمین ${index + 1}`;
 }
 
-function buildAdminList(admins) {
-  const buttons = [];
-
-  admins.forEach((admin, index) => {
-    buttons.push([
-      `${index + 1}️⃣ ${getAdminDisplayName(
-        admin,
-        index
-      )}`,
-    ]);
-  });
-
-  buttons.push([
-    "🔙 مدیریت ادمین",
-  ]);
-
-  return Markup.keyboard(buttons).resize();
-}
-
-function getPermissionStatusIcon(permission) {
-  if (permission.override_enabled === true) {
+/*
+ * وضعیت Override:
+ *
+ * true  -> 🟢
+ * false -> 🔴
+ * null  -> ⚪
+ */
+function getPermissionStatusIcon(
+  permission
+) {
+  if (
+    permission.override_enabled ===
+    true
+  ) {
     return "🟢";
   }
 
-  if (permission.override_enabled === false) {
+  if (
+    permission.override_enabled ===
+    false
+  ) {
     return "🔴";
   }
 
   return "⚪";
 }
 
-function getPermissionStatusText(permission) {
-  if (permission.override_enabled === true) {
+function getPermissionStatusText(
+  permission
+) {
+  if (
+    permission.override_enabled ===
+    true
+  ) {
     return "فعال";
   }
 
-  if (permission.override_enabled === false) {
+  if (
+    permission.override_enabled ===
+    false
+  ) {
     return "غیرفعال";
   }
 
   return "پیش‌فرض";
 }
 
-function buildPermissionToggleMenu(permissions) {
+/*
+ * فقط Permission های جدید و مجاز
+ * نمایش داده می‌شوند.
+ */
+function normalizePermissionList(
+  permissions
+) {
+  const map = new Map();
+
+  for (const permission of permissions || []) {
+    if (!permission?.permission_key) {
+      continue;
+    }
+
+    map.set(
+      permission.permission_key,
+      permission
+    );
+  }
+
+  return PERMISSION_ORDER
+    .map((definition) => {
+      const existing =
+        map.get(definition.key);
+
+      if (!existing) {
+        return null;
+      }
+
+      return {
+        ...existing,
+        permission_name:
+          definition.name,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildPermissionToggleMenu(
+  permissions
+) {
   const buttons = [];
 
-  permissions.forEach((permission, index) => {
-    buttons.push([
-      `${getPermissionStatusIcon(permission)} ${index + 1}️⃣ ${permission.permission_name}`,
-    ]);
-  });
+  permissions.forEach(
+    (permission, index) => {
+      buttons.push([
+        `${getPermissionStatusIcon(
+          permission
+        )} ${index + 1}️⃣ ${
+          permission.permission_name
+        }`,
+      ]);
+    }
+  );
 
   buttons.push([
     "🔄 بازنشانی همه",
@@ -144,7 +261,9 @@ function buildPermissionToggleMenu(permissions) {
     "🔙 تنظیمات ادمین",
   ]);
 
-  return Markup.keyboard(buttons).resize();
+  return Markup.keyboard(
+    buttons
+  ).resize();
 }
 
 async function requirePermission(
@@ -215,7 +334,9 @@ async function requireManage(ctx) {
   );
 }
 
-async function showAdminManagementMenu(ctx) {
+async function showAdminManagementMenu(
+  ctx
+) {
   if (!(await requireView(ctx))) {
     return;
   }
@@ -307,6 +428,29 @@ async function showAdminList(ctx) {
       managementMenu()
     );
   }
+}
+
+function buildAdminList(admins) {
+  const buttons = [];
+
+  admins.forEach(
+    (admin, index) => {
+      buttons.push([
+        `${index + 1}️⃣ ${getAdminDisplayName(
+          admin,
+          index
+        )}`,
+      ]);
+    }
+  );
+
+  buttons.push([
+    "🔙 مدیریت ادمین",
+  ]);
+
+  return Markup.keyboard(
+    buttons
+  ).resize();
 }
 
 async function showAdminSettings(
@@ -414,6 +558,10 @@ async function showAdminInfo(
     const user =
       access.user || {};
 
+    const username =
+      admin.username ||
+      user.username;
+
     await ctx.reply(
       "📋 اطلاعات ادمین\n\n" +
         `👤 نام: ${
@@ -422,13 +570,8 @@ async function showAdminInfo(
           "ثبت نشده"
         }\n` +
         `🔹 Username: ${
-          admin.username ||
-          user.username
-            ? "@" +
-              (
-                admin.username ||
-                user.username
-              )
+          username
+            ? "@" + username
             : "ثبت نشده"
         }\n` +
         `🎭 نقش: ${
@@ -500,27 +643,9 @@ async function showAccessManagement(
     }
 
     const permissions =
-      access.permissions || [];
-
-    if (!permissions.length) {
-      setState(
-        ctx.from.id,
-        {
-          step: "permissionToggle",
-          targetUserId:
-            targetTelegramUserId,
-          choices: [],
-        }
+      normalizePermissionList(
+        access.permissions
       );
-
-      await ctx.reply(
-        "🔐 مدیریت دسترسی\n\n" +
-          "❌ هیچ Permissionای در سیستم ثبت نشده است.",
-        accessManagementMenu()
-      );
-
-      return;
-    }
 
     setState(
       ctx.from.id,
@@ -536,21 +661,33 @@ async function showAccessManagement(
       }
     );
 
+    if (!permissions.length) {
+      await ctx.reply(
+        "🔐 مدیریت دسترسی\n\n" +
+          "❌ هیچ Permissionای در سیستم ثبت نشده است.",
+        accessManagementMenu()
+      );
+
+      return;
+    }
+
+    const admin =
+      access.admin;
+
     let text =
       "🔐 مدیریت دسترسی\n\n";
 
     text +=
       `👤 ${
-        access.admin.display_name ||
-        (access.admin.username
-          ? "@" +
-            access.admin.username
+        admin.display_name ||
+        (admin.username
+          ? "@" + admin.username
           : "ادمین")
       }\n`;
 
     text +=
       `🎭 نقش: ${
-        access.admin.role_name ||
+        admin.role_name ||
         "نامشخص"
       }\n\n`;
 
@@ -564,7 +701,7 @@ async function showAccessManagement(
       "🔴 غیرفعال = Override خاموش\n";
 
     text +=
-      "⚪ پیش‌فرض = تبعیت از Role/Direct\n\n";
+      "⚪ پیش‌فرض = تبعیت از Role\n\n";
 
     permissions.forEach(
       (permission, index) => {
@@ -647,7 +784,9 @@ async function togglePermission(
     }
 
     const permission =
-      (access.permissions || []).find(
+      normalizePermissionList(
+        access.permissions
+      ).find(
         (item) =>
           item.permission_key ===
           permissionKey
@@ -752,7 +891,9 @@ async function resetAllPermissionOverrides(
     }
 
     const permissions =
-      access.permissions || [];
+      normalizePermissionList(
+        access.permissions
+      );
 
     let resetCount = 0;
 
@@ -1293,9 +1434,7 @@ async function handleText(
         text ===
         "🔙 لیست ادمین‌ها"
       ) {
-        await showAdminList(
-          ctx
-        );
+        await showAdminList(ctx);
 
         return;
       }
@@ -1361,7 +1500,7 @@ async function handleText(
       "SUPER_ADMIN_REQUIRED"
     ) {
       await ctx.reply(
-        "⛔ این عملیات فقط برای Super Admin مجاز است."
+        "⛔ این عملیات برای Super Admin مجاز نیست."
       );
 
       return;
