@@ -1,5 +1,10 @@
-const adminQuizService = require("./admin-quiz.service");
-const quizReportRepository = require("../repositories/quiz-report.repository");
+const adminManagementService = require(
+  "./admin-management.service"
+);
+
+const quizReportRepository = require(
+  "../repositories/quiz-report.repository"
+);
 
 const REPORT_REASONS = {
   WRONG_ANSWER: "WRONG_ANSWER",
@@ -19,7 +24,9 @@ function normalizeReason(reason) {
     return null;
   }
 
-  if (!Object.values(REPORT_REASONS).includes(value)) {
+  if (
+    !Object.values(REPORT_REASONS).includes(value)
+  ) {
     throw new Error("Invalid report reason");
   }
 
@@ -50,8 +57,9 @@ async function listPendingReports(
   telegramUserId,
   options = {}
 ) {
-  await adminQuizService.requireQuizPermission(
-    telegramUserId
+  await adminManagementService.requirePermissionByTelegramId(
+    telegramUserId,
+    "reports.view"
   );
 
   const normalizedReason = normalizeReason(
@@ -68,8 +76,9 @@ async function countPendingReports(
   telegramUserId,
   options = {}
 ) {
-  await adminQuizService.requireQuizPermission(
-    telegramUserId
+  await adminManagementService.requirePermissionByTelegramId(
+    telegramUserId,
+    "reports.view"
   );
 
   const normalizedReason = normalizeReason(
@@ -84,8 +93,9 @@ async function countPendingReports(
 async function countPendingReportsByReason(
   telegramUserId
 ) {
-  await adminQuizService.requireQuizPermission(
-    telegramUserId
+  await adminManagementService.requirePermissionByTelegramId(
+    telegramUserId,
+    "reports.view"
   );
 
   return quizReportRepository.countPendingReportsByReason();
@@ -95,8 +105,9 @@ async function getReportById(
   telegramUserId,
   reportId
 ) {
-  await adminQuizService.requireQuizPermission(
-    telegramUserId
+  await adminManagementService.requirePermissionByTelegramId(
+    telegramUserId,
+    "reports.view"
   );
 
   return quizReportRepository.getReportById(
@@ -111,8 +122,9 @@ async function resolveReport(
   adminNote = null
 ) {
   const admin =
-    await adminQuizService.requireQuizPermission(
-      telegramUserId
+    await adminManagementService.requirePermissionByTelegramId(
+      telegramUserId,
+      "reports.manage"
     );
 
   const allowedStatuses = [
@@ -124,8 +136,14 @@ async function resolveReport(
     .trim()
     .toUpperCase();
 
-  if (!allowedStatuses.includes(normalizedStatus)) {
-    throw new Error("Invalid report status");
+  if (
+    !allowedStatuses.includes(
+      normalizedStatus
+    )
+  ) {
+    throw new Error(
+      "Invalid report status"
+    );
   }
 
   return quizReportRepository.resolveReport(
