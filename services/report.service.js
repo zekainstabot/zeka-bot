@@ -1,30 +1,11 @@
-const {
-  getSetting,
-} = require("./settings.service");
+const adminManagementRepository = require(
+  "../repositories/admin-management.repository"
+);
 
 let bot = null;
 
 function setBot(nextBot) {
   bot = nextBot;
-}
-
-async function getReportAdminId() {
-  const value = await getSetting(
-    "support.report_admin_id",
-    ""
-  );
-
-  const adminId = String(value || "").trim();
-
-  if (!adminId) {
-    return null;
-  }
-
-  if (!/^\d+$/.test(adminId)) {
-    return null;
-  }
-
-  return adminId;
 }
 
 async function sendDownloadReport({
@@ -33,26 +14,33 @@ async function sendDownloadReport({
   originalUrl,
   jobId,
 }) {
-  const adminId =
-    await getReportAdminId();
+  const reportAdmins =
+    await adminManagementRepository.getActiveAdminsWithPermission(
+      "bug_reports"
+    );
 
   const reportData = {
     userId:
       user?.telegram_user_id ||
       user?.telegramUserId ||
       "نامشخص",
+
     username:
       user?.username
         ? `@${user.username}`
         : "ندارد",
+
     displayName:
       user?.display_name ||
       user?.displayName ||
       "ثبت نشده",
+
     report:
       String(report || "").trim(),
+
     originalUrl:
       originalUrl || "ثبت نشده",
+
     jobId:
       jobId || "نامشخص",
   };
@@ -73,9 +61,9 @@ async function sendDownloadReport({
     };
   }
 
-  if (!adminId) {
+  if (!reportAdmins.length) {
     console.warn(
-      "Download report admin is not configured"
+      "No active admin has bug_reports permission"
     );
 
     return {
@@ -93,36 +81,46 @@ async function sendDownloadReport({
     `🔗 لینک:\n${reportData.originalUrl}\n\n` +
     `🧾 Job ID: ${reportData.jobId}`;
 
-  try {
-    await bot.telegram.sendMessage(
-      adminId,
-      message
-    );
+  const sentTo = [];
+  const failed = [];
 
-    console.log(
-      `Download report sent to admin: ${adminId}`
-    );
+  for (const admin of reportAdmins) {
+    try {
+      await bot.telegram.sendMessage(
+        String(admin.telegram_user_id),
+        message
+      );
 
-    return {
-      sent: true,
-      adminId,
-    };
-  } catch (error) {
-    console.error(
-      "Failed to send download report to admin:",
-      error
-    );
+      sentTo.push(
+        String(admin.telegram_user_id)
+      );
+    } catch (error) {
+      failed.push({
+        adminId:
+          String(admin.telegram_user_id),
+        error,
+      });
 
-    return {
-      sent: false,
-      reason: "SEND_FAILED",
-      error,
-    };
+      console.error(
+        `Failed to send download report to admin ${admin.telegram_user_id}:`,
+        error
+      );
+    }
   }
+
+  console.log(
+    "Download report sent to admins:",
+    sentTo
+  );
+
+  return {
+    sent: sentTo.length > 0,
+    adminIds: sentTo,
+    failed,
+  };
 }
 
 module.exports = {
   setBot,
-  getReportAdminId,
   sendDownloadReport,
 };
