@@ -593,44 +593,6 @@ async function removeAdmin(
   );
 }
 
-async function setReportAdmin(
-  telegramUserId
-) {
-  const {
-    user,
-    admin,
-  } = await getUserAndAdmin(
-    telegramUserId
-  );
-
-  if (
-    admin.role_key ===
-    "super_admin"
-  ) {
-    const error = new Error(
-      "Super Admin cannot be selected as report admin"
-    );
-
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
-    throw error;
-  }
-
-  const {
-    setSetting,
-  } = require(
-    "./settings.service"
-  );
-
-  await setSetting(
-    "support.report_admin_id",
-    String(user.id)
-  );
-
-  return true;
-}
-
 module.exports = {
   listAdmins,
   getRoles,
