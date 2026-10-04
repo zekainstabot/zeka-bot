@@ -28,15 +28,22 @@ function adminManagementMenu() {
   ]).resize();
 }
 
+function accessManagementMenu() {
+  return Markup.keyboard([
+    ["👤 انتخاب ادمین"],
+    ["📋 مشاهده دسترسی‌ها"],
+    ["🔄 تغییر سطح ادمین"],
+    ["🔙 مدیریت ادمین"],
+  ]).resize();
+}
+
 function cancelMenu() {
   return Markup.keyboard([
     [CANCEL_TEXT],
   ]).resize();
 }
 
-async function requireSuperAdmin(
-  ctx
-) {
+async function requireSuperAdmin(ctx) {
   const {
     getAdminByTelegramId,
   } = require(
@@ -51,8 +58,7 @@ async function requireSuperAdmin(
   if (
     !admin ||
     !admin.is_active ||
-    admin.role_key !==
-      "super_admin"
+    admin.role_key !== "super_admin"
   ) {
     await ctx.reply(
       "⛔ فقط Super Admin به مدیریت ادمین دسترسی دارد."
@@ -64,12 +70,8 @@ async function requireSuperAdmin(
   return true;
 }
 
-async function handleAdminManagementMenu(
-  ctx
-) {
-  if (
-    !(await requireSuperAdmin(ctx))
-  ) {
+async function handleAdminManagementMenu(ctx) {
+  if (!(await requireSuperAdmin(ctx))) {
     return;
   }
 
@@ -80,12 +82,8 @@ async function handleAdminManagementMenu(
   );
 }
 
-async function handleListAdmins(
-  ctx
-) {
-  if (
-    !(await requireSuperAdmin(ctx))
-  ) {
+async function handleListAdmins(ctx) {
+  if (!(await requireSuperAdmin(ctx))) {
     return;
   }
 
@@ -102,30 +100,29 @@ async function handleListAdmins(
       return;
     }
 
-    const lines =
-      admins.map(
-        (admin, index) => {
-          const name =
-            admin.display_name ||
-            (
-              admin.username
-                ? `@${admin.username}`
-                : "بدون نام"
-            );
-
-          const status =
-            admin.is_active
-              ? "🟢 فعال"
-              : "🔴 غیرفعال";
-
-          return (
-            `${index + 1}. ${name}\n` +
-            `🆔 ${admin.telegram_user_id}\n` +
-            `👤 ${admin.role_name}\n` +
-            `${status}`
+    const lines = admins.map(
+      (admin, index) => {
+        const name =
+          admin.display_name ||
+          (
+            admin.username
+              ? `@${admin.username}`
+              : "بدون نام"
           );
-        }
-      );
+
+        const status =
+          admin.is_active
+            ? "🟢 فعال"
+            : "🔴 غیرفعال";
+
+        return (
+          `${index + 1}. ${name}\n` +
+          `🆔 ${admin.telegram_user_id}\n` +
+          `👤 ${admin.role_name}\n` +
+          `${status}`
+        );
+      }
+    );
 
     await ctx.reply(
       "👥 لیست ادمین‌ها\n\n" +
@@ -145,15 +142,13 @@ async function handleListAdmins(
   }
 }
 
-function startState(
-  ctx,
-  action
-) {
+function startState(ctx, action, extra = {}) {
   states.set(
     String(ctx.from.id),
     {
       action,
       createdAt: Date.now(),
+      ...extra,
     }
   );
 }
@@ -175,6 +170,66 @@ async function updateUserCommands(
       error
     );
   }
+}
+
+async function showAdminAccess(
+  ctx,
+  telegramUserId,
+  returnMenu = accessManagementMenu()
+) {
+  const data =
+    await adminService.getAdminAccess(
+      telegramUserId
+    );
+
+  const {
+    user,
+    admin,
+    permissions,
+  } = data;
+
+  const name =
+    user.display_name ||
+    (
+      user.username
+        ? `@${user.username}`
+        : "بدون نام"
+    );
+
+  const status =
+    admin.is_active
+      ? "🟢 فعال"
+      : "🔴 غیرفعال";
+
+  let message =
+    "🔐 اطلاعات دسترسی ادمین\n\n" +
+    `👤 ${name}\n` +
+    `🆔 ${user.telegram_user_id}\n` +
+    `🎭 سطح: ${admin.role_name}\n` +
+    `${status}\n\n` +
+    "📋 دسترسی‌ها:\n";
+
+  if (!permissions.length) {
+    message +=
+      "❌ هیچ دسترسی‌ای برای این Role ثبت نشده است.";
+  } else {
+    message += permissions
+      .map(
+        (permission, index) =>
+          `${index + 1}. ${permission.permission_name}` +
+          (
+            permission.description
+              ? ` — ${permission.description}`
+              : ""
+          )
+      )
+      .join("\n");
+  }
+
+  await ctx.reply(
+    message,
+    returnMenu
+  );
 }
 
 async function handleAdminManagementText(
@@ -212,7 +267,10 @@ async function handleAdminManagementText(
 
     await ctx.reply(
       "❌ عملیات لغو شد.",
-      adminManagementMenu()
+      state.action === "access_select" ||
+      state.action === "role_select"
+        ? accessManagementMenu()
+        : adminManagementMenu()
     );
 
     return;
@@ -235,9 +293,7 @@ async function handleAdminManagementText(
     return;
   }
 
-  if (
-    !(await requireSuperAdmin(ctx))
-  ) {
+  if (!(await requireSuperAdmin(ctx))) {
     states.delete(
       String(telegramUserId)
     );
@@ -245,6 +301,303 @@ async function handleAdminManagementText(
     return;
   }
 
+  /*
+   * انتخاب ادمین برای مدیریت دسترسی
+   */
+  if (
+    state.action ===
+    "access_select"
+  ) {
+    if (!/^\d+$/.test(text)) {
+      await ctx.reply(
+        "❌ Telegram ID باید فقط عدد باشد.",
+        cancelMenu()
+      );
+
+      return;
+    }
+
+    try {
+      const data =
+        await adminService.getAdminAccess(
+          text
+        );
+
+      if (
+        data.admin.role_key ===
+        "super_admin"
+      ) {
+        await ctx.reply(
+          "⛔ Super Admin قابل مدیریت از این بخش نیست.",
+          accessManagementMenu()
+        );
+
+        states.delete(
+          String(telegramUserId)
+        );
+
+        return;
+      }
+
+      states.delete(
+        String(telegramUserId)
+      );
+
+      await showAdminAccess(
+        ctx,
+        text
+      );
+
+      return;
+    } catch (error) {
+      console.error(
+        "Access selection failed:",
+        error
+      );
+
+      if (
+        error.code ===
+        "USER_NOT_FOUND"
+      ) {
+        await ctx.reply(
+          "❌ کاربری با این Telegram ID پیدا نشد.",
+          accessManagementMenu()
+        );
+
+        states.delete(
+          String(telegramUserId)
+        );
+
+        return;
+      }
+
+      if (
+        error.code ===
+        "ADMIN_NOT_FOUND"
+      ) {
+        await ctx.reply(
+          "❌ این کاربر Admin نیست.",
+          accessManagementMenu()
+        );
+
+        states.delete(
+          String(telegramUserId)
+        );
+
+        return;
+      }
+
+      await ctx.reply(
+        "❌ دریافت اطلاعات دسترسی انجام نشد.",
+        accessManagementMenu()
+      );
+
+      states.delete(
+        String(telegramUserId)
+      );
+
+      return;
+    }
+  }
+
+  /*
+   * تغییر Role
+   */
+  if (
+    state.action ===
+    "role_select"
+  ) {
+    if (!/^\d+$/.test(text)) {
+      await ctx.reply(
+        "❌ Telegram ID باید فقط عدد باشد.",
+        cancelMenu()
+      );
+
+      return;
+    }
+
+    try {
+      const data =
+        await adminService.getAdminAccess(
+          text
+        );
+
+      if (
+        data.admin.role_key ===
+        "super_admin"
+      ) {
+        await ctx.reply(
+          "⛔ Super Admin قابل تغییر نیست.",
+          accessManagementMenu()
+        );
+
+        states.delete(
+          String(telegramUserId)
+        );
+
+        return;
+      }
+
+      const roles =
+        await adminService.getRoles();
+
+      if (!roles.length) {
+        await ctx.reply(
+          "❌ هیچ Role قابل انتخابی وجود ندارد.",
+          accessManagementMenu()
+        );
+
+        states.delete(
+          String(telegramUserId)
+        );
+
+        return;
+      }
+
+      states.set(
+        String(telegramUserId),
+        {
+          action: "role_apply",
+          createdAt: Date.now(),
+          targetTelegramUserId: text,
+          roles,
+        }
+      );
+
+      const roleLines =
+        roles.map(
+          (role, index) =>
+            `${index + 1}. ${role.role_name}\n` +
+            `🔑 ${role.role_key}` +
+            (
+              role.description
+                ? `\n📝 ${role.description}`
+                : ""
+            )
+        );
+
+      await ctx.reply(
+        "🔄 تغییر سطح ادمین\n\n" +
+          `🆔 ${text}\n\n` +
+          "Role موردنظر را با شماره انتخاب کن:\n\n" +
+          roleLines.join("\n\n"),
+        cancelMenu()
+      );
+
+      return;
+    } catch (error) {
+      console.error(
+        "Role selection failed:",
+        error
+      );
+
+      await ctx.reply(
+        "❌ دریافت Roleها انجام نشد.",
+        accessManagementMenu()
+      );
+
+      states.delete(
+        String(telegramUserId)
+      );
+
+      return;
+    }
+  }
+
+  /*
+   * اعمال Role انتخاب‌شده
+   */
+  if (
+    state.action ===
+    "role_apply"
+  ) {
+    if (!/^\d+$/.test(text)) {
+      await ctx.reply(
+        "❌ شماره Role را درست وارد کن.",
+        cancelMenu()
+      );
+
+      return;
+    }
+
+    const index =
+      Number(text) - 1;
+
+    if (
+      index < 0 ||
+      index >= state.roles.length
+    ) {
+      await ctx.reply(
+        "❌ شماره Role نامعتبر است.",
+        cancelMenu()
+      );
+
+      return;
+    }
+
+    const selectedRole =
+      state.roles[index];
+
+    try {
+      const result =
+        await adminService.changeAdminRole(
+          state.targetTelegramUserId,
+          selectedRole.role_key
+        );
+
+      await updateUserCommands(
+        ctx,
+        state.targetTelegramUserId,
+        selectedRole.role_key
+      );
+
+      states.delete(
+        String(telegramUserId)
+      );
+
+      await ctx.reply(
+        "✅ سطح ادمین تغییر کرد.\n\n" +
+          `🆔 ${state.targetTelegramUserId}\n` +
+          `🎭 سطح جدید: ${selectedRole.role_name}\n` +
+          `🔑 ${selectedRole.role_key}`,
+        accessManagementMenu()
+      );
+
+      return;
+    } catch (error) {
+      console.error(
+        "Role change failed:",
+        error
+      );
+
+      states.delete(
+        String(telegramUserId)
+      );
+
+      if (
+        error.code ===
+        "SUPER_ADMIN_PROTECTED"
+      ) {
+        await ctx.reply(
+          "⛔ Super Admin قابل تغییر نیست.",
+          accessManagementMenu()
+        );
+
+        return;
+      }
+
+      await ctx.reply(
+        "❌ تغییر سطح ادمین انجام نشد.",
+        accessManagementMenu()
+      );
+
+      return;
+    }
+  }
+
+  /*
+   * عملیات‌های قدیمی مدیریت ادمین
+   */
   if (!/^\d+$/.test(text)) {
     await ctx.reply(
       "❌ Telegram ID باید فقط عدد باشد.\n\n" +
@@ -288,15 +641,16 @@ async function handleAdminManagementText(
       state.action ===
       "enable"
     ) {
-      await adminService.setAdminActive(
-        text,
-        true
-      );
+      const result =
+        await adminService.setAdminActive(
+          text,
+          true
+        );
 
       await updateUserCommands(
         ctx,
         text,
-        "admin"
+        result.role_key || "admin"
       );
 
       await ctx.reply(
@@ -421,9 +775,7 @@ async function handleAdminManagementText(
   }
 }
 
-function createAdminManagementHandler(
-  bot
-) {
+function createAdminManagementHandler(bot) {
   bot.hears(
     "🛠 مدیریت ادمین",
     handleAdminManagementMenu
@@ -432,16 +784,11 @@ function createAdminManagementHandler(
   bot.hears(
     "➕ افزودن ادمین",
     async (ctx) => {
-      if (
-        !(await requireSuperAdmin(ctx))
-      ) {
+      if (!(await requireSuperAdmin(ctx))) {
         return;
       }
 
-      startState(
-        ctx,
-        "add"
-      );
+      startState(ctx, "add");
 
       await ctx.reply(
         "🆔 Telegram ID کاربری که می‌خواهی Admin شود را ارسال کن.",
@@ -456,18 +803,99 @@ function createAdminManagementHandler(
   );
 
   bot.hears(
-    "🟢 فعال کردن ادمین",
+    "🔐 مدیریت سطح دسترسی",
     async (ctx) => {
-      if (
-        !(await requireSuperAdmin(ctx))
-      ) {
+      if (!(await requireSuperAdmin(ctx))) {
+        return;
+      }
+
+      await ctx.reply(
+        "🔐 مدیریت سطح دسترسی\n\n" +
+          "ادمین موردنظر را انتخاب یا Telegram ID او را وارد کن.",
+        accessManagementMenu()
+      );
+    }
+  );
+
+  bot.hears(
+    "👤 انتخاب ادمین",
+    async (ctx) => {
+      if (!(await requireSuperAdmin(ctx))) {
         return;
       }
 
       startState(
         ctx,
-        "enable"
+        "access_select"
       );
+
+      await ctx.reply(
+        "🆔 Telegram ID ادمین را ارسال کن.",
+        cancelMenu()
+      );
+    }
+  );
+
+  bot.hears(
+    "📋 مشاهده دسترسی‌ها",
+    async (ctx) => {
+      if (!(await requireSuperAdmin(ctx))) {
+        return;
+      }
+
+      startState(
+        ctx,
+        "access_select"
+      );
+
+      await ctx.reply(
+        "🆔 Telegram ID ادمینی که می‌خواهی دسترسی‌هایش را ببینی ارسال کن.",
+        cancelMenu()
+      );
+    }
+  );
+
+  bot.hears(
+    "🔄 تغییر سطح ادمین",
+    async (ctx) => {
+      if (!(await requireSuperAdmin(ctx))) {
+        return;
+      }
+
+      startState(
+        ctx,
+        "role_select"
+      );
+
+      await ctx.reply(
+        "🆔 Telegram ID ادمینی که می‌خواهی سطحش را تغییر بدهی ارسال کن.",
+        cancelMenu()
+      );
+    }
+  );
+
+  bot.hears(
+    "🔙 مدیریت ادمین",
+    async (ctx) => {
+      if (!(await requireSuperAdmin(ctx))) {
+        return;
+      }
+
+      await ctx.reply(
+        "🛠 مدیریت ادمین",
+        adminManagementMenu()
+      );
+    }
+  );
+
+  bot.hears(
+    "🟢 فعال کردن ادمین",
+    async (ctx) => {
+      if (!(await requireSuperAdmin(ctx))) {
+        return;
+      }
+
+      startState(ctx, "enable");
 
       await ctx.reply(
         "🆔 Telegram ID ادمینی که می‌خواهی فعال شود را ارسال کن.",
@@ -479,16 +907,11 @@ function createAdminManagementHandler(
   bot.hears(
     "🔴 غیرفعال کردن ادمین",
     async (ctx) => {
-      if (
-        !(await requireSuperAdmin(ctx))
-      ) {
+      if (!(await requireSuperAdmin(ctx))) {
         return;
       }
 
-      startState(
-        ctx,
-        "disable"
-      );
+      startState(ctx, "disable");
 
       await ctx.reply(
         "🆔 Telegram ID ادمینی که می‌خواهی غیرفعال شود را ارسال کن.",
@@ -500,16 +923,11 @@ function createAdminManagementHandler(
   bot.hears(
     "🗑 حذف ادمین",
     async (ctx) => {
-      if (
-        !(await requireSuperAdmin(ctx))
-      ) {
+      if (!(await requireSuperAdmin(ctx))) {
         return;
       }
 
-      startState(
-        ctx,
-        "remove"
-      );
+      startState(ctx, "remove");
 
       await ctx.reply(
         "🆔 Telegram ID ادمینی که می‌خواهی حذف شود را ارسال کن.",
