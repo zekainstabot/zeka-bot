@@ -65,14 +65,35 @@ async function getAdminPanelData(
 
   const permissions = {};
 
-  for (
-    const permissionKey of PERMISSION_KEYS
-  ) {
+for (
+  const permissionKey of PERMISSION_KEYS
+) {
+  try {
     permissions[permissionKey] =
       await adminService.hasPermission(
         admin.user_id,
         permissionKey
       );
+  } catch (error) {
+    console.error(
+      "ADMIN PERMISSION CHECK FAILED:",
+      permissionKey,
+      error
+    );
+
+    permissions[permissionKey] =
+      false;
+  }
+}
+
+console.log(
+  "ADMIN PANEL PERMISSIONS:",
+  {
+    userId: admin.user_id,
+    role: admin.role_key,
+    permissions,
+  }
+);
   }
 
   return {
