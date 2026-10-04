@@ -2,6 +2,36 @@ const {
   getClient,
 } = require("../database/client");
 
+const PERMISSION_ALIASES = {
+  "users.view": "users",
+  "users.manage": "users",
+  "settings.view": "settings",
+  "settings.manage": "settings",
+  "requests.view": "requests",
+  "requests.manage": "requests",
+  "credits.view": "credits",
+  "credits.manage": "credits",
+  "rewards.view": "rewards",
+  "rewards.manage": "rewards",
+  "platforms.view": "platforms",
+  "platforms.manage": "platforms",
+  "features.view": "features",
+  "features.manage": "features",
+  "support.view": "support",
+  "support.manage": "support",
+  "monitoring.view": "monitoring",
+  "admins.view": "admins",
+  "admins.manage": "admins",
+  "reports.view": "reports",
+  "reports.manage": "reports",
+  "games.quiz.manage": "games.quiz",
+  "pro.manage": "pro",
+};
+
+function normalizePermissionKey(permissionKey) {
+  return PERMISSION_ALIASES[permissionKey] || permissionKey;
+}
+
 async function listAdmins() {
   const db = getClient();
 
@@ -36,9 +66,7 @@ async function listAdmins() {
   return result.rows;
 }
 
-async function findUserByTelegramId(
-  telegramUserId
-) {
+async function findUserByTelegramId(telegramUserId) {
   const db = getClient();
 
   const result = await db.query(
@@ -58,9 +86,7 @@ async function findUserByTelegramId(
   return result.rows[0] || null;
 }
 
-async function findAdminByUserId(
-  userId
-) {
+async function findAdminByUserId(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -109,25 +135,15 @@ async function listRoles() {
 }
 
 /*
- * تمام دسترسی‌ها + وضعیت مؤثر هر دسترسی
+ * تمام Permission های اصلی + وضعیت مؤثر
  *
  * priority:
- *
  * 1. override
- * 2. direct permission
- * 3. role permission
+ * 2. direct
+ * 3. role
  * 4. disabled
- *
- * source:
- *
- * override
- * direct
- * role
- * none
  */
-async function getAdminPermissions(
-  userId
-) {
+async function getAdminPermissions(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -200,8 +216,7 @@ async function getAdminPermissions(
 
       WHERE a.user_id = $1
 
-      ORDER BY
-        p.permission_key ASC
+      ORDER BY p.permission_key ASC
     `,
     [userId]
   );
@@ -209,9 +224,7 @@ async function getAdminPermissions(
   return result.rows;
 }
 
-async function getDirectPermissions(
-  userId
-) {
+async function getDirectPermissions(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -227,8 +240,7 @@ async function getDirectPermissions(
       JOIN admin_permissions p
         ON p.id = aup.permission_id
       WHERE a.user_id = $1
-      ORDER BY
-        p.permission_key ASC
+      ORDER BY p.permission_key ASC
     `,
     [userId]
   );
@@ -247,20 +259,14 @@ async function getAllPermissions() {
         permission_name,
         description
       FROM admin_permissions
-      ORDER BY
-        permission_key ASC
+      ORDER BY permission_key ASC
     `
   );
 
   return result.rows;
 }
 
-/*
- * گرفتن Override های ثبت‌شده برای یک ادمین
- */
-async function getPermissionOverrides(
-  userId
-) {
+async function getPermissionOverrides(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -279,8 +285,7 @@ async function getPermissionOverrides(
       JOIN admin_permissions p
         ON p.id = ov.permission_id
       WHERE a.user_id = $1
-      ORDER BY
-        p.permission_key ASC
+      ORDER BY p.permission_key ASC
     `,
     [userId]
   );
@@ -288,14 +293,9 @@ async function getPermissionOverrides(
   return result.rows;
 }
 
-/*
- * گرفتن وضعیت یک دسترسی خاص
- */
-async function getPermissionOverride(
-  userId,
-  permissionKey
-) {
+async function getPermissionOverride(userId, permissionKey) {
   const db = getClient();
+  const normalizedKey = normalizePermissionKey(permissionKey);
 
   const result = await db.query(
     `
@@ -318,22 +318,20 @@ async function getPermissionOverride(
     `,
     [
       userId,
-      permissionKey,
+      normalizedKey,
     ]
   );
 
   return result.rows[0] || null;
 }
 
-/*
- * فعال/غیرفعال کردن Override
- */
 async function setPermissionOverride(
   userId,
   permissionKey,
   isEnabled
 ) {
   const db = getClient();
+  const normalizedKey = normalizePermissionKey(permissionKey);
 
   const result = await db.query(
     `
@@ -369,7 +367,7 @@ async function setPermissionOverride(
     `,
     [
       userId,
-      permissionKey,
+      normalizedKey,
       Boolean(isEnabled),
     ]
   );
@@ -377,18 +375,12 @@ async function setPermissionOverride(
   return result.rows[0] || null;
 }
 
-/*
- * حذف Override
- *
- * بعد از حذف:
- * دسترسی دوباره از Role یا Direct Permission
- * محاسبه می‌شود.
- */
 async function removePermissionOverride(
   userId,
   permissionKey
 ) {
   const db = getClient();
+  const normalizedKey = normalizePermissionKey(permissionKey);
 
   const result = await db.query(
     `
@@ -408,17 +400,14 @@ async function removePermissionOverride(
     `,
     [
       userId,
-      permissionKey,
+      normalizedKey,
     ]
   );
 
   return result.rows[0] || null;
 }
 
-async function setAdminRole(
-  userId,
-  roleKey
-) {
+async function setAdminRole(userId, roleKey) {
   const db = getClient();
 
   const result = await db.query(
@@ -446,9 +435,7 @@ async function setAdminRole(
   return result.rows[0] || null;
 }
 
-async function createAdmin(
-  userId
-) {
+async function createAdmin(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -470,10 +457,7 @@ async function createAdmin(
   return result.rows[0] || null;
 }
 
-async function setAdminActive(
-  userId,
-  isActive
-) {
+async function setAdminActive(userId, isActive) {
   const db = getClient();
 
   const result = await db.query(
@@ -494,9 +478,7 @@ async function setAdminActive(
   return result.rows[0] || null;
 }
 
-async function removeAdmin(
-  userId
-) {
+async function removeAdmin(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -517,14 +499,14 @@ async function removeAdmin(
 /*
  * Legacy direct permission
  *
- * این توابع فعلاً حفظ شده‌اند تا
- * بخش‌های قدیمی پنل خراب نشوند.
+ * برای سازگاری با بخش‌های قدیمی حفظ شده.
  */
 async function addDirectPermission(
   userId,
   permissionKey
 ) {
   const db = getClient();
+  const normalizedKey = normalizePermissionKey(permissionKey);
 
   const result = await db.query(
     `
@@ -550,7 +532,7 @@ async function addDirectPermission(
     `,
     [
       userId,
-      permissionKey,
+      normalizedKey,
     ]
   );
 
@@ -562,6 +544,7 @@ async function removeDirectPermission(
   permissionKey
 ) {
   const db = getClient();
+  const normalizedKey = normalizePermissionKey(permissionKey);
 
   const result = await db.query(
     `
@@ -577,7 +560,7 @@ async function removeDirectPermission(
     `,
     [
       userId,
-      permissionKey,
+      normalizedKey,
     ]
   );
 
