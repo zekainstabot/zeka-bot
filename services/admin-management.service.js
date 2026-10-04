@@ -6,15 +6,51 @@ const adminRepository = require(
   "../repositories/admin.repository"
 );
 
-async function listAdmins() {
-  return adminManagementRepository.listAdmins();
+const PERMISSION_ALIASES = {
+  "users.view": "users",
+  "users.manage": "users",
+  "settings.view": "settings",
+  "settings.manage": "settings",
+  "requests.view": "requests",
+  "requests.manage": "requests",
+  "credits.view": "credits",
+  "credits.manage": "credits",
+  "rewards.view": "rewards",
+  "rewards.manage": "rewards",
+  "platforms.view": "platforms",
+  "platforms.manage": "platforms",
+  "features.view": "features",
+  "features.manage": "features",
+  "support.view": "support",
+  "support.manage": "support",
+  "monitoring.view": "monitoring",
+  "admins.view": "admins",
+  "admins.manage": "admins",
+  "reports.view": "reports",
+  "reports.manage": "reports",
+  "games.quiz.manage": "games.quiz",
+  "pro.manage": "pro",
+};
+
+function normalizePermissionKey(
+  permissionKey
+) {
+  if (
+    typeof permissionKey !== "string" ||
+    !permissionKey.trim()
+  ) {
+    return null;
+  }
+
+  const key = permissionKey.trim();
+
+  return (
+    PERMISSION_ALIASES[key] ||
+    key
+  );
 }
 
-async function getRoles() {
-  return adminManagementRepository.listRoles();
-}
-
-async function getAdminAccess(
+async function getUserAndAdmin(
   telegramUserId
 ) {
   const user =
@@ -28,6 +64,7 @@ async function getAdminAccess(
     );
 
     error.code = "USER_NOT_FOUND";
+
     throw error;
   }
 
@@ -41,9 +78,35 @@ async function getAdminAccess(
       "Admin not found"
     );
 
-    error.code = "ADMIN_ACCESS_DENIED";
+    error.code =
+      "ADMIN_ACCESS_DENIED";
+
     throw error;
   }
+
+  return {
+    user,
+    admin,
+  };
+}
+
+async function listAdmins() {
+  return adminManagementRepository.listAdmins();
+}
+
+async function getRoles() {
+  return adminManagementRepository.listRoles();
+}
+
+async function getAdminAccess(
+  telegramUserId
+) {
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   const permissions =
     await adminManagementRepository.getAdminPermissions(
@@ -73,34 +136,21 @@ async function requirePermissionByTelegramId(
   telegramUserId,
   permissionKey
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (
-    !admin ||
-    !admin.is_active
-  ) {
+  if (!admin.is_active) {
     const error = new Error(
       "Admin access denied"
     );
 
-    error.code = "ADMIN_ACCESS_DENIED";
+    error.code =
+      "ADMIN_ACCESS_DENIED";
+
     throw error;
   }
 
@@ -111,19 +161,38 @@ async function requirePermissionByTelegramId(
     return admin;
   }
 
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
+  if (!normalizedKey) {
+    const error = new Error(
+      "Permission key is required"
+    );
+
+    error.code =
+      "PERMISSION_DENIED";
+
+    throw error;
+  }
+
   const allowed =
     await adminRepository.hasPermission(
       user.id,
-      permissionKey
+      normalizedKey
     );
 
   if (!allowed) {
     const error = new Error(
-      `Permission denied: ${permissionKey}`
+      `Permission denied: ${normalizedKey}`
     );
 
-    error.code = "PERMISSION_DENIED";
-    error.permission = permissionKey;
+    error.code =
+      "PERMISSION_DENIED";
+
+    error.permission =
+      normalizedKey;
 
     throw error;
   }
@@ -138,60 +207,26 @@ async function getAllPermissions() {
 async function getDirectPermissions(
   telegramUserId
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
+  const {
+    user,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   return adminManagementRepository.getDirectPermissions(
     user.id
   );
 }
 
-/*
- * دریافت تمام دسترسی‌ها همراه با وضعیت مؤثر
- *
- * این تابع برای UI مدیریت دسترسی استفاده می‌شود.
- */
 async function getPermissionMatrix(
   telegramUserId
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   return {
     user,
@@ -203,44 +238,60 @@ async function getPermissionMatrix(
   };
 }
 
-/*
- * تغییر وضعیت Override
- *
- * true  = اجباراً فعال
- * false = اجباراً غیرفعال
- */
+async function validateEditablePermission(
+  permissionKey
+) {
+  const normalizedKey =
+    normalizePermissionKey(
+      permissionKey
+    );
+
+  if (!normalizedKey) {
+    const error = new Error(
+      "Invalid permission key"
+    );
+
+    error.code =
+      "INVALID_PERMISSION";
+
+    throw error;
+  }
+
+  const permissions =
+    await adminManagementRepository.getAllPermissions();
+
+  const exists =
+    permissions.some(
+      (permission) =>
+        permission.permission_key ===
+        normalizedKey
+    );
+
+  if (!exists) {
+    const error = new Error(
+      "Permission not found"
+    );
+
+    error.code =
+      "PERMISSION_NOT_FOUND";
+
+    throw error;
+  }
+
+  return normalizedKey;
+}
+
 async function setPermissionOverride(
   telegramUserId,
   permissionKey,
   isEnabled
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   if (
     admin.role_key ===
@@ -250,69 +301,34 @@ async function setPermissionOverride(
       "Super Admin permissions cannot be modified"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
     throw error;
   }
 
-  if (
-    typeof permissionKey !==
-      "string" ||
-    !permissionKey.trim()
-  ) {
-    const error = new Error(
-      "Invalid permission key"
+  const normalizedKey =
+    await validateEditablePermission(
+      permissionKey
     );
-
-    error.code = "INVALID_PERMISSION";
-    throw error;
-  }
 
   return adminManagementRepository.setPermissionOverride(
     user.id,
-    permissionKey.trim(),
+    normalizedKey,
     Boolean(isEnabled)
   );
 }
 
-/*
- * حذف Override
- *
- * بعد از این کار دسترسی دوباره
- * از Role / Direct Permission محاسبه می‌شود.
- *
- * یعنی حالت ⚪ پیش‌فرض
- */
 async function resetPermissionOverride(
   telegramUserId,
   permissionKey
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   if (
     admin.role_key ===
@@ -322,67 +338,33 @@ async function resetPermissionOverride(
       "Super Admin permissions cannot be modified"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
     throw error;
   }
 
-  if (
-    typeof permissionKey !==
-      "string" ||
-    !permissionKey.trim()
-  ) {
-    const error = new Error(
-      "Invalid permission key"
+  const normalizedKey =
+    await validateEditablePermission(
+      permissionKey
     );
-
-    error.code = "INVALID_PERMISSION";
-    throw error;
-  }
 
   return adminManagementRepository.removePermissionOverride(
     user.id,
-    permissionKey.trim()
+    normalizedKey
   );
 }
 
-/*
- * Legacy:
- * افزودن Direct Permission
- *
- * فعلاً نگه داشته شده تا بخش‌های قدیمی
- * پنل از کار نیفتند.
- */
 async function addPermission(
   telegramUserId,
   permissionKey
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   if (
     admin.role_key ===
@@ -392,51 +374,33 @@ async function addPermission(
       "Super Admin permissions cannot be modified"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
     throw error;
   }
 
+  const normalizedKey =
+    await validateEditablePermission(
+      permissionKey
+    );
+
   return adminManagementRepository.addDirectPermission(
     user.id,
-    permissionKey
+    normalizedKey
   );
 }
 
-/*
- * Legacy:
- * حذف Direct Permission
- */
 async function removePermission(
   telegramUserId,
   permissionKey
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   if (
     admin.role_key ===
@@ -446,13 +410,20 @@ async function removePermission(
       "Super Admin permissions cannot be modified"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
     throw error;
   }
 
+  const normalizedKey =
+    await validateEditablePermission(
+      permissionKey
+    );
+
   return adminManagementRepository.removeDirectPermission(
     user.id,
-    permissionKey
+    normalizedKey
   );
 }
 
@@ -460,33 +431,12 @@ async function changeAdminRole(
   telegramUserId,
   roleKey
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   if (
     admin.role_key ===
@@ -496,7 +446,9 @@ async function changeAdminRole(
       "Super Admin role cannot be changed"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
     throw error;
   }
 
@@ -508,7 +460,30 @@ async function changeAdminRole(
       "Cannot assign Super Admin role"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
+    throw error;
+  }
+
+  const roles =
+    await adminManagementRepository.listRoles();
+
+  const roleExists =
+    roles.some(
+      (role) =>
+        role.role_key ===
+        roleKey
+    );
+
+  if (!roleExists) {
+    const error = new Error(
+      "Role not found"
+    );
+
+    error.code =
+      "ROLE_NOT_FOUND";
+
     throw error;
   }
 
@@ -531,7 +506,9 @@ async function addAdmin(
       "User not found"
     );
 
-    error.code = "USER_NOT_FOUND";
+    error.code =
+      "USER_NOT_FOUND";
+
     throw error;
   }
 
@@ -545,7 +522,9 @@ async function addAdmin(
       "User is already an admin"
     );
 
-    error.code = "ALREADY_ADMIN";
+    error.code =
+      "ALREADY_ADMIN";
+
     throw error;
   }
 
@@ -558,33 +537,12 @@ async function setAdminActive(
   telegramUserId,
   isActive
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   if (
     admin.role_key ===
@@ -594,46 +552,27 @@ async function setAdminActive(
       "Super Admin cannot be disabled"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
     throw error;
   }
 
   return adminManagementRepository.setAdminActive(
     user.id,
-    isActive
+    Boolean(isActive)
   );
 }
 
 async function removeAdmin(
   telegramUserId
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   if (
     admin.role_key ===
@@ -643,7 +582,9 @@ async function removeAdmin(
       "Super Admin cannot be removed"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
     throw error;
   }
 
@@ -655,33 +596,12 @@ async function removeAdmin(
 async function setReportAdmin(
   telegramUserId
 ) {
-  const user =
-    await adminManagementRepository.findUserByTelegramId(
-      telegramUserId
-    );
-
-  if (!user) {
-    const error = new Error(
-      "User not found"
-    );
-
-    error.code = "USER_NOT_FOUND";
-    throw error;
-  }
-
-  const admin =
-    await adminManagementRepository.findAdminByUserId(
-      user.id
-    );
-
-  if (!admin) {
-    const error = new Error(
-      "Admin not found"
-    );
-
-    error.code = "ADMIN_ACCESS_DENIED";
-    throw error;
-  }
+  const {
+    user,
+    admin,
+  } = await getUserAndAdmin(
+    telegramUserId
+  );
 
   if (
     admin.role_key ===
@@ -691,7 +611,9 @@ async function setReportAdmin(
       "Super Admin cannot be selected as report admin"
     );
 
-    error.code = "SUPER_ADMIN_REQUIRED";
+    error.code =
+      "SUPER_ADMIN_REQUIRED";
+
     throw error;
   }
 
@@ -724,7 +646,6 @@ module.exports = {
   setPermissionOverride,
   resetPermissionOverride,
 
-  // Legacy
   addPermission,
   removePermission,
 
