@@ -63,20 +63,6 @@ async function requireProManagePermission(
     throw error;
   }
 
-  if (
-    admin.role_key !==
-    "super_admin"
-  ) {
-    const error = new Error(
-      "Super admin access required"
-    );
-
-    error.code =
-      "SUPER_ADMIN_REQUIRED";
-
-    throw error;
-  }
-
   const allowed =
     await adminService.hasPermission(
       admin.user_id,
@@ -99,7 +85,6 @@ async function requireProManagePermission(
 
   return admin;
 }
-
 async function getTargetUser(
   telegramUserId
 ) {
