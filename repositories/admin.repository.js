@@ -1,4 +1,4 @@
-const db = require("../database/client"););
+const db = require("../database/client");
 
 const PERMISSION_ALIASES = {
   "users.view": "users",
