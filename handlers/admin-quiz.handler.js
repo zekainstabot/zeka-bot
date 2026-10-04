@@ -773,7 +773,8 @@ async function handleBankStatus(
 
 async function startDirectEditQuestion(
   ctx,
-  questionId
+  questionId,
+  options = {}
 ) {
   try {
     const telegramUserId =
@@ -785,11 +786,19 @@ async function startDirectEditQuestion(
 
     await ctx.answerCbQuery();
 
+    const fromReport =
+      options.fromReport === true;
+
     const question =
-      await adminQuizService.getQuestionById(
-        telegramUserId,
-        questionId
-      );
+      fromReport
+        ? await adminQuizService.getQuestionByIdForReport(
+            telegramUserId,
+            questionId
+          )
+        : await adminQuizService.getQuestionById(
+            telegramUserId,
+            questionId
+          );
 
     if (!question) {
       await ctx.editMessageText(
@@ -802,10 +811,14 @@ async function startDirectEditQuestion(
     setState(
       telegramUserId,
       {
-        mode: "EDIT_DIRECT",
+        mode: fromReport
+          ? "EDIT_REPORT"
+          : "EDIT_DIRECT",
         step: "question",
         questionId:
           question.id,
+        reportId:
+          options.reportId || null,
         data: {
           questionText:
             question.question_text,
@@ -820,8 +833,7 @@ async function startDirectEditQuestion(
           correctOption:
             question.correct_option,
           category:
-            question.category ||
-            "",
+            question.category || "",
           difficulty:
             question.difficulty ||
             "MEDIUM",
@@ -833,7 +845,12 @@ async function startDirectEditQuestion(
     );
 
     await ctx.reply(
-      "✏️ اصلاح مستقیم سؤال\n\n" +
+      (
+        fromReport
+          ? "✏️ اصلاح سؤال از طریق گزارش"
+          : "✏️ اصلاح مستقیم سؤال"
+      ) +
+        "\n\n" +
         `🆔 شناسه سؤال: ${question.id}\n\n` +
         "📝 متن جدید سؤال را ارسال کنید.\n\n" +
         "مقدار فعلی:\n" +
@@ -843,7 +860,7 @@ async function startDirectEditQuestion(
     );
   } catch (error) {
     console.error(
-      "Start direct quiz question edit failed:",
+      "Start quiz question edit failed:",
       error
     );
 
