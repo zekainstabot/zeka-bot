@@ -1,4 +1,5 @@
 const adminService = require("../services/admin.service");
+
 const { createAdminManagementHandler } = require("./admin-management.handler");
 const { createAdminQuizHandler } = require("./admin-quiz.handler");
 const { createAdminProHandler } = require("./admin-pro.handler");
@@ -6,20 +7,64 @@ const { createAdminFortuneHandler } = require("./admin-fortune.handler");
 
 const PERMISSION_BUTTONS = [
   {
+    permission: "users",
+    button: "👥 مدیریت کاربران",
+  },
+  {
+    permission: "settings",
+    button: "⚙️ تنظیمات",
+  },
+  {
+    permission: "requests",
+    button: "📥 مدیریت درخواست‌ها",
+  },
+  {
+    permission: "credits",
+    button: "💳 مدیریت اعتبار",
+  },
+  {
+    permission: "rewards",
+    button: "🎁 مدیریت جوایز",
+  },
+  {
+    permission: "platforms",
+    button: "🌐 مدیریت پلتفرم‌ها",
+  },
+  {
+    permission: "features",
+    button: "✨ مدیریت امکانات",
+  },
+  {
+    permission: "support",
+    button: "🆘 پشتیبانی",
+  },
+  {
+    permission: "monitoring",
+    button: "📊 مانیتورینگ",
+  },
+  {
     permission: "admins",
     button: "🛠 مدیریت ادمین",
+  },
+  {
+    permission: "reports",
+    button: "📋 گزارش‌ها",
+  },
+  {
+    permission: "bug_reports",
+    button: "🐞 گزارش مشکلات",
   },
   {
     permission: "games.quiz",
     button: "🧠 مدیریت مسابقه",
   },
   {
-    permission: "features.fortune.manage",
-    button: "🔮 مدیریت فال",
-  },
-  {
     permission: "pro",
     button: "💎 مدیریت Pro",
+  },
+  {
+    permission: "features.fortune.manage",
+    button: "🔮 مدیریت فال",
   },
 ];
 
@@ -54,15 +99,17 @@ async function getAdminPanelData(telegramUserId) {
 
   for (const item of PERMISSION_BUTTONS) {
     try {
-      permissions[item.permission] = await adminService.hasPermission(
-        admin.user_id,
-        item.permission
-      );
+      permissions[item.permission] =
+        await adminService.hasPermission(
+          admin.user_id,
+          item.permission
+        );
     } catch (error) {
       console.error(
         `ADMIN PERMISSION ERROR [${item.permission}]:`,
         error
       );
+
       permissions[item.permission] = false;
     }
   }
@@ -89,7 +136,9 @@ async function showAdminPanel(ctx) {
   const data = await getAdminPanelData(telegramUserId);
 
   if (!data) {
-    await ctx.reply("❌ شما دسترسی به پنل مدیریت ندارید.");
+    await ctx.reply(
+      "❌ شما دسترسی به پنل مدیریت ندارید."
+    );
     return;
   }
 
@@ -101,6 +150,7 @@ async function showAdminPanel(ctx) {
     reply_markup: {
       keyboard,
       resize_keyboard: true,
+      one_time_keyboard: false,
     },
   });
 }
@@ -120,9 +170,15 @@ async function handleAdminExit(ctx) {
 function createAdminHandler(bot) {
   bot.command("admin", handleAdminCommand);
 
-  bot.hears("🔙 پنل ادمین", handleBackToAdmin);
+  bot.hears(
+    "🔙 پنل ادمین",
+    handleBackToAdmin
+  );
 
-  bot.hears("🔙 خروج از پنل مدیریت", handleAdminExit);
+  bot.hears(
+    "🔙 خروج از پنل مدیریت",
+    handleAdminExit
+  );
 
   createAdminManagementHandler(bot);
   createAdminQuizHandler(bot);
@@ -134,4 +190,6 @@ module.exports = {
   createAdminHandler,
   showAdminPanel,
   getAdminPanelData,
+  buildAdminMenu,
+  PERMISSION_BUTTONS,
 };
