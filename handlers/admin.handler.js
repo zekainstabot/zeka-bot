@@ -6,67 +6,43 @@ const { createAdminProHandler } = require("./admin-pro.handler");
 const { createAdminFortuneHandler } = require("./admin-fortune.handler");
 
 const PERMISSION_BUTTONS = [
-  {
-    permission: "users",
-    button: "👥 مدیریت کاربران",
-  },
-  {
-    permission: "settings",
-    button: "⚙️ تنظیمات",
-  },
-  {
-    permission: "requests",
-    button: "📥 مدیریت درخواست‌ها",
-  },
-  {
-    permission: "credits",
-    button: "💳 مدیریت اعتبار",
-  },
-  {
-    permission: "rewards",
-    button: "🎁 مدیریت جوایز",
-  },
-  {
-    permission: "platforms",
-    button: "🌐 مدیریت پلتفرم‌ها",
-  },
-  {
-    permission: "features",
-    button: "✨ مدیریت امکانات",
-  },
-  {
-    permission: "support",
-    button: "🆘 پشتیبانی",
-  },
-  {
-    permission: "monitoring",
-    button: "📊 مانیتورینگ",
-  },
-  {
-    permission: "admins",
-    button: "🛠 مدیریت ادمین",
-  },
-  {
-    permission: "reports",
-    button: "📋 گزارش‌ها",
-  },
-  {
-    permission: "bug_reports",
-    button: "🐞 گزارش مشکلات",
-  },
-  {
-    permission: "games.quiz",
-    button: "🧠 مدیریت مسابقه",
-  },
-  {
-    permission: "pro",
-    button: "💎 مدیریت Pro",
-  },
-  {
-    permission: "features.fortune.manage",
-    button: "🔮 مدیریت فال",
-  },
+  { permission: "users", button: "👥 مدیریت کاربران" },
+  { permission: "settings", button: "⚙️ تنظیمات" },
+  { permission: "requests", button: "📥 مدیریت درخواست‌ها" },
+  { permission: "credits", button: "💳 مدیریت اعتبار" },
+  { permission: "rewards", button: "🎁 مدیریت جوایز" },
+  { permission: "platforms", button: "🌐 مدیریت پلتفرم‌ها" },
+  { permission: "features", button: "✨ مدیریت امکانات" },
+  { permission: "support", button: "🆘 پشتیبانی" },
+  { permission: "monitoring", button: "📊 مانیتورینگ" },
+  { permission: "admins", button: "🛠 مدیریت ادمین" },
+  { permission: "reports", button: "📋 گزارش‌ها" },
+  { permission: "bug_reports", button: "🐞 گزارش مشکلات" },
+  { permission: "games.quiz", button: "🧠 مدیریت مسابقه" },
+  { permission: "pro", button: "💎 مدیریت Pro" },
+  { permission: "features.fortune.manage", button: "🔮 مدیریت فال" },
 ];
+
+const UNIMPLEMENTED_BUTTONS = [
+  "👥 مدیریت کاربران",
+  "⚙️ تنظیمات",
+  "📥 مدیریت درخواست‌ها",
+  "💳 مدیریت اعتبار",
+  "🎁 مدیریت جوایز",
+  "🌐 مدیریت پلتفرم‌ها",
+  "✨ مدیریت امکانات",
+  "🆘 پشتیبانی",
+  "📊 مانیتورینگ",
+  "📋 گزارش‌ها",
+  "🐞 گزارش مشکلات",
+];
+
+const BUTTON_PERMISSIONS = new Map(
+  PERMISSION_BUTTONS.map((item) => [
+    item.button,
+    item.permission,
+  ])
+);
 
 function buildAdminMenu(permissions) {
   const buttons = [];
@@ -89,7 +65,10 @@ function buildAdminMenu(permissions) {
 }
 
 async function getAdminPanelData(telegramUserId) {
-  const admin = await adminService.getAdminByTelegramId(telegramUserId);
+  const admin =
+    await adminService.getAdminByTelegramId(
+      telegramUserId
+    );
 
   if (!admin || !admin.is_active) {
     return null;
@@ -114,11 +93,14 @@ async function getAdminPanelData(telegramUserId) {
     }
   }
 
-  console.log("ADMIN PANEL PERMISSIONS:", {
-    userId: admin.user_id,
-    role: admin.role_key,
-    permissions,
-  });
+  console.log(
+    "ADMIN PANEL PERMISSIONS:",
+    {
+      userId: admin.user_id,
+      role: admin.role_key,
+      permissions,
+    }
+  );
 
   return {
     admin,
@@ -127,13 +109,17 @@ async function getAdminPanelData(telegramUserId) {
 }
 
 async function showAdminPanel(ctx) {
-  const telegramUserId = ctx.from?.id;
+  const telegramUserId =
+    ctx.from?.id;
 
   if (!telegramUserId) {
     return;
   }
 
-  const data = await getAdminPanelData(telegramUserId);
+  const data =
+    await getAdminPanelData(
+      telegramUserId
+    );
 
   if (!data) {
     await ctx.reply(
@@ -142,17 +128,19 @@ async function showAdminPanel(ctx) {
     return;
   }
 
-  const { permissions } = data;
-
-  const keyboard = buildAdminMenu(permissions);
-
-  await ctx.reply("🛠 پنل مدیریت ادمین", {
-    reply_markup: {
-      keyboard,
-      resize_keyboard: true,
-      one_time_keyboard: false,
-    },
-  });
+  await ctx.reply(
+    "🛠 پنل مدیریت ادمین",
+    {
+      reply_markup: {
+        keyboard:
+          buildAdminMenu(
+            data.permissions
+          ),
+        resize_keyboard: true,
+        one_time_keyboard: false,
+      },
+    }
+  );
 }
 
 async function handleAdminCommand(ctx) {
@@ -164,11 +152,82 @@ async function handleBackToAdmin(ctx) {
 }
 
 async function handleAdminExit(ctx) {
-  await ctx.reply("از پنل مدیریت خارج شدید.");
+  await ctx.reply(
+    "از پنل مدیریت خارج شدید."
+  );
+}
+
+async function handleUnavailableAdminSection(ctx) {
+  const button =
+    ctx.message?.text;
+
+  const permission =
+    BUTTON_PERMISSIONS.get(
+      button
+    );
+
+  if (!button || !permission) {
+    return;
+  }
+
+  const telegramUserId =
+    ctx.from?.id;
+
+  if (!telegramUserId) {
+    return;
+  }
+
+  try {
+    const admin =
+      await adminService.getAdminByTelegramId(
+        telegramUserId
+      );
+
+    if (
+      !admin ||
+      !admin.is_active
+    ) {
+      await ctx.reply(
+        "⛔ دسترسی به پنل مدیریت ندارید."
+      );
+      return;
+    }
+
+    const allowed =
+      await adminService.hasPermission(
+        admin.user_id,
+        permission
+      );
+
+    if (!allowed) {
+      await ctx.reply(
+        "⛔ شما به این بخش دسترسی ندارید."
+      );
+      return;
+    }
+
+    await ctx.reply(
+      `⏳ بخش «${button}» هنوز Handler عملیاتی ندارد.
+
+Permission این بخش فعال است، اما منطق مدیریتی آن باید در Handler اختصاصی خودش پیاده‌سازی شود.`
+    );
+  } catch (error) {
+    console.error(
+      "Admin section router failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ اجرای بخش مدیریت انجام نشد."
+    );
+  }
 }
 
 function createAdminHandler(bot) {
-  bot.command("admin", handleAdminCommand);
+  bot.command(
+    "admin",
+    handleAdminCommand
+  );
 
   bot.hears(
     "🔙 پنل ادمین",
@@ -179,6 +238,15 @@ function createAdminHandler(bot) {
     "🔙 خروج از پنل مدیریت",
     handleAdminExit
   );
+
+  for (
+    const button of UNIMPLEMENTED_BUTTONS
+  ) {
+    bot.hears(
+      button,
+      handleUnavailableAdminSection
+    );
+  }
 
   createAdminManagementHandler(bot);
   createAdminQuizHandler(bot);
