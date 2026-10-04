@@ -798,9 +798,13 @@ function createReportsHandler({
         }
 
         await startEditQuestion(
-          ctx,
-          report.question_id
-        );
+  ctx,
+  report.question_id,
+  {
+    fromReport: true,
+    reportId: report.id,
+  }
+);
       } catch (error) {
         console.error(
           "Start quiz report edit failed:",
