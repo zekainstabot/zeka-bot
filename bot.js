@@ -107,6 +107,18 @@ function createBot() {
     config.bot.token
   );
 
+  bot.use(async (ctx, next) => {
+  console.log(
+    "TELEGRAM UPDATE RECEIVED:",
+    ctx.update?.update_id,
+    ctx.updateType,
+    ctx.from?.id,
+    ctx.message?.text || ""
+  );
+
+  return next();
+});
+
   setDeliveryBot(bot);
   setReportBot(bot);
 
