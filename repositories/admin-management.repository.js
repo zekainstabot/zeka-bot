@@ -36,9 +36,7 @@ async function listAdmins() {
   return result.rows;
 }
 
-async function findUserByTelegramId(
-  telegramUserId
-) {
+async function findUserByTelegramId(telegramUserId) {
   const db = getClient();
 
   const result = await db.query(
@@ -58,9 +56,7 @@ async function findUserByTelegramId(
   return result.rows[0] || null;
 }
 
-async function findAdminByUserId(
-  userId
-) {
+async function findAdminByUserId(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -69,6 +65,7 @@ async function findAdminByUserId(
         a.id,
         a.user_id,
         a.is_active,
+        a.role_id,
         r.role_key,
         r.role_name
       FROM admins a
@@ -83,9 +80,79 @@ async function findAdminByUserId(
   return result.rows[0] || null;
 }
 
-async function createAdmin(
-  userId
-) {
+async function listRoles() {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        id,
+        role_key,
+        role_name,
+        description
+      FROM admin_roles
+      WHERE role_key <> 'super_admin'
+      ORDER BY
+        CASE
+          WHEN role_key = 'admin' THEN 1
+          ELSE 2
+        END,
+        id ASC
+    `
+  );
+
+  return result.rows;
+}
+
+async function getAdminPermissions(userId) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        p.permission_key,
+        p.permission_name,
+        p.description
+      FROM admins a
+      JOIN admin_role_permissions arp
+        ON arp.role_id = a.role_id
+      JOIN admin_permissions p
+        ON p.id = arp.permission_id
+      WHERE a.user_id = $1
+        AND a.is_active = TRUE
+      ORDER BY p.permission_key ASC
+    `,
+    [userId]
+  );
+
+  return result.rows;
+}
+
+async function setAdminRole(userId, roleKey) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      UPDATE admins a
+      SET
+        role_id = r.id,
+        updated_at = NOW()
+      FROM admin_roles r
+      WHERE a.user_id = $1
+        AND r.role_key = $2
+        AND r.role_key <> 'super_admin'
+      RETURNING
+        a.*,
+        r.role_key,
+        r.role_name
+    `,
+    [userId, roleKey]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function createAdmin(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -107,10 +174,7 @@ async function createAdmin(
   return result.rows[0] || null;
 }
 
-async function setAdminActive(
-  userId,
-  isActive
-) {
+async function setAdminActive(userId, isActive) {
   const db = getClient();
 
   const result = await db.query(
@@ -122,18 +186,13 @@ async function setAdminActive(
       WHERE user_id = $1
       RETURNING *
     `,
-    [
-      userId,
-      Boolean(isActive),
-    ]
+    [userId, Boolean(isActive)]
   );
 
   return result.rows[0] || null;
 }
 
-async function removeAdmin(
-  userId
-) {
+async function removeAdmin(userId) {
   const db = getClient();
 
   const result = await db.query(
@@ -158,6 +217,9 @@ module.exports = {
   listAdmins,
   findUserByTelegramId,
   findAdminByUserId,
+  listRoles,
+  getAdminPermissions,
+  setAdminRole,
   createAdmin,
   setAdminActive,
   removeAdmin,
