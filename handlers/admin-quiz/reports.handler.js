@@ -2,8 +2,8 @@ const {
   Markup,
 } = require("telegraf");
 
-const adminQuizService = require(
-  "../../services/admin-quiz.service"
+const adminManagementService = require(
+  "../../services/admin-management.service"
 );
 
 const quizReportService = require(
@@ -91,13 +91,31 @@ function buildReportButtons(report) {
   ]);
 }
 
+async function requireReportViewPermission(
+  telegramUserId
+) {
+  return adminManagementService.requirePermissionByTelegramId(
+    telegramUserId,
+    "reports.view"
+  );
+}
+
+async function requireReportManagePermission(
+  telegramUserId
+) {
+  return adminManagementService.requirePermissionByTelegramId(
+    telegramUserId,
+    "reports.manage"
+  );
+}
+
 async function sendPendingReports(
   ctx,
   telegramUserId,
   offset = 0,
   reason = null
 ) {
-  await adminQuizService.requireQuizPermission(
+  await requireReportViewPermission(
     telegramUserId
   );
 
@@ -291,7 +309,7 @@ async function handleReportsMenu(ctx) {
       "PERMISSION_DENIED"
     ) {
       await ctx.reply(
-        "⛔ شما دسترسی مدیریت گزارش‌های مسابقه را ندارید."
+        "⛔ شما دسترسی مشاهده گزارش‌ها را ندارید."
       );
 
       return;
@@ -314,7 +332,7 @@ async function handleReportsFilter(ctx) {
 
     await ctx.answerCbQuery();
 
-    await adminQuizService.requireQuizPermission(
+    await requireReportViewPermission(
       telegramUserId
     );
 
@@ -487,6 +505,10 @@ async function handleReportResolve(
     if (!telegramUserId) {
       return;
     }
+
+    await requireReportManagePermission(
+      telegramUserId
+    );
 
     const normalizedStatus =
       String(status || "")
@@ -716,10 +738,10 @@ function createReportsHandler({
         );
 
         await ctx.reply(
-  "🧠 مدیریت مسابقه\n\n" +
-    "بخش موردنظر را انتخاب کنید.",
-  await quizAdminMenu(ctx)
-);
+          "🧠 مدیریت مسابقه\n\n" +
+            "بخش موردنظر را انتخاب کنید.",
+          await quizAdminMenu(ctx)
+        );
       } catch (error) {
         console.error(
           "Quiz admin reports back failed:",
@@ -742,54 +764,60 @@ function createReportsHandler({
   );
 
   bot.action(
-  /^quiz_admin_report_edit:(\d+)$/,
-  async (ctx) => {
-    try {
-      const telegramUserId =
-        ctx.from?.id;
-
-      if (!telegramUserId) {
-        return;
-      }
-
-      const report =
-        await quizReportService.getReportById(
-          telegramUserId,
-          Number(ctx.match[1])
-        );
-
-      if (!report) {
-        await ctx.answerCbQuery(
-          "❌ گزارش پیدا نشد.",
-          {
-            show_alert: true,
-          }
-        );
-
-        return;
-      }
-
-      await startEditQuestion(
-        ctx,
-        report.question_id
-      );
-    } catch (error) {
-      console.error(
-        "Start quiz report edit failed:",
-        error
-      );
-
+    /^quiz_admin_report_edit:(\d+)$/,
+    async (ctx) => {
       try {
-        await ctx.answerCbQuery(
-          "❌ ورود به ویرایش سؤال انجام نشد.",
-          {
-            show_alert: true,
-          }
+        const telegramUserId =
+          ctx.from?.id;
+
+        if (!telegramUserId) {
+          return;
+        }
+
+        await requireReportManagePermission(
+          telegramUserId
         );
-      } catch {}
+
+        const report =
+          await quizReportService.getReportById(
+            telegramUserId,
+            Number(
+              ctx.match[1]
+            )
+          );
+
+        if (!report) {
+          await ctx.answerCbQuery(
+            "❌ گزارش پیدا نشد.",
+            {
+              show_alert: true,
+            }
+          );
+
+          return;
+        }
+
+        await startEditQuestion(
+          ctx,
+          report.question_id
+        );
+      } catch (error) {
+        console.error(
+          "Start quiz report edit failed:",
+          error
+        );
+
+        try {
+          await ctx.answerCbQuery(
+            "❌ شما دسترسی مدیریت گزارش‌ها را ندارید.",
+            {
+              show_alert: true,
+            }
+          );
+        } catch {}
+      }
     }
-  }
-);
+  );
 
   bot.action(
     /^quiz_admin_report_resolve:(\d+):(RESOLVED|REJECTED)$/,
