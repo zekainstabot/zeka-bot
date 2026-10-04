@@ -1080,12 +1080,13 @@ async function handleText(
         return;
       }
 
-      const selectedIndex =
-        Number(
-          text
-            .split("️⃣")[0]
-            .trim()
-        );
+      const match =
+  text.match(/(\d+)️⃣/);
+
+const selectedIndex =
+  match
+    ? Number(match[1])
+    : NaN;
 
       if (
         !Number.isInteger(
