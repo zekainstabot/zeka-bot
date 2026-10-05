@@ -71,7 +71,7 @@ return Markup.keyboard([
 "🔮 مدیریت فال",
 ],
 [
-"🔙 خروج از پنل مدیریت",
+"🔙 خروج از پنل Super Admin",
 ],
 ])
 .resize()
@@ -248,7 +248,7 @@ handleBackToSuperAdmin
 );
 
 bot.hears(
-"🔙 خروج از پنل مدیریت",
+"🔙 خروج از پنل Super Admin",
 handleSuperAdminExit
 );
 }
