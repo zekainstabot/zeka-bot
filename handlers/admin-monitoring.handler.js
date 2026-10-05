@@ -11,23 +11,24 @@ return [
 }
 
 function formatUptime(seconds) {
-const totalSeconds = Math.max(0, Math.floor(seconds || 0));
+const totalSeconds = Math.max(
+0,
+Math.floor(Number(seconds) || 0)
+);
 
 const days = Math.floor(totalSeconds / 86400);
 const hours = Math.floor((totalSeconds % 86400) / 3600);
 const minutes = Math.floor((totalSeconds % 3600) / 60);
 
-const parts = [];
-
-if (days > 0) parts.push("${days} روز");
-if (hours > 0) parts.push("${hours} ساعت");
-if (minutes > 0) parts.push("${minutes} دقیقه");
-
-if (parts.length === 0) {
-parts.push("کمتر از ۱ دقیقه");
+if (days > 0) {
+return "${days} روز و ${hours} ساعت";
 }
 
-return parts.join(" و ");
+if (hours > 0) {
+return "${hours} ساعت و ${minutes} دقیقه";
+}
+
+return "${minutes} دقیقه";
 }
 
 async function getAuthorizedAdmin(ctx) {
@@ -75,7 +76,7 @@ const uptime = formatUptime(data.uptimeSeconds);
 const message = [
   "📊 مانیتورینگ ربات",
   "",
-  `🤖 وضعیت ربات: 🟢 فعال`,
+  "🤖 وضعیت ربات: 🟢 فعال",
   `⏱ زمان فعالیت: ${uptime}`,
   `🗄 دیتابیس: ${data.database}`,
   "",
