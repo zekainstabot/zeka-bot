@@ -21,6 +21,10 @@ const {
 );
 
 const {
+  startDirectEditQuestion,
+} = require("./admin-quiz/question-editor");
+
+const {
   createReportsHandler,
 } = require(
   "./admin-quiz/reports.handler"
