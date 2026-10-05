@@ -21,14 +21,14 @@ const hours = Math.floor((totalSeconds % 86400) / 3600);
 const minutes = Math.floor((totalSeconds % 3600) / 60);
 
 if (days > 0) {
-return "${days} روز و ${hours} ساعت";
+return String(days) + " روز و " + String(hours) + " ساعت";
 }
 
 if (hours > 0) {
-return "${hours} ساعت و ${minutes} دقیقه";
+return String(hours) + " ساعت و " + String(minutes) + " دقیقه";
 }
 
-return "${minutes} دقیقه";
+return String(minutes) + " دقیقه";
 }
 
 async function getAuthorizedAdmin(ctx) {
