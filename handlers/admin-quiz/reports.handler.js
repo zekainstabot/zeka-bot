@@ -11,6 +11,10 @@ const quizReportService = require(
 );
 
 const {
+  startDirectEditQuestion,
+} = require("./admin-quiz.handler");
+
+const {
   getState,
   setState,
   clearState,
