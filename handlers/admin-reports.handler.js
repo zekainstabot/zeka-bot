@@ -1,14 +1,12 @@
+const {
+  sendPendingReports,
+} = require("./admin-quiz/reports.handler");
+
 const adminManagementService = require(
   "../services/admin-management.service"
 );
 
-const {
-  createReportsHandler,
-} = require("./admin-quiz/reports.handler");
-
-async function handleAdminReports(
-  ctx
-) {
+async function handleAdminReports(ctx) {
   const telegramUserId =
     ctx.from?.id;
 
@@ -21,37 +19,28 @@ async function handleAdminReports(
       telegramUserId,
       "reports"
     );
+
+    await sendPendingReports(
+      ctx,
+      telegramUserId,
+      0,
+      null
+    );
   } catch (error) {
-    await ctx.reply(
-      "❌ شما دسترسی مشاهده گزارش‌ها را ندارید."
+    console.error(
+      "Admin reports handler failed:",
+      error
     );
 
-    return;
+    try {
+      await ctx.reply(
+        "❌ دریافت گزارش‌ها انجام نشد."
+      );
+    } catch {}
   }
-
-  await sendQuizReports(
-    ctx,
-    telegramUserId
-  );
 }
 
-async function sendQuizReports(
-  ctx,
-  telegramUserId
-) {
-  const {
-    sendPendingReports,
-  } = require("./admin-quiz/reports.handler");
-
-  await sendPendingReports(
-    ctx,
-    telegramUserId
-  );
-}
-
-function createAdminReportsHandler(
-  bot
-) {
+function createAdminReportsHandler(bot) {
   bot.hears(
     "📋 گزارش‌ها",
     handleAdminReports
