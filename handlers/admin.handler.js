@@ -337,6 +337,8 @@ function createAdminHandler(bot) {
 
   createAdminRewardsHandler(bot);
 
+  createAdminRequestsHandler(bot);
+
   for (
     const button of UNIMPLEMENTED_BUTTONS
   ) {
