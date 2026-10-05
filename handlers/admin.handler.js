@@ -113,7 +113,6 @@ const UNIMPLEMENTED_BUTTONS = [
   "🌐 مدیریت پلتفرم‌ها",
   "✨ مدیریت امکانات",
   "🆘 پشتیبانی",
-  "🐞 گزارش مشکلات",
 ];
 
 const BUTTON_PERMISSIONS = new Map(
