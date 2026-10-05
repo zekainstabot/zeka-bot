@@ -21,14 +21,16 @@ const hours = Math.floor((totalSeconds % 86400) / 3600);
 const minutes = Math.floor((totalSeconds % 3600) / 60);
 
 if (days > 0) {
-  return `${days} روز و ${hours} ساعت`;
+return "${days} روز و ${hours} ساعت";
 }
 
 if (hours > 0) {
-  return `${hours} ساعت و ${minutes} دقیقه`;
+return "${hours} ساعت و ${minutes} دقیقه";
 }
 
-return `${minutes} دقیقه`;
+return "${minutes} دقیقه";
+}
+
 async function getAuthorizedAdmin(ctx) {
 const telegramUserId = ctx.from?.id;
 
@@ -67,9 +69,12 @@ if (!admin) {
   return;
 }
 
-const data = await monitoringService.getMonitoringData();
+const data =
+  await monitoringService.getMonitoringData();
 
-const uptime = formatUptime(data.uptimeSeconds);
+const uptime = formatUptime(
+  data.uptimeSeconds
+);
 
 const message = [
   "📊 مانیتورینگ ربات",
@@ -105,7 +110,10 @@ await ctx.reply(message, {
 });
 
 } catch (error) {
-console.error("ADMIN MONITORING ERROR:", error);
+console.error(
+"ADMIN MONITORING ERROR:",
+error
+);
 
 await ctx.reply(
   "❌ دریافت اطلاعات مانیتورینگ انجام نشد."
@@ -119,7 +127,11 @@ await showMonitoring(ctx);
 }
 
 function createAdminMonitoringHandler(bot) {
-bot.hears("📊 مانیتورینگ", showMonitoring);
+bot.hears(
+"📊 مانیتورینگ",
+showMonitoring
+);
+
 bot.hears(
 "🔄 بروزرسانی مانیتورینگ",
 handleMonitoringRefresh
