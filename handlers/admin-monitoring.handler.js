@@ -21,16 +21,14 @@ const hours = Math.floor((totalSeconds % 86400) / 3600);
 const minutes = Math.floor((totalSeconds % 3600) / 60);
 
 if (days > 0) {
-return "${days} روز و ${hours} ساعت";
+  return `${days} روز و ${hours} ساعت`;
 }
 
 if (hours > 0) {
-return "${hours} ساعت و ${minutes} دقیقه";
+  return `${hours} ساعت و ${minutes} دقیقه`;
 }
 
-return "${minutes} دقیقه";
-}
-
+return `${minutes} دقیقه`;
 async function getAuthorizedAdmin(ctx) {
 const telegramUserId = ctx.from?.id;
 
