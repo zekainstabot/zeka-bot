@@ -23,6 +23,21 @@ function createDownloadHandler({
 
   const activeWatchers = new Map();
   const reportStates = new Map();
+  const downloadStates = new Map();
+
+  function isDownloadMode(userId) {
+    return downloadStates.has(String(userId));
+  }
+
+  function enableDownloadMode(userId) {
+    downloadStates.set(String(userId), {
+      createdAt: Date.now(),
+    });
+  }
+
+  function disableDownloadMode(userId) {
+    downloadStates.delete(String(userId));
+  }
 
   function formatElapsed(seconds) {
     const safeSeconds = Math.max(
@@ -125,6 +140,10 @@ function createDownloadHandler({
         ) {
           stop();
 
+          disableDownloadMode(
+            ctx.from.id
+          );
+
           try {
             await ctx.telegram.deleteMessage(
               ctx.chat.id,
@@ -145,6 +164,10 @@ function createDownloadHandler({
           job.status === "CANCELLED"
         ) {
           stop();
+
+          disableDownloadMode(
+            ctx.from.id
+          );
 
           try {
             await ctx.telegram.editMessageText(
@@ -243,6 +266,23 @@ function createDownloadHandler({
 
     await update();
   }
+
+  bot.hears(
+    "📥 دانلود",
+    async (ctx) => {
+      enableDownloadMode(
+        ctx.from.id
+      );
+
+      await ctx.reply(
+        "📥 حالت دانلود فعال شد.\n\n" +
+          "حالا لینک محتوایی که می‌خواهی دانلود شود را ارسال کن.\n\n" +
+          "مثال:\n" +
+          "https://www.instagram.com/...",
+        mainMenu
+      );
+    }
+  );
 
   bot.action(
     /^download_report:(.+)$/,
@@ -402,6 +442,10 @@ function createDownloadHandler({
       return;
     }
 
+    if (!isDownloadMode(userId)) {
+      return;
+    }
+
     const menuButtons = [
       "📥 دانلود",
       "👤 حساب من",
@@ -498,6 +542,10 @@ function createDownloadHandler({
       console.error(
         "Download request failed:",
         error
+      );
+
+      disableDownloadMode(
+        ctx.from.id
       );
 
       if (
