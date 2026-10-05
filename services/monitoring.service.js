@@ -91,6 +91,7 @@ async function getMonitoringData() {
       queueCapacity - queueActive
     ),
     database,
+    uptimeSeconds: process.uptime(),
   };
 }
 
