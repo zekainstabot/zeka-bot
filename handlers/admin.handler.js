@@ -21,6 +21,10 @@ const {
 } = require("./admin-fortune.handler");
 
 const {
+  createAdminReportsHandler,
+} = require("./admin-reports.handler");
+
+const {
   createAdminMonitoringHandler,
 } = require("./admin-monitoring.handler");
 
