@@ -1,258 +1,259 @@
 const {
-  Markup,
+Markup,
 } = require("telegraf");
 
 const {
-  mainMenu,
+mainMenu,
 } = require("../config/bot-menus");
 
 const {
-  getAdminByTelegramId,
+getAdminByTelegramId,
 } = require("../services/admin.service");
 
 const {
-  setUserCommands,
+setUserCommands,
 } = require("../services/command.service");
 
-const {
-  createAdminProHandler,
-} = require("./admin-pro.handler");
-
-const {
-  createAdminManagementHandler,
-} = require("./admin-management.handler");
-
 async function getSuperAdmin(ctx) {
-  const telegramUserId = ctx.from?.id;
+const telegramUserId = ctx.from?.id;
 
-  if (!telegramUserId) {
-    return null;
-  }
+if (!telegramUserId) {
+return null;
+}
 
-  const admin =
-    await getAdminByTelegramId(
-      telegramUserId
-    );
+const admin =
+await getAdminByTelegramId(
+telegramUserId
+);
 
-  if (
-    !admin ||
-    !admin.is_active ||
-    admin.role_key !== "super_admin"
-  ) {
-    return null;
-  }
+if (
+!admin ||
+!admin.is_active ||
+admin.role_key !== "super_admin"
+) {
+return null;
+}
 
-  return admin;
+return admin;
 }
 
 function buildSuperAdminMenu() {
-  return Markup.keyboard([
-    [
-      "👥 مدیریت کاربران",
-      "⚙️ تنظیمات",
-    ],
-    [
-      "📥 مدیریت درخواست‌ها",
-      "💳 مدیریت اعتبار",
-    ],
-    [
-      "🎁 مدیریت جوایز",
-      "🌐 مدیریت پلتفرم‌ها",
-    ],
-    [
-      "✨ مدیریت امکانات",
-      "🆘 پشتیبانی",
-    ],
-    [
-      "📊 مانیتورینگ",
-      "🛠 مدیریت ادمین",
-    ],
-    [
-      "📋 گزارش‌ها",
-      "🐞 گزارش مشکلات",
-    ],
-    [
-      "🧠 مدیریت مسابقه",
-      "💎 مدیریت Pro",
-    ],
-    [
-      "🔮 مدیریت فال",
-    ],
-    [
-      "🔙 خروج از پنل مدیریت",
-    ],
-  ])
-    .resize()
-    .oneTime(false);
+return Markup.keyboard([
+[
+"👥 مدیریت کاربران",
+"⚙️ تنظیمات",
+],
+[
+"📥 مدیریت درخواست‌ها",
+"💳 مدیریت اعتبار",
+],
+[
+"🎁 مدیریت جوایز",
+"🌐 مدیریت پلتفرم‌ها",
+],
+[
+"✨ مدیریت امکانات",
+"🆘 پشتیبانی",
+],
+[
+"📊 مانیتورینگ",
+"🛠 مدیریت ادمین",
+],
+[
+"📋 گزارش‌ها",
+"🐞 گزارش مشکلات",
+],
+[
+"🧠 مدیریت مسابقه",
+"💎 مدیریت Pro",
+],
+[
+"🔮 مدیریت فال",
+],
+[
+"🔙 خروج از پنل مدیریت",
+],
+])
+.resize()
+.oneTime(false);
 }
 
 async function handleSuperAdminCommand(ctx) {
-  try {
-    const admin =
-      await getSuperAdmin(ctx);
+try {
+const admin =
+await getSuperAdmin(ctx);
 
-    if (!admin) {
-      await ctx.reply(
-        "⛔ شما دسترسی به پنل Super Admin ندارید."
-      );
+if (!admin) {
+  await ctx.reply(
+    "⛔ شما دسترسی به پنل Super Admin ندارید."
+  );
 
-      return;
-    }
+  return;
+}
 
-    await setUserCommands(
-      ctx.telegram,
-      ctx.from.id,
-      "super_admin"
-    );
+await setUserCommands(
+  ctx.telegram,
+  ctx.from.id,
+  "super_admin"
+);
 
-    await ctx.reply(
-      "👑 پنل Super Admin زکا\n\n" +
-        "تمام امکانات مدیریتی از منوی زیر در دسترس است.",
-      buildSuperAdminMenu()
-    );
-  } catch (error) {
-    console.error(
-      "Super Admin command failed:",
-      error
-    );
+await ctx.reply(
+  "👑 پنل Super Admin زکا\n\n" +
+    "تمام امکانات مدیریتی از منوی زیر در دسترس است.",
+  buildSuperAdminMenu()
+);
 
-    await ctx.reply(
-      "❌ دریافت پنل Super Admin انجام نشد."
-    );
-  }
+} catch (error) {
+console.error(
+"Super Admin command failed:",
+error
+);
+
+await ctx.reply(
+  "❌ دریافت پنل Super Admin انجام نشد."
+);
+
+}
 }
 
 async function handleSuperAdminQuizMenu(ctx) {
-  const admin =
-    await getSuperAdmin(ctx);
+const admin =
+await getSuperAdmin(ctx);
 
-  if (!admin) {
-    await ctx.reply(
-      "⛔ فقط Super Admin به این بخش دسترسی دارد."
-    );
+if (!admin) {
+await ctx.reply(
+"⛔ فقط Super Admin به این بخش دسترسی دارد."
+);
 
-    return;
-  }
+return;
 
-  await ctx.reply(
-    "🧠 مدیریت مسابقه\n\n" +
-      "بخش موردنظر را انتخاب کنید.",
-    Markup.keyboard([
-      ["➕ افزودن سؤال"],
-      ["🚨 گزارش‌های سؤالات"],
-      ["🔙 پنل Super Admin"],
-    ])
-      .resize()
-      .oneTime(false)
-  );
+}
+
+await ctx.reply(
+"🧠 مدیریت مسابقه\n\n" +
+"بخش موردنظر را انتخاب کنید.",
+Markup.keyboard([
+["➕ افزودن سؤال"],
+["🚨 گزارش‌های سؤالات"],
+["🔙 پنل Super Admin"],
+])
+.resize()
+.oneTime(false)
+);
 }
 
 async function handleProAdminMenu(ctx) {
-  const admin =
-    await getSuperAdmin(ctx);
+const admin =
+await getSuperAdmin(ctx);
 
-  if (!admin) {
-    await ctx.reply(
-      "⛔ فقط Super Admin به مدیریت Pro دسترسی دارد."
-    );
+if (!admin) {
+await ctx.reply(
+"⛔ فقط Super Admin به مدیریت Pro دسترسی دارد."
+);
 
-    return;
-  }
+return;
 
-  await ctx.reply(
-    "💎 مدیریت Pro\n\n" +
-      "عملیات موردنظر را انتخاب کنید.",
-    Markup.keyboard([
-      [
-        "⭐ فعال‌سازی Pro",
-        "⏳ تمدید Pro",
-      ],
-      [
-        "🟢 روشن کردن Pro",
-        "🔴 خاموش کردن Pro",
-      ],
-      ["❌ لغو Pro"],
-      ["🔙 پنل Super Admin"],
-    ])
-      .resize()
-      .oneTime(false)
-  );
+}
+
+await ctx.reply(
+"💎 مدیریت Pro\n\n" +
+"عملیات موردنظر را انتخاب کنید.",
+Markup.keyboard([
+[
+"⭐ فعال‌سازی Pro",
+"⏳ تمدید Pro",
+],
+[
+"🟢 روشن کردن Pro",
+"🔴 خاموش کردن Pro",
+],
+["❌ لغو Pro"],
+["🔙 پنل Super Admin"],
+])
+.resize()
+.oneTime(false)
+);
 }
 
 async function handleBackToSuperAdmin(ctx) {
-  const admin =
-    await getSuperAdmin(ctx);
+const admin =
+await getSuperAdmin(ctx);
 
-  if (!admin) {
-    await ctx.reply(
-      "⛔ فقط Super Admin به این بخش دسترسی دارد."
-    );
+if (!admin) {
+await ctx.reply(
+"⛔ فقط Super Admin به این بخش دسترسی دارد."
+);
 
-    return;
-  }
+return;
 
-  await ctx.reply(
-    "👑 پنل Super Admin",
-    buildSuperAdminMenu()
-  );
+}
+
+await ctx.reply(
+"👑 پنل Super Admin",
+buildSuperAdminMenu()
+);
 }
 
 async function handleSuperAdminExit(ctx) {
-  const telegramUserId =
-    ctx.from?.id;
+const telegramUserId =
+ctx.from?.id;
 
-  if (!telegramUserId) {
-    return;
-  }
+if (!telegramUserId) {
+return;
+}
 
-  await setUserCommands(
-    ctx.telegram,
-    telegramUserId,
-    "user"
-  );
+const admin =
+await getSuperAdmin(ctx);
 
-  await ctx.reply(
-    "🔙 از پنل Super Admin خارج شدید.",
-    mainMenu
-  );
+if (!admin) {
+await ctx.reply(
+"⛔ فقط Super Admin می‌تواند از این پنل خارج شود."
+);
+
+return;
+
+}
+
+await setUserCommands(
+ctx.telegram,
+telegramUserId,
+"user"
+);
+
+await ctx.reply(
+"🔙 از پنل Super Admin خارج شدید.",
+mainMenu
+);
 }
 
 function createSuperAdminHandler(bot) {
-  bot.command(
-    "superadmin",
-    handleSuperAdminCommand
-  );
+bot.command(
+"superadmin",
+handleSuperAdminCommand
+);
 
-  bot.hears(
-    "🧠 مدیریت مسابقه",
-    handleSuperAdminQuizMenu
-  );
+bot.hears(
+"🧠 مدیریت مسابقه",
+handleSuperAdminQuizMenu
+);
 
-  bot.hears(
-    "💎 مدیریت Pro",
-    handleProAdminMenu
-  );
+bot.hears(
+"💎 مدیریت Pro",
+handleProAdminMenu
+);
 
-  bot.hears(
-    "🔙 پنل Super Admin",
-    handleBackToSuperAdmin
-  );
+bot.hears(
+"🔙 پنل Super Admin",
+handleBackToSuperAdmin
+);
 
-  bot.hears(
-    "🔙 خروج از پنل مدیریت",
-    handleSuperAdminExit
-  );
-
-  createAdminManagementHandler(
-    bot
-  );
-
-  createAdminProHandler(
-    bot
-  );
+bot.hears(
+"🔙 خروج از پنل مدیریت",
+handleSuperAdminExit
+);
 }
 
 module.exports = {
-  handleSuperAdminCommand,
-  createSuperAdminHandler,
+handleSuperAdminCommand,
+createSuperAdminHandler,
 };
