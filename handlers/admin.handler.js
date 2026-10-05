@@ -97,7 +97,6 @@ const PERMISSION_BUTTONS = [
 
 const UNIMPLEMENTED_BUTTONS = [
   "⚙️ تنظیمات",
-  "📥 مدیریت درخواست‌ها",
   "🎁 مدیریت جوایز",
   "🌐 مدیریت پلتفرم‌ها",
   "✨ مدیریت امکانات",
