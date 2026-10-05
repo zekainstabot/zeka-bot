@@ -351,6 +351,8 @@ function createAdminHandler(bot) {
 
   createAdminReportsHandler(bot);
 
+  createAdminBugReportsHandler(bot);
+
   for (
     const button of UNIMPLEMENTED_BUTTONS
   ) {
