@@ -842,4 +842,5 @@ function createReportsHandler({
 
 module.exports = {
   createReportsHandler,
+  sendPendingReports,
 };
