@@ -9,6 +9,10 @@ const {
 } = require("./admin-quiz.handler");
 
 const {
+  createAdminRequestsHandler,
+} = require("./admin-requests.handler");
+
+const {
   createAdminProHandler,
 } = require("./admin-pro.handler");
 
