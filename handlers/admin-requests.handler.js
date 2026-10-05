@@ -342,36 +342,67 @@ async function handleRecent(ctx) {
 }
 
 async function handleRecovery(ctx) {
-  const admin =
-    await getAuthorizedAdmin(ctx);
+  const admin = await getAuthorizedAdmin(ctx);
 
   if (!admin) {
-    await ctx.reply(
-      "⛔ دسترسی ندارید."
-    );
-
+    await ctx.reply("⛔ دسترسی ندارید.");
     return;
   }
 
   try {
     await ctx.reply(
-      "🔄 در حال بررسی درخواست‌های قابل بازیابی..."
+      "🔄 در حال بررسی درخواست‌های گیرکرده..."
     );
 
-    const result =
-      await recoverJobs(100);
+    const db = require("../database/client").getClient();
 
-    if (!result.recovered) {
+    const result = await db.query(`
+      SELECT *
+      FROM jobs
+      WHERE status IN ('PROCESSING', 'DOWNLOADING')
+      ORDER BY updated_at ASC
+      LIMIT 100
+    `);
+
+    if (!result.rows.length) {
       await ctx.reply(
-        "✅ درخواست گیرکرده‌ای برای بازیابی پیدا نشد."
+        "✅ هیچ درخواست گیرکرده‌ای برای بازیابی پیدا نشد."
       );
-
       return;
+    }
+
+    let recovered = 0;
+
+    for (const job of result.rows) {
+      try {
+        const recoveredJob =
+          await jobRepository.recover(job.id);
+
+        if (!recoveredJob) {
+          continue;
+        }
+
+        queueManager.add(recoveredJob);
+        recovered++;
+
+        console.log(
+          `Admin recovery: job ${
+            recoveredJob.job_id || recoveredJob.id
+          } restored from ${job.status} to WAITING.`
+        );
+      } catch (error) {
+        console.error(
+          `Admin recovery failed for job ${
+            job.job_id || job.id
+          }:`,
+          error
+        );
+      }
     }
 
     await ctx.reply(
       "✅ بازیابی انجام شد.\n\n" +
-        `🔄 تعداد بازیابی‌شده: ${result.recovered}`
+        `🔄 تعداد بازیابی‌شده: ${recovered}`
     );
   } catch (error) {
     console.error(
@@ -384,7 +415,6 @@ async function handleRecovery(ctx) {
     );
   }
 }
-
 function createAdminRequestsHandler(bot) {
   bot.hears(
     "📥 مدیریت درخواست‌ها",
