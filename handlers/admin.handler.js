@@ -347,6 +347,8 @@ function createAdminHandler(bot) {
 
   createAdminMonitoringHandler(bot);
 
+  createAdminReportsHandler(bot);
+
   for (
     const button of UNIMPLEMENTED_BUTTONS
   ) {
