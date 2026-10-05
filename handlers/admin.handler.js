@@ -29,6 +29,10 @@ const {
 } = require("./admin-monitoring.handler");
 
 const {
+  createAdminBugReportsHandler,
+} = require("./admin-bug-reports.handler");
+
+const {
   createAdminUsersHandler,
 } = require("./admin-users.handler");
 
