@@ -2,6 +2,10 @@ const adminManagementRepository = require(
   "../repositories/admin-management.repository"
 );
 
+const bugReportRepository = require(
+  "../repositories/bug-report.repository"
+);
+
 let bot = null;
 
 function setBot(nextBot) {
@@ -42,13 +46,66 @@ async function sendDownloadReport({
       originalUrl || "ثبت نشده",
 
     jobId:
-      jobId || "نامشخص",
+      jobId || null,
   };
 
   console.log(
     "Download report received:",
     reportData
   );
+
+  if (!reportData.report) {
+    return {
+      sent: false,
+      reason: "EMPTY_REPORT",
+    };
+  }
+
+  let savedReport = null;
+
+  try {
+    savedReport =
+      await bugReportRepository.create({
+        userId:
+          user?.id || null,
+
+        telegramUserId:
+          reportData.userId,
+
+        username:
+          user?.username || null,
+
+        displayName:
+          reportData.displayName,
+
+        report:
+          reportData.report,
+
+        originalUrl:
+          reportData.originalUrl,
+
+        jobId:
+          reportData.jobId,
+
+        status:
+          "PENDING",
+      });
+
+    console.log(
+      "Bug report saved:",
+      savedReport?.id
+    );
+  } catch (error) {
+    console.error(
+      "Failed to save bug report:",
+      error
+    );
+
+    return {
+      sent: false,
+      reason: "DATABASE_ERROR",
+    };
+  }
 
   if (!bot) {
     console.error(
@@ -58,6 +115,8 @@ async function sendDownloadReport({
     return {
       sent: false,
       reason: "BOT_NOT_CONFIGURED",
+      reportId:
+        savedReport?.id || null,
     };
   }
 
@@ -68,18 +127,24 @@ async function sendDownloadReport({
 
     return {
       sent: false,
-      reason: "REPORT_ADMIN_NOT_CONFIGURED",
+      reason:
+        "REPORT_ADMIN_NOT_CONFIGURED",
+      reportId:
+        savedReport?.id || null,
     };
   }
 
   const message =
     "🐞 گزارش مشکل دانلود\n\n" +
+    `🆔 گزارش: ${savedReport.id}\n` +
     `👤 کاربر: ${reportData.displayName}\n` +
     `🆔 Telegram ID: ${reportData.userId}\n` +
     `🔹 Username: ${reportData.username}\n\n` +
     `📝 مشکل:\n${reportData.report}\n\n` +
     `🔗 لینک:\n${reportData.originalUrl}\n\n` +
-    `🧾 Job ID: ${reportData.jobId}`;
+    `🧾 Job ID: ${
+      reportData.jobId || "ثبت نشده"
+    }`;
 
   const sentTo = [];
   const failed = [];
@@ -114,9 +179,16 @@ async function sendDownloadReport({
   );
 
   return {
-    sent: sentTo.length > 0,
-    adminIds: sentTo,
+    sent:
+      sentTo.length > 0,
+
+    adminIds:
+      sentTo,
+
     failed,
+
+    reportId:
+      savedReport.id,
   };
 }
 
