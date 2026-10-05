@@ -25,10 +25,11 @@ async function sendDownloadReport({
 
   const reportData = {
     userId:
-      user?.telegram_user_id ||
-      user?.telegramUserId ||
-      "نامشخص",
-
+  Number(
+    user?.telegram_user_id ||
+    user?.telegramUserId ||
+    0
+  ),
     username:
       user?.username
         ? `@${user.username}`
