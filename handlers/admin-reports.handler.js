@@ -1,12 +1,14 @@
-const {
-  Markup,
-} = require("telegraf");
+const adminManagementService = require(
+  "../services/admin-management.service"
+);
 
 const {
-  requirePermissionByTelegramId,
-} = require("../services/admin-management.service");
+  createReportsHandler,
+} = require("./admin-quiz/reports.handler");
 
-async function handleAdminReports(ctx) {
+async function handleAdminReports(
+  ctx
+) {
   const telegramUserId =
     ctx.from?.id;
 
@@ -15,32 +17,41 @@ async function handleAdminReports(ctx) {
   }
 
   try {
-    await requirePermissionByTelegramId(
+    await adminManagementService.requirePermissionByTelegramId(
       telegramUserId,
       "reports"
     );
-
-    await ctx.reply(
-      "📋 گزارش‌ها\n\n" +
-      "🚨 گزارش‌های سؤالات را از بخش مسابقه مدیریت کنید.",
-      Markup.keyboard([
-        ["🧠 مدیریت مسابقه"],
-        ["🔙 پنل ادمین"],
-      ]).resize()
-    );
   } catch (error) {
-    console.error(
-      "Admin reports access failed:",
-      error
-    );
-
     await ctx.reply(
       "❌ شما دسترسی مشاهده گزارش‌ها را ندارید."
     );
+
+    return;
   }
+
+  await sendQuizReports(
+    ctx,
+    telegramUserId
+  );
 }
 
-function createAdminReportsHandler(bot) {
+async function sendQuizReports(
+  ctx,
+  telegramUserId
+) {
+  const {
+    sendPendingReports,
+  } = require("./admin-quiz/reports.handler");
+
+  await sendPendingReports(
+    ctx,
+    telegramUserId
+  );
+}
+
+function createAdminReportsHandler(
+  bot
+) {
   bot.hears(
     "📋 گزارش‌ها",
     handleAdminReports
