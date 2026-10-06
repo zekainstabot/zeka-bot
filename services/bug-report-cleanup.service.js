@@ -2,18 +2,21 @@ const bugReportRepository = require(
   "../repositories/bug-report.repository"
 );
 
-const RETENTION_DAYS = 7;
-const MAX_REPORTS = 100;
+const REVIEW_DEADLINE_DAYS = 3;
+const ARCHIVE_RETENTION_DAYS = 7;
+const MAX_ARCHIVE_REPORTS = 100;
+
 const CLEANUP_INTERVAL_MS =
-  24 * 60 * 60 * 1000;
+  60 * 60 * 1000;
 
 let cleanupTimer = null;
 
 async function cleanup() {
   const result =
-    await bugReportRepository.cleanupExpiredAndOverflow(
-      MAX_REPORTS,
-      RETENTION_DAYS
+    await bugReportRepository.cleanupReports(
+      REVIEW_DEADLINE_DAYS,
+      ARCHIVE_RETENTION_DAYS,
+      MAX_ARCHIVE_REPORTS
     );
 
   console.log(
