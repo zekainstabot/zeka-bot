@@ -931,6 +931,69 @@ async function downloadInstagramMedia({
       jobId
     );
 
+    /*
+   * PROFILE
+   *
+   * لینک پروفایل فقط باید
+   * عکس پروفایل را دانلود کند.
+   *
+   * نباید وارد yt-dlp شود.
+   */
+
+  if (
+    normalizedContentType ===
+    "PROFILE"
+  ) {
+    console.log(
+      "Instagram profile URL detected."
+    );
+
+    console.log(
+      "Instagram profile download started:",
+      normalizedUrl
+    );
+
+    const result =
+      await downloadInstagramProfile({
+        url: normalizedUrl,
+        jobId,
+      });
+
+    if (
+      !result?.success ||
+      !result.filePath
+    ) {
+      throw new Error(
+        "Instagram profile picture download failed"
+      );
+    }
+
+    return {
+      success: true,
+
+      filePath:
+        result.filePath,
+
+      fileSize:
+        result.fileSize ||
+        fs.statSync(
+          result.filePath
+        ).size,
+
+      contentType:
+        "PHOTO",
+
+      mediaType:
+        "PROFILE",
+
+      sourceUrl:
+        normalizedUrl,
+
+      finalCost:
+        null,
+    };
+  }
+
   /*
    * POST
    *
