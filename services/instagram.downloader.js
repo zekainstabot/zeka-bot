@@ -5,8 +5,8 @@ const ytdlp = require("yt-dlp-exec");
 
 const {
   downloadInstagramWithBrowser,
+  downloadInstagramProfile,
 } = require("./instagram.browser");
-
 const DOWNLOAD_ROOT = path.join(
   os.tmpdir(),
   "zeka-instagram"
