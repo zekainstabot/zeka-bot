@@ -12,9 +12,16 @@ const states = new Map();
 
 const PERMISSION = "bug_reports";
 
+const SECTIONS = {
+  PENDING: "pending",
+  REVIEWED: "reviewed",
+  UNREVIEWED: "unreviewed",
+};
+
 function getState(telegramUserId) {
   return (
     states.get(telegramUserId) || {
+      section: SECTIONS.PENDING,
       offset: 0,
     }
   );
@@ -49,15 +56,33 @@ function formatStatus(status) {
     return "✅ بررسی شده";
   }
 
+  if (status === "UNREVIEWED") {
+    return "🗃 بررسی‌نشده";
+  }
+
   return "⏳ در انتظار بررسی";
 }
 
-function buildReportText(report) {
+function getSectionTitle(section) {
+  if (section === SECTIONS.REVIEWED) {
+    return "📚 آرشیو بررسی‌شده";
+  }
+
+  if (section === SECTIONS.UNREVIEWED) {
+    return "🗃 آرشیو بررسی‌نشده";
+  }
+
+  return "⏳ گزارش‌های در انتظار بررسی";
+}
+
+function buildReportText(report, section, offset, total) {
   return (
+    getSectionTitle(section) +
+    "\n\n" +
     "🐞 گزارش مشکل\n\n" +
     `🆔 شناسه گزارش: ${report.id}\n` +
     `📌 وضعیت: ${formatStatus(report.status)}\n` +
-    `📅 تاریخ: ${formatDate(report.created_at)}\n\n` +
+    `📅 تاریخ ثبت: ${formatDate(report.created_at)}\n\n` +
     `👤 نام: ${report.display_name || "ثبت نشده"}\n` +
     `🔹 Username: ${
       report.username
@@ -67,11 +92,17 @@ function buildReportText(report) {
     `🆔 Telegram ID: ${report.telegram_user_id}\n\n` +
     `📝 مشکل:\n${report.report || "ثبت نشده"}\n\n` +
     `🔗 لینک:\n${report.original_url || "ثبت نشده"}\n\n` +
-    `🧾 Job ID: ${report.job_id || "ثبت نشده"}`
+    `🧾 Job ID: ${report.job_id || "ثبت نشده"}\n\n` +
+    `📊 گزارش ${offset + 1} از ${total}`
   );
 }
 
-function buildButtons(report, offset, total) {
+function buildButtons(
+  report,
+  section,
+  offset,
+  total
+) {
   const rows = [];
 
   const navigation = [];
@@ -80,7 +111,7 @@ function buildButtons(report, offset, total) {
     navigation.push(
       Markup.button.callback(
         "⬅️ قبلی",
-        "bug_reports:prev"
+        `${section}:prev`
       )
     );
   }
@@ -89,7 +120,7 @@ function buildButtons(report, offset, total) {
     navigation.push(
       Markup.button.callback(
         "بعدی ➡️",
-        "bug_reports:next"
+        `${section}:next`
       )
     );
   }
@@ -98,18 +129,55 @@ function buildButtons(report, offset, total) {
     rows.push(navigation);
   }
 
-  if (report.status === "PENDING") {
+  if (section === SECTIONS.UNREVIEWED) {
     rows.push([
       Markup.button.callback(
-        "✅ بررسی شد",
+        "✅ بررسی شد و انتقال به آرشیو بررسی‌شده",
         `bug_reports:review:${report.id}`
       ),
     ]);
-  } else {
+  }
+
+  if (section === SECTIONS.REVIEWED) {
     rows.push([
       Markup.button.callback(
         "↩️ بازگرداندن به بررسی",
         `bug_reports:pending:${report.id}`
+      ),
+    ]);
+  }
+
+  if (section === SECTIONS.PENDING) {
+    rows.push([
+      Markup.button.callback(
+        "📚 آرشیو بررسی‌شده",
+        "bug_reports:reviewed_archive"
+      ),
+      Markup.button.callback(
+        "🗃 آرشیو بررسی‌نشده",
+        "bug_reports:unreviewed_archive"
+      ),
+    ]);
+  } else if (section === SECTIONS.REVIEWED) {
+    rows.push([
+      Markup.button.callback(
+        "🗃 آرشیو بررسی‌نشده",
+        "bug_reports:unreviewed_archive"
+      ),
+      Markup.button.callback(
+        "⏳ در انتظار بررسی",
+        "bug_reports:pending_list"
+      ),
+    ]);
+  } else if (section === SECTIONS.UNREVIEWED) {
+    rows.push([
+      Markup.button.callback(
+        "📚 آرشیو بررسی‌شده",
+        "bug_reports:reviewed_archive"
+      ),
+      Markup.button.callback(
+        "⏳ در انتظار بررسی",
+        "bug_reports:pending_list"
       ),
     ]);
   }
@@ -124,7 +192,7 @@ function buildButtons(report, offset, total) {
   rows.push([
     Markup.button.callback(
       "🔄 تازه‌سازی",
-      "bug_reports:refresh"
+      `${section}:refresh`
     ),
     Markup.button.callback(
       "🔙 پنل ادمین",
@@ -154,7 +222,11 @@ async function requirePermission(ctx) {
   }
 }
 
-async function showReports(ctx, offset = 0) {
+async function showSection(
+  ctx,
+  section,
+  offset = 0
+) {
   const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
@@ -171,19 +243,76 @@ async function showReports(ctx, offset = 0) {
     return;
   }
 
-  const total =
-    await bugReportRepository.countPending();
+  let reports = [];
+
+  if (section === SECTIONS.PENDING) {
+    reports =
+      await bugReportRepository.findPending(200);
+  } else if (section === SECTIONS.REVIEWED) {
+    reports =
+      await bugReportRepository.findByStatus(
+        "REVIEWED",
+        100
+      );
+  } else {
+    reports =
+      await bugReportRepository.findByStatus(
+        "UNREVIEWED",
+        100
+      );
+  }
+
+  const total = reports.length;
 
   if (!total) {
-    clearState(telegramUserId);
+    setState(telegramUserId, {
+      section,
+      offset: 0,
+    });
 
     const text =
-      "🐞 گزارش مشکلات\n\n" +
-      "✅ هیچ گزارش حل‌نشده‌ای وجود ندارد.";
+      getSectionTitle(section) +
+      "\n\n" +
+      (
+        section === SECTIONS.PENDING
+          ? "✅ هیچ گزارش در انتظاری وجود ندارد."
+          : section === SECTIONS.REVIEWED
+            ? "📭 آرشیو بررسی‌شده خالی است."
+            : "📭 آرشیو بررسی‌نشده خالی است."
+      );
 
     try {
       if (ctx.callbackQuery) {
-        await ctx.editMessageText(text);
+        await ctx.editMessageText(text, {
+          reply_markup: Markup.inlineKeyboard([
+            [
+              Markup.button.callback(
+                "⏳ در انتظار بررسی",
+                "bug_reports:pending_list"
+              ),
+              Markup.button.callback(
+                "📚 بررسی‌شده",
+                "bug_reports:reviewed_archive"
+              ),
+            ],
+            [
+              Markup.button.callback(
+                "🗃 بررسی‌نشده",
+                "bug_reports:unreviewed_archive"
+              ),
+            ],
+            [
+              Markup.button.callback(
+                "🔄 تازه‌سازی",
+                `${section}:refresh`
+              ),
+              Markup.button.callback(
+                "🔙 پنل ادمین",
+                "bug_reports:back"
+              ),
+            ],
+          ]),
+        });
       } else {
         await ctx.reply(text);
       }
@@ -199,11 +328,6 @@ async function showReports(ctx, offset = 0) {
     Math.min(offset, total - 1)
   );
 
-  const reports =
-    await bugReportRepository.findPending(
-      total
-    );
-
   const report = reports[safeOffset];
 
   if (!report) {
@@ -215,16 +339,20 @@ async function showReports(ctx, offset = 0) {
   }
 
   setState(telegramUserId, {
+    section,
     offset: safeOffset,
   });
 
-  const text =
-    buildReportText(report) +
-    "\n\n" +
-    `📊 گزارش ${safeOffset + 1} از ${total}`;
+  const text = buildReportText(
+    report,
+    section,
+    safeOffset,
+    total
+  );
 
   const keyboard = buildButtons(
     report,
+    section,
     safeOffset,
     total
   );
@@ -250,10 +378,68 @@ async function showReports(ctx, offset = 0) {
 }
 
 async function handleBugReports(ctx) {
-  await showReports(ctx, 0);
+  await showSection(
+    ctx,
+    SECTIONS.PENDING,
+    0
+  );
 }
 
-async function handlePrevious(ctx) {
+async function handlePendingList(ctx) {
+  try {
+    await ctx.answerCbQuery();
+
+    await showSection(
+      ctx,
+      SECTIONS.PENDING,
+      0
+    );
+  } catch (error) {
+    console.error(
+      "Bug reports pending list failed:",
+      error
+    );
+  }
+}
+
+async function handleReviewedArchive(ctx) {
+  try {
+    await ctx.answerCbQuery();
+
+    await showSection(
+      ctx,
+      SECTIONS.REVIEWED,
+      0
+    );
+  } catch (error) {
+    console.error(
+      "Bug reports reviewed archive failed:",
+      error
+    );
+  }
+}
+
+async function handleUnreviewedArchive(ctx) {
+  try {
+    await ctx.answerCbQuery();
+
+    await showSection(
+      ctx,
+      SECTIONS.UNREVIEWED,
+      0
+    );
+  } catch (error) {
+    console.error(
+      "Bug reports unreviewed archive failed:",
+      error
+    );
+  }
+}
+
+async function handlePrevious(
+  ctx,
+  section
+) {
   const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
@@ -266,8 +452,9 @@ async function handlePrevious(ctx) {
     const state =
       getState(telegramUserId);
 
-    await showReports(
+    await showSection(
       ctx,
+      section,
       Math.max(0, state.offset - 1)
     );
   } catch (error) {
@@ -278,7 +465,10 @@ async function handlePrevious(ctx) {
   }
 }
 
-async function handleNext(ctx) {
+async function handleNext(
+  ctx,
+  section
+) {
   const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
@@ -291,8 +481,9 @@ async function handleNext(ctx) {
     const state =
       getState(telegramUserId);
 
-    await showReports(
+    await showSection(
       ctx,
+      section,
       state.offset + 1
     );
   } catch (error) {
@@ -303,7 +494,10 @@ async function handleNext(ctx) {
   }
 }
 
-async function handleRefresh(ctx) {
+async function handleRefresh(
+  ctx,
+  section
+) {
   const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
@@ -318,8 +512,9 @@ async function handleRefresh(ctx) {
     const state =
       getState(telegramUserId);
 
-    await showReports(
+    await showSection(
       ctx,
+      section,
       state.offset
     );
   } catch (error) {
@@ -330,14 +525,18 @@ async function handleRefresh(ctx) {
   }
 }
 
-async function handleReview(ctx, reportId) {
+async function handleReview(
+  ctx,
+  reportId
+) {
   const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
   }
 
-  const allowed = await requirePermission(ctx);
+  const allowed =
+    await requirePermission(ctx);
 
   if (!allowed) {
     await ctx.answerCbQuery(
@@ -369,14 +568,15 @@ async function handleReview(ctx, reportId) {
     }
 
     await ctx.answerCbQuery(
-      "✅ گزارش بررسی شد."
+      "✅ گزارش به آرشیو بررسی‌شده منتقل شد."
     );
 
     const state =
       getState(telegramUserId);
 
-    await showReports(
+    await showSection(
       ctx,
+      state.section || SECTIONS.UNREVIEWED,
       state.offset
     );
   } catch (error) {
@@ -394,14 +594,18 @@ async function handleReview(ctx, reportId) {
   }
 }
 
-async function handlePending(ctx, reportId) {
+async function handlePending(
+  ctx,
+  reportId
+) {
   const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
   }
 
-  const allowed = await requirePermission(ctx);
+  const allowed =
+    await requirePermission(ctx);
 
   if (!allowed) {
     await ctx.answerCbQuery(
@@ -435,12 +639,10 @@ async function handlePending(ctx, reportId) {
       "↩️ گزارش دوباره برای بررسی قرار گرفت."
     );
 
-    const state =
-      getState(telegramUserId);
-
-    await showReports(
+    await showSection(
       ctx,
-      state.offset
+      SECTIONS.REVIEWED,
+      0
     );
   } catch (error) {
     console.error(
@@ -457,14 +659,18 @@ async function handlePending(ctx, reportId) {
   }
 }
 
-async function handleDelete(ctx, reportId) {
+async function handleDelete(
+  ctx,
+  reportId
+) {
   const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
   }
 
-  const allowed = await requirePermission(ctx);
+  const allowed =
+    await requirePermission(ctx);
 
   if (!allowed) {
     await ctx.answerCbQuery(
@@ -501,8 +707,9 @@ async function handleDelete(ctx, reportId) {
     const state =
       getState(telegramUserId);
 
-    await showReports(
+    await showSection(
       ctx,
+      state.section || SECTIONS.PENDING,
       Math.max(0, state.offset - 1)
     );
   } catch (error) {
@@ -546,18 +753,108 @@ function createAdminBugReportsHandler(bot) {
   );
 
   bot.action(
-    "bug_reports:prev",
-    handlePrevious
+    "bug_reports:pending_list",
+    handlePendingList
   );
 
   bot.action(
-    "bug_reports:next",
-    handleNext
+    "bug_reports:reviewed_archive",
+    handleReviewedArchive
   );
 
   bot.action(
-    "bug_reports:refresh",
-    handleRefresh
+    "bug_reports:unreviewed_archive",
+    handleUnreviewedArchive
+  );
+
+  bot.action(
+    "pending:prev",
+    async (ctx) => {
+      await handlePrevious(
+        ctx,
+        SECTIONS.PENDING
+      );
+    }
+  );
+
+  bot.action(
+    "pending:next",
+    async (ctx) => {
+      await handleNext(
+        ctx,
+        SECTIONS.PENDING
+      );
+    }
+  );
+
+  bot.action(
+    "pending:refresh",
+    async (ctx) => {
+      await handleRefresh(
+        ctx,
+        SECTIONS.PENDING
+      );
+    }
+  );
+
+  bot.action(
+    "reviewed:prev",
+    async (ctx) => {
+      await handlePrevious(
+        ctx,
+        SECTIONS.REVIEWED
+      );
+    }
+  );
+
+  bot.action(
+    "reviewed:next",
+    async (ctx) => {
+      await handleNext(
+        ctx,
+        SECTIONS.REVIEWED
+      );
+    }
+  );
+
+  bot.action(
+    "reviewed:refresh",
+    async (ctx) => {
+      await handleRefresh(
+        ctx,
+        SECTIONS.REVIEWED
+      );
+    }
+  );
+
+  bot.action(
+    "unreviewed:prev",
+    async (ctx) => {
+      await handlePrevious(
+        ctx,
+        SECTIONS.UNREVIEWED
+      );
+    }
+  );
+
+  bot.action(
+    "unreviewed:next",
+    async (ctx) => {
+      await handleNext(
+        ctx,
+        SECTIONS.UNREVIEWED
+      );
+    }
+  );
+
+  bot.action(
+    "unreviewed:refresh",
+    async (ctx) => {
+      await handleRefresh(
+        ctx,
+        SECTIONS.UNREVIEWED
+      );
+    }
   );
 
   bot.action(
