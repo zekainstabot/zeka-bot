@@ -87,7 +87,7 @@ const PERMISSION_BUTTONS = [
   },
   {
     permission: "reports",
-    button: "📋 گزارش‌ها",
+    button: "🧠 گزارش سؤالات",
   },
   {
     permission: "bug_reports",
