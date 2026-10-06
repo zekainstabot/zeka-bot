@@ -497,4 +497,5 @@ async function downloadInstagramProfile({
 
 module.exports = {
   downloadInstagramWithBrowser,
+  downloadInstagramProfile,
 };
