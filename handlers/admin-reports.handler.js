@@ -6,7 +6,7 @@ const adminManagementService = require(
   "../services/admin-management.service"
 );
 
-async function handleAdminReports(ctx) {
+async function handleAdminQuestionReports(ctx) {
   const telegramUserId =
     ctx.from?.id;
 
@@ -28,13 +28,13 @@ async function handleAdminReports(ctx) {
     );
   } catch (error) {
     console.error(
-      "Admin reports handler failed:",
+      "Admin question reports handler failed:",
       error
     );
 
     try {
       await ctx.reply(
-        "❌ دریافت گزارش‌ها انجام نشد."
+        "❌ دریافت گزارش‌های سؤالات انجام نشد."
       );
     } catch {}
   }
@@ -42,8 +42,8 @@ async function handleAdminReports(ctx) {
 
 function createAdminReportsHandler(bot) {
   bot.hears(
-    "📋 گزارش‌ها",
-    handleAdminReports
+    "🧠 گزارش سؤالات",
+    handleAdminQuestionReports
   );
 }
 
