@@ -79,6 +79,34 @@ async function findPending(limit = 50) {
   return result.rows;
 }
 
+async function findByStatus(status, limit = 100) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(
+      Number(limit) || 100,
+      500
+    )
+  );
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM bug_reports
+      WHERE status = $1
+      ORDER BY created_at DESC, id DESC
+      LIMIT $2
+    `,
+    [
+      status,
+      safeLimit,
+    ]
+  );
+
+  return result.rows;
+}
+
 async function findAll(limit = 100) {
   const db = getClient();
 
@@ -112,6 +140,21 @@ async function countPending() {
       FROM bug_reports
       WHERE status = 'PENDING'
     `
+  );
+
+  return result.rows[0]?.count || 0;
+}
+
+async function countByStatus(status) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT COUNT(*)::int AS count
+      FROM bug_reports
+      WHERE status = $1
+    `,
+    [status]
   );
 
   return result.rows[0]?.count || 0;
@@ -163,6 +206,26 @@ async function markPending(id) {
   return result.rows[0] || null;
 }
 
+async function markUnreviewed(id) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      UPDATE bug_reports
+      SET
+        status = 'UNREVIEWED',
+        reviewed_by = NULL,
+        reviewed_at = NULL,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function deleteById(id) {
   const db = getClient();
 
@@ -177,71 +240,130 @@ async function deleteById(id) {
   return result.rowCount;
 }
 
-async function cleanupExpiredAndOverflow(
-  limit = 100,
-  maxAgeDays = 7
+async function moveExpiredPendingToUnreviewed(
+  reviewDeadlineDays = 3
 ) {
   const db = getClient();
 
-  const safeLimit = Math.max(
+  const safeDays = Math.max(
     1,
     Math.min(
-      Number(limit) || 100,
-      1000
-    )
-  );
-
-  const safeAgeDays = Math.max(
-    1,
-    Math.min(
-      Number(maxAgeDays) || 7,
-      365
+      Number(reviewDeadlineDays) || 3,
+      30
     )
   );
 
   const result = await db.query(
     `
-      WITH expired AS (
-        DELETE FROM bug_reports
-        WHERE created_at <
+      UPDATE bug_reports
+      SET
+        status = 'UNREVIEWED',
+        updated_at = NOW()
+      WHERE status = 'PENDING'
+        AND created_at <
           NOW() - ($1::int * INTERVAL '1 day')
-        RETURNING id
-      ),
-      ranked AS (
+      RETURNING id
+    `,
+    [safeDays]
+  );
+
+  return result.rowCount || 0;
+}
+
+async function cleanupArchivedReports(
+  retentionDays = 7,
+  maxPerArchive = 100
+) {
+  const db = getClient();
+
+  const safeRetentionDays = Math.max(
+    1,
+    Math.min(
+      Number(retentionDays) || 7,
+      365
+    )
+  );
+
+  const safeMaxPerArchive = Math.max(
+    1,
+    Math.min(
+      Number(maxPerArchive) || 100,
+      1000
+    )
+  );
+
+  const expiredResult = await db.query(
+    `
+      DELETE FROM bug_reports
+      WHERE created_at <
+        NOW() - ($1::int * INTERVAL '1 day')
+        AND status IN (
+          'REVIEWED',
+          'UNREVIEWED'
+        )
+    `,
+    [safeRetentionDays]
+  );
+
+  const reviewedOverflowResult = await db.query(
+    `
+      DELETE FROM bug_reports
+      WHERE id IN (
         SELECT id
         FROM bug_reports
+        WHERE status = 'REVIEWED'
         ORDER BY created_at DESC, id DESC
-        OFFSET $2
-      ),
-      overflow AS (
-        DELETE FROM bug_reports
-        WHERE id IN (
-          SELECT id
-          FROM ranked
-        )
-        RETURNING id
+        OFFSET $1
       )
-      SELECT
-        (
-          SELECT COUNT(*)
-          FROM expired
-        )::int AS expired_count,
-        (
-          SELECT COUNT(*)
-          FROM overflow
-        )::int AS overflow_count
     `,
-    [
-      safeAgeDays,
-      safeLimit,
-    ]
+    [safeMaxPerArchive]
+  );
+
+  const unreviewedOverflowResult = await db.query(
+    `
+      DELETE FROM bug_reports
+      WHERE id IN (
+        SELECT id
+        FROM bug_reports
+        WHERE status = 'UNREVIEWED'
+        ORDER BY created_at DESC, id DESC
+        OFFSET $1
+      )
+    `,
+    [safeMaxPerArchive]
   );
 
   return {
     expiredCount:
-      result.rows[0]?.expired_count || 0,
-    overflowCount:
-      result.rows[0]?.overflow_count || 0,
+      expiredResult.rowCount || 0,
+
+    reviewedOverflowCount:
+      reviewedOverflowResult.rowCount || 0,
+
+    unreviewedOverflowCount:
+      unreviewedOverflowResult.rowCount || 0,
+  };
+}
+
+async function cleanupReports(
+  reviewDeadlineDays = 3,
+  retentionDays = 7,
+  maxPerArchive = 100
+) {
+  const movedCount =
+    await moveExpiredPendingToUnreviewed(
+      reviewDeadlineDays
+    );
+
+  const cleanupResult =
+    await cleanupArchivedReports(
+      retentionDays,
+      maxPerArchive
+    );
+
+  return {
+    movedToUnreviewed: movedCount,
+    ...cleanupResult,
   };
 }
 
@@ -249,10 +371,15 @@ module.exports = {
   create,
   findById,
   findPending,
+  findByStatus,
   findAll,
   countPending,
+  countByStatus,
   markReviewed,
   markPending,
+  markUnreviewed,
   deleteById,
-  cleanupExpiredAndOverflow,
+  moveExpiredPendingToUnreviewed,
+  cleanupArchivedReports,
+  cleanupReports,
 };
