@@ -160,7 +160,8 @@ async function listPendingReports({
         ${reasonCondition}
 
       ORDER BY
-        r.created_at ASC
+        r.created_at ASC,
+        r.id ASC
 
       LIMIT $1
       OFFSET $2
@@ -242,6 +243,73 @@ async function listReportsByStatus(
   return result.rows;
 }
 
+async function listReviewedArchive({
+  limit = 10,
+  offset = 0,
+} = {}) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(
+      Number(limit) || 10,
+      50
+    )
+  );
+
+  const safeOffset = Math.max(
+    0,
+    Number(offset) || 0
+  );
+
+  const result = await db.query(
+    `
+      SELECT
+        r.*,
+
+        qq.question_text,
+        qq.option_a,
+        qq.option_b,
+        qq.option_c,
+        qq.option_d,
+        qq.correct_option,
+        qq.explanation,
+        qq.category,
+        qq.difficulty,
+        qq.status AS question_status,
+
+        u.telegram_user_id,
+        u.username
+
+      FROM quiz_question_reports r
+
+      INNER JOIN quiz_questions qq
+        ON qq.id = r.question_id
+
+      INNER JOIN users u
+        ON u.id = r.user_id
+
+      WHERE r.status IN (
+        'REVIEWED',
+        'REJECTED'
+      )
+
+      ORDER BY
+        r.created_at DESC,
+        r.id DESC
+
+      LIMIT $1
+      OFFSET $2
+    `,
+    [
+      safeLimit,
+      safeOffset,
+    ]
+  );
+
+  return result.rows;
+}
+
 async function countPendingReports({
   reason = null,
 } = {}) {
@@ -263,7 +331,9 @@ async function countPendingReports({
   const result = await db.query(
     `
       SELECT COUNT(*)::INTEGER AS count
+
       FROM quiz_question_reports
+
       WHERE status = 'PENDING'
         ${reasonCondition}
     `,
@@ -284,7 +354,9 @@ async function countByStatus(status) {
   const result = await db.query(
     `
       SELECT COUNT(*)::INTEGER AS count
+
       FROM quiz_question_reports
+
       WHERE status = $1
     `,
     [normalizedStatus]
@@ -301,7 +373,9 @@ async function countReviewedArchive() {
   const result = await db.query(
     `
       SELECT COUNT(*)::INTEGER AS count
+
       FROM quiz_question_reports
+
       WHERE status IN (
         'REVIEWED',
         'REJECTED'
@@ -463,7 +537,10 @@ async function markReviewed(
         status = 'REVIEWED',
         reviewed_by = $2,
         reviewed_at = NOW(),
-        admin_note = COALESCE($3, admin_note),
+        admin_note = COALESCE(
+          $3,
+          admin_note
+        ),
         updated_at = NOW()
 
       WHERE id = $1
@@ -506,6 +583,25 @@ async function restoreToPending(
         )
 
       RETURNING *
+    `,
+    [reportId]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function deleteById(
+  reportId
+) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      DELETE FROM quiz_question_reports
+
+      WHERE id = $1
+
+      RETURNING id
     `,
     [reportId]
   );
@@ -678,6 +774,7 @@ module.exports = {
 
   listPendingReports,
   listReportsByStatus,
+  listReviewedArchive,
 
   countPendingReports,
   countByStatus,
@@ -689,6 +786,7 @@ module.exports = {
   resolveReport,
   markReviewed,
   restoreToPending,
+  deleteById,
 
   moveExpiredPendingToUnreviewed,
   cleanupArchivedReports,
