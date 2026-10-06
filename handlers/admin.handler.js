@@ -40,6 +40,10 @@ const {
   createAdminBugReportsHandler,
 } = require("./admin-bug-reports.handler");
 
+const {
+  createAdminReportsHandler,
+} = require("./admin-reports.handler");
+
 const PERMISSION_BUTTONS = [
   {
     permission: "users",
@@ -109,7 +113,6 @@ const UNIMPLEMENTED_BUTTONS = [
   "🌐 مدیریت پلتفرم‌ها",
   "✨ مدیریت امکانات",
   "🆘 پشتیبانی",
-  "📋 گزارش‌ها",
 ];
 
 const BUTTON_PERMISSIONS = new Map(
@@ -326,6 +329,7 @@ function createAdminHandler(bot) {
   createAdminRequestsHandler(bot);
   createAdminMonitoringHandler(bot);
   createAdminBugReportsHandler(bot);
+  createAdminReportsHandler(bot);
 
   for (
     const button of UNIMPLEMENTED_BUTTONS
