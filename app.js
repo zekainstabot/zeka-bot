@@ -4,6 +4,10 @@ const { initializeDatabase } = require("./database/bootstrap");
 const { getClient } = require("./database/client");
 const { startBot } = require("./bot");
 
+const bugReportCleanupService = require(
+  "./services/bug-report-cleanup.service"
+);
+
 const PORT = Number(process.env.PORT) || 10000;
 
 function startHealthServer() {
@@ -113,6 +117,8 @@ async function start() {
     await initializeDatabase();
 
     console.log("Zeka Bot database initialized.");
+
+    await bugReportCleanupService.start();
 
     await setupSuperAdmin();
 
