@@ -70,6 +70,8 @@ async function findPending(limit = 50) {
       SELECT *
       FROM bug_reports
       WHERE status = 'PENDING'
+        AND created_at >=
+          NOW() - INTERVAL '3 days'
       ORDER BY created_at ASC
       LIMIT $1
     `,
