@@ -114,7 +114,9 @@ async function listPendingReports(
   );
 
   const normalizedReason =
-    normalizeReason(options.reason);
+    normalizeReason(
+      options.reason
+    );
 
   return quizReportRepository.listPendingReports({
     ...options,
@@ -131,7 +133,9 @@ async function countPendingReports(
   );
 
   const normalizedReason =
-    normalizeReason(options.reason);
+    normalizeReason(
+      options.reason
+    );
 
   return quizReportRepository.countPendingReports({
     reason: normalizedReason,
@@ -175,6 +179,19 @@ async function listReportsByStatus(
 
   return quizReportRepository.listReportsByStatus(
     normalizedStatus,
+    options
+  );
+}
+
+async function listReviewedArchive(
+  telegramUserId,
+  options = {}
+) {
+  await requireReportsPermission(
+    telegramUserId
+  );
+
+  return quizReportRepository.listReviewedArchive(
     options
   );
 }
@@ -247,7 +264,7 @@ async function resolveReport(
     );
 
   const normalizedStatus =
-    String(status)
+    String(status || "")
       .trim()
       .toUpperCase();
 
@@ -299,6 +316,7 @@ module.exports = {
   getReportById,
 
   listReportsByStatus,
+  listReviewedArchive,
   countByStatus,
   countReviewedArchive,
 
