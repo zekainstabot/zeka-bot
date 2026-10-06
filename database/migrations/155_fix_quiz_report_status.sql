@@ -1,0 +1,13 @@
+ALTER TABLE quiz_question_reports
+DROP CONSTRAINT IF EXISTS quiz_question_reports_status_check;
+
+ALTER TABLE quiz_question_reports
+ADD CONSTRAINT quiz_question_reports_status_check
+CHECK (
+  status IN (
+    'PENDING',
+    'UNREVIEWED',
+    'REVIEWED',
+    'REJECTED'
+  )
+);
