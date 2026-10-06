@@ -29,10 +29,42 @@ function normalizeReason(reason) {
       value
     )
   ) {
-    throw new Error("Invalid report reason");
+    throw new Error(
+      "Invalid report reason"
+    );
   }
 
   return value;
+}
+
+function normalizeStatus(status) {
+  const value = String(status || "")
+    .trim()
+    .toUpperCase();
+
+  const allowedStatuses = [
+    "PENDING",
+    "UNREVIEWED",
+    "REVIEWED",
+    "REJECTED",
+  ];
+
+  if (!allowedStatuses.includes(value)) {
+    throw new Error(
+      "Invalid report status"
+    );
+  }
+
+  return value;
+}
+
+async function requireReportsPermission(
+  telegramUserId
+) {
+  return adminManagementService.requirePermissionByTelegramId(
+    telegramUserId,
+    "reports"
+  );
 }
 
 async function createReport({
@@ -45,7 +77,9 @@ async function createReport({
     normalizeReason(reason);
 
   if (!normalizedReason) {
-    throw new Error("Invalid report reason");
+    throw new Error(
+      "Invalid report reason"
+    );
   }
 
   const report =
@@ -75,9 +109,8 @@ async function listPendingReports(
   telegramUserId,
   options = {}
 ) {
-  await adminManagementService.requirePermissionByTelegramId(
-    telegramUserId,
-    "reports"
+  await requireReportsPermission(
+    telegramUserId
   );
 
   const normalizedReason =
@@ -93,9 +126,8 @@ async function countPendingReports(
   telegramUserId,
   options = {}
 ) {
-  await adminManagementService.requirePermissionByTelegramId(
-    telegramUserId,
-    "reports"
+  await requireReportsPermission(
+    telegramUserId
   );
 
   const normalizedReason =
@@ -109,9 +141,8 @@ async function countPendingReports(
 async function countPendingReportsByReason(
   telegramUserId
 ) {
-  await adminManagementService.requirePermissionByTelegramId(
-    telegramUserId,
-    "reports"
+  await requireReportsPermission(
+    telegramUserId
   );
 
   return quizReportRepository.countPendingReportsByReason();
@@ -121,12 +152,85 @@ async function getReportById(
   telegramUserId,
   reportId
 ) {
-  await adminManagementService.requirePermissionByTelegramId(
-    telegramUserId,
-    "reports"
+  await requireReportsPermission(
+    telegramUserId
   );
 
   return quizReportRepository.getReportById(
+    reportId
+  );
+}
+
+async function listReportsByStatus(
+  telegramUserId,
+  status,
+  options = {}
+) {
+  await requireReportsPermission(
+    telegramUserId
+  );
+
+  const normalizedStatus =
+    normalizeStatus(status);
+
+  return quizReportRepository.listReportsByStatus(
+    normalizedStatus,
+    options
+  );
+}
+
+async function countByStatus(
+  telegramUserId,
+  status
+) {
+  await requireReportsPermission(
+    telegramUserId
+  );
+
+  const normalizedStatus =
+    normalizeStatus(status);
+
+  return quizReportRepository.countByStatus(
+    normalizedStatus
+  );
+}
+
+async function countReviewedArchive(
+  telegramUserId
+) {
+  await requireReportsPermission(
+    telegramUserId
+  );
+
+  return quizReportRepository.countReviewedArchive();
+}
+
+async function markReviewed(
+  telegramUserId,
+  reportId,
+  adminNote = null
+) {
+  const admin =
+    await requireReportsPermission(
+      telegramUserId
+    );
+
+  return quizReportRepository.markReviewed(
+    reportId,
+    admin.user_id,
+    adminNote
+  );
+}
+
+async function restoreToPending(
+  telegramUserId,
+  reportId
+) {
+  await requireReportsPermission(
+    telegramUserId
+  );
+
+  return quizReportRepository.restoreToPending(
     reportId
   );
 }
@@ -138,20 +242,19 @@ async function resolveReport(
   adminNote = null
 ) {
   const admin =
-    await adminManagementService.requirePermissionByTelegramId(
-      telegramUserId,
-      "reports"
+    await requireReportsPermission(
+      telegramUserId
     );
-
-  const allowedStatuses = [
-    "RESOLVED",
-    "REJECTED",
-  ];
 
   const normalizedStatus =
     String(status)
       .trim()
       .toUpperCase();
+
+  const allowedStatuses = [
+    "RESOLVED",
+    "REJECTED",
+  ];
 
   if (
     !allowedStatuses.includes(
@@ -171,12 +274,38 @@ async function resolveReport(
   );
 }
 
+async function deleteReport(
+  telegramUserId,
+  reportId
+) {
+  await requireReportsPermission(
+    telegramUserId
+  );
+
+  return quizReportRepository.deleteById(
+    reportId
+  );
+}
+
 module.exports = {
   REPORT_REASONS,
+
   createReport,
+
   listPendingReports,
   countPendingReports,
   countPendingReportsByReason,
+
   getReportById,
+
+  listReportsByStatus,
+  countByStatus,
+  countReviewedArchive,
+
+  markReviewed,
+  restoreToPending,
+
   resolveReport,
+
+  deleteReport,
 };
