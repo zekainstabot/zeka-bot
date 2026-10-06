@@ -21,18 +21,6 @@ const {
 } = require("./admin-fortune.handler");
 
 const {
-  createAdminReportsHandler,
-} = require("./admin-reports.handler");
-
-const {
-  createAdminMonitoringHandler,
-} = require("./admin-monitoring.handler");
-
-const {
-  createAdminBugReportsHandler,
-} = require("./admin-bug-reports.handler");
-
-const {
   createAdminUsersHandler,
 } = require("./admin-users.handler");
 
@@ -43,6 +31,14 @@ const {
 const {
   createAdminRewardsHandler,
 } = require("./admin-rewards.handler");
+
+const {
+  createAdminMonitoringHandler,
+} = require("./admin-monitoring.handler");
+
+const {
+  createAdminBugReportsHandler,
+} = require("./admin-bug-reports.handler");
 
 const PERMISSION_BUTTONS = [
   {
@@ -113,6 +109,7 @@ const UNIMPLEMENTED_BUTTONS = [
   "🌐 مدیریت پلتفرم‌ها",
   "✨ مدیریت امکانات",
   "🆘 پشتیبانی",
+  "📋 گزارش‌ها",
 ];
 
 const BUTTON_PERMISSIONS = new Map(
@@ -131,17 +128,11 @@ function buildAdminMenu(permissions) {
     }
   }
 
-  buttons.push(
-    "🔙 خروج از پنل مدیریت"
-  );
+  buttons.push("🔙 خروج از پنل مدیریت");
 
   const rows = [];
 
-  for (
-    let i = 0;
-    i < buttons.length;
-    i += 2
-  ) {
+  for (let i = 0; i < buttons.length; i += 2) {
     rows.push(
       buttons.slice(i, i + 2)
     );
@@ -177,8 +168,7 @@ async function getAdminPanelData(
         error
       );
 
-      permissions[item.permission] =
-        false;
+      permissions[item.permission] = false;
     }
   }
 
@@ -254,9 +244,7 @@ async function handleUnavailableAdminSection(
     ctx.message?.text;
 
   const permission =
-    BUTTON_PERMISSIONS.get(
-      button
-    );
+    BUTTON_PERMISSIONS.get(button);
 
   if (!button || !permission) {
     return;
@@ -275,10 +263,7 @@ async function handleUnavailableAdminSection(
         telegramUserId
       );
 
-    if (
-      !admin ||
-      !admin.is_active
-    ) {
+    if (!admin || !admin.is_active) {
       await ctx.reply(
         "⛔ دسترسی به پنل مدیریت ندارید."
       );
@@ -332,25 +317,14 @@ function createAdminHandler(bot) {
   );
 
   createAdminManagementHandler(bot);
-
   createAdminQuizHandler(bot);
-
   createAdminProHandler(bot);
-
   createAdminFortuneHandler(bot);
-
   createAdminUsersHandler(bot);
-
   createAdminCreditsHandler(bot);
-
   createAdminRewardsHandler(bot);
-
   createAdminRequestsHandler(bot);
-
   createAdminMonitoringHandler(bot);
-
-  createAdminReportsHandler(bot);
-
   createAdminBugReportsHandler(bot);
 
   for (
