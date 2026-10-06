@@ -407,10 +407,10 @@ async function handleReviewedArchive(ctx) {
     await ctx.answerCbQuery();
 
     await showSection(
-      ctx,
-      SECTIONS.REVIEWED,
-      0
-    );
+  ctx,
+  SECTIONS.PENDING,
+  0
+);
   } catch (error) {
     console.error(
       "Bug reports reviewed archive failed:",
