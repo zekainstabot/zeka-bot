@@ -25,7 +25,9 @@ function normalizeReason(reason) {
   }
 
   if (
-    !Object.values(REPORT_REASONS).includes(value)
+    !Object.values(REPORT_REASONS).includes(
+      value
+    )
   ) {
     throw new Error("Invalid report reason");
   }
@@ -39,18 +41,34 @@ async function createReport({
   reason,
   details = null,
 }) {
-  const normalizedReason = normalizeReason(reason);
+  const normalizedReason =
+    normalizeReason(reason);
 
   if (!normalizedReason) {
     throw new Error("Invalid report reason");
   }
 
-  return quizReportRepository.createReport({
-    questionId,
-    userId,
-    reason: normalizedReason,
-    details,
-  });
+  const report =
+    await quizReportRepository.createReport({
+      questionId,
+      userId,
+      reason: normalizedReason,
+      details,
+    });
+
+  if (report) {
+    return {
+      created: true,
+      duplicate: false,
+      report,
+    };
+  }
+
+  return {
+    created: false,
+    duplicate: true,
+    report: null,
+  };
 }
 
 async function listPendingReports(
@@ -62,9 +80,8 @@ async function listPendingReports(
     "reports"
   );
 
-  const normalizedReason = normalizeReason(
-    options.reason
-  );
+  const normalizedReason =
+    normalizeReason(options.reason);
 
   return quizReportRepository.listPendingReports({
     ...options,
@@ -81,9 +98,8 @@ async function countPendingReports(
     "reports"
   );
 
-  const normalizedReason = normalizeReason(
-    options.reason
-  );
+  const normalizedReason =
+    normalizeReason(options.reason);
 
   return quizReportRepository.countPendingReports({
     reason: normalizedReason,
@@ -132,9 +148,10 @@ async function resolveReport(
     "REJECTED",
   ];
 
-  const normalizedStatus = String(status)
-    .trim()
-    .toUpperCase();
+  const normalizedStatus =
+    String(status)
+      .trim()
+      .toUpperCase();
 
   if (
     !allowedStatuses.includes(
