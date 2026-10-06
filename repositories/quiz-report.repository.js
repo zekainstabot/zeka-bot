@@ -133,7 +133,6 @@ async function listPendingReports({
     `
       SELECT
         r.*,
-
         qq.question_text,
         qq.option_a,
         qq.option_b,
@@ -144,16 +143,15 @@ async function listPendingReports({
         qq.category,
         qq.difficulty,
         qq.status AS question_status,
-
         u.telegram_user_id,
         u.username
 
       FROM quiz_question_reports r
 
-      INNER JOIN quiz_questions qq
+      LEFT JOIN quiz_questions qq
         ON qq.id = r.question_id
 
-      INNER JOIN users u
+      LEFT JOIN users u
         ON u.id = r.user_id
 
       WHERE r.status = 'PENDING'
@@ -201,7 +199,6 @@ async function listReportsByStatus(
     `
       SELECT
         r.*,
-
         qq.question_text,
         qq.option_a,
         qq.option_b,
@@ -212,16 +209,15 @@ async function listReportsByStatus(
         qq.category,
         qq.difficulty,
         qq.status AS question_status,
-
         u.telegram_user_id,
         u.username
 
       FROM quiz_question_reports r
 
-      INNER JOIN quiz_questions qq
+      LEFT JOIN quiz_questions qq
         ON qq.id = r.question_id
 
-      INNER JOIN users u
+      LEFT JOIN users u
         ON u.id = r.user_id
 
       WHERE r.status = $1
@@ -266,7 +262,6 @@ async function listReviewedArchive({
     `
       SELECT
         r.*,
-
         qq.question_text,
         qq.option_a,
         qq.option_b,
@@ -277,16 +272,15 @@ async function listReviewedArchive({
         qq.category,
         qq.difficulty,
         qq.status AS question_status,
-
         u.telegram_user_id,
         u.username
 
       FROM quiz_question_reports r
 
-      INNER JOIN quiz_questions qq
+      LEFT JOIN quiz_questions qq
         ON qq.id = r.question_id
 
-      INNER JOIN users u
+      LEFT JOIN users u
         ON u.id = r.user_id
 
       WHERE r.status IN (
@@ -331,9 +325,7 @@ async function countPendingReports({
   const result = await db.query(
     `
       SELECT COUNT(*)::INTEGER AS count
-
       FROM quiz_question_reports
-
       WHERE status = 'PENDING'
         ${reasonCondition}
     `,
@@ -354,9 +346,7 @@ async function countByStatus(status) {
   const result = await db.query(
     `
       SELECT COUNT(*)::INTEGER AS count
-
       FROM quiz_question_reports
-
       WHERE status = $1
     `,
     [normalizedStatus]
@@ -373,9 +363,7 @@ async function countReviewedArchive() {
   const result = await db.query(
     `
       SELECT COUNT(*)::INTEGER AS count
-
       FROM quiz_question_reports
-
       WHERE status IN (
         'REVIEWED',
         'REJECTED'
@@ -433,7 +421,6 @@ async function getReportById(
     `
       SELECT
         r.*,
-
         qq.question_text,
         qq.option_a,
         qq.option_b,
@@ -444,16 +431,15 @@ async function getReportById(
         qq.category,
         qq.difficulty,
         qq.status AS question_status,
-
         u.telegram_user_id,
         u.username
 
       FROM quiz_question_reports r
 
-      INNER JOIN quiz_questions qq
+      LEFT JOIN quiz_questions qq
         ON qq.id = r.question_id
 
-      INNER JOIN users u
+      LEFT JOIN users u
         ON u.id = r.user_id
 
       WHERE r.id = $1
@@ -598,9 +584,7 @@ async function deleteById(
   const result = await db.query(
     `
       DELETE FROM quiz_question_reports
-
       WHERE id = $1
-
       RETURNING id
     `,
     [reportId]
@@ -691,7 +675,6 @@ async function cleanupArchivedReports(
 
         WHERE id IN (
           SELECT id
-
           FROM quiz_question_reports
 
           WHERE status IN (
@@ -716,7 +699,6 @@ async function cleanupArchivedReports(
 
         WHERE id IN (
           SELECT id
-
           FROM quiz_question_reports
 
           WHERE status = 'UNREVIEWED'
