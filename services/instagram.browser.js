@@ -1,12 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-
 const { chromium } = require("playwright");
 
 const DOWNLOAD_ROOT = path.join(
   os.tmpdir(),
-  "zeka-instagram-browser"
+  "zeka-instagram-downloads"
 );
 
 function ensureDownloadRoot() {
@@ -16,16 +15,10 @@ function ensureDownloadRoot() {
 }
 
 function cleanUrl(url) {
-  if (!url) {
-    throw new Error("Instagram URL is required");
-  }
-
-  const parsed = new URL(url);
-
-  parsed.search = "";
-  parsed.hash = "";
-
-  return parsed.toString();
+  return String(url || "")
+    .trim()
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "") + "/";
 }
 
 async function downloadInstagramWithBrowser({
@@ -58,147 +51,125 @@ async function downloadInstagramWithBrowser({
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process",
       ],
     });
 
     const context = await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      locale: "en-US",
+      timezoneId: "UTC",
       viewport: {
         width: 1280,
         height: 720,
       },
-
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-
-      locale: "en-US",
-
-      timezoneId: "UTC",
-
-      acceptDownloads: true,
     });
 
     const page = await context.newPage();
-
-    page.setDefaultTimeout(30000);
-
-    const mediaUrls = new Set();
-
-    page.on("response", async (response) => {
-      try {
-        const responseUrl = response.url();
-
-        const contentType =
-          response.headers()["content-type"] || "";
-
-        if (
-          contentType.startsWith("video/") ||
-          contentType.startsWith("image/")
-        ) {
-          mediaUrls.add(responseUrl);
-
-          console.log(
-            `Instagram browser media detected: ${responseUrl.slice(
-              0,
-              180
-            )}`
-          );
-        }
-      } catch (error) {
-        console.log(
-          "Instagram browser response inspection failed:",
-          error?.message || String(error)
-        );
-      }
-    });
 
     await page.goto(normalizedUrl, {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
 
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(4000);
 
-    const finalUrl = page.url();
+    const media = await page.evaluate(() => {
+      const images = Array.from(
+        document.querySelectorAll("img")
+      );
 
-    console.log(
-      `Instagram browser final URL: ${finalUrl}`
-    );
+      const candidates = images
+        .map((img) => ({
+          src:
+            img.currentSrc ||
+            img.src ||
+            img.getAttribute("src"),
+          width:
+            Number(img.naturalWidth || img.width || 0),
+          height:
+            Number(img.naturalHeight || img.height || 0),
+          alt:
+            img.getAttribute("alt") || "",
+        }))
+        .filter((item) => item.src);
 
-    const title = await page.title().catch(() => "");
+      const preferred = candidates.find((item) =>
+        /cdninstagram\.com|fbcdn\.net|scontent/i.test(
+          item.src
+        )
+      );
 
-    console.log(
-      `Instagram browser page title: ${title}`
-    );
+      return preferred || candidates[0] || null;
+    });
 
-    const html = await page.content();
+    if (!media?.src) {
+      throw new Error(
+        "Instagram media URL was not found"
+      );
+    }
 
-    const videoMatches =
-      html.match(
-        /https?:\/\/[^"'\\ ]+(?:\.mp4|video)[^"'\\ ]*/gi
-      ) || [];
-
-    for (const mediaUrl of videoMatches) {
-      try {
-        mediaUrls.add(
-          mediaUrl
-            .replace(/\\u0026/g, "&")
-            .replace(/\\u003D/g, "=")
-        );
-      } catch {
-        // Ignore malformed media URLs.
+    const response = await context.request.get(
+      media.src,
+      {
+        headers: {
+          Referer:
+            "https://www.instagram.com/",
+        },
       }
-    }
-
-    if (!mediaUrls.size) {
-      throw new Error(
-        "Instagram browser could not detect media"
-      );
-    }
-
-    const selectedUrl =
-      [...mediaUrls].find((mediaUrl) =>
-        mediaUrl.includes(".mp4")
-      ) ||
-      [...mediaUrls][0];
-
-    console.log(
-      `Instagram browser selected media: ${selectedUrl.slice(
-        0,
-        200
-      )}`
     );
 
-    const mediaResponse =
-      await context.request.get(selectedUrl, {
-        timeout: 60000,
-      });
-
-    if (!mediaResponse.ok()) {
+    if (!response.ok()) {
       throw new Error(
-        `Instagram browser media request failed: HTTP ${mediaResponse.status()}`
+        `Instagram media request failed: HTTP ${response.status()}`
       );
     }
 
-    const buffer =
-      await mediaResponse.body();
+    const contentType =
+      (
+        response.headers()["content-type"] ||
+        ""
+      ).toLowerCase();
 
-    if (!buffer || !buffer.length) {
+    const buffer = await response.body();
+
+    if (
+      !buffer ||
+      !buffer.length
+    ) {
       throw new Error(
-        "Instagram browser received an empty media file"
+        "Instagram media is empty"
       );
     }
 
-    const extension =
-      selectedUrl.includes(".mp4") ||
-      (mediaResponse.headers()["content-type"] || "").includes(
-        "video"
-      )
-        ? ".mp4"
-        : ".jpg";
+    let extension = ".jpg";
+
+    if (contentType.includes("png")) {
+      extension = ".png";
+    } else if (
+      contentType.includes("webp")
+    ) {
+      extension = ".webp";
+    } else if (
+      contentType.includes("gif")
+    ) {
+      extension = ".gif";
+    } else if (
+      contentType.includes("avif")
+    ) {
+      extension = ".avif";
+    } else if (
+      contentType.includes("mp4")
+    ) {
+      extension = ".mp4";
+    }
 
     const filePath = path.join(
       jobDirectory,
-      `instagram${extension}`
+      `instagram_media${extension}`
     );
 
     fs.writeFileSync(
@@ -206,36 +177,35 @@ async function downloadInstagramWithBrowser({
       buffer
     );
 
-    const fileSize =
-      fs.statSync(filePath).size;
-
-    if (!fileSize) {
-      throw new Error(
-        "Instagram browser created an empty file"
-      );
-    }
+    const fileSize = fs.statSync(
+      filePath
+    ).size;
 
     console.log(
-      `Instagram browser download completed: ${filePath}`
+      "Instagram browser download completed:",
+      filePath
     );
 
     return {
       success: true,
       filePath,
       fileSize,
+      contentType,
       sourceUrl: normalizedUrl,
-      mediaUrl: selectedUrl,
     };
   } catch (error) {
     console.error(
       "Instagram browser download failed:",
-      error?.message || String(error)
+      error?.message ||
+        String(error)
     );
 
     throw error;
   } finally {
     if (browser) {
-      await browser.close().catch(() => {});
+      try {
+        await browser.close();
+      } catch {}
     }
   }
 }
@@ -264,107 +234,52 @@ async function downloadInstagramProfile({
     }
   );
 
-  let browser;
-
   try {
     console.log(
       `Instagram profile download started: ${normalizedUrl}`
     );
 
-    browser =
-      await chromium.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-        ],
-      });
-
-    const context =
-      await browser.newContext({
-        viewport: {
-          width: 1280,
-          height: 720,
-        },
-
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-
-        locale: "en-US",
-
-        timezoneId: "UTC",
-      });
-
-    const page =
-      await context.newPage();
-
-    page.setDefaultTimeout(
-      30000
-    );
-
-    await page.goto(
+    const pageResponse = await fetch(
       normalizedUrl,
       {
-        waitUntil:
-          "domcontentloaded",
-        timeout: 30000,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          "Accept":
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "Accept-Language":
+            "en-US,en;q=0.9",
+        },
+        redirect: "follow",
       }
     );
 
-    await page.waitForTimeout(
-      4000
-    );
+    if (!pageResponse.ok) {
+      throw new Error(
+        `Instagram profile page request failed: HTTP ${pageResponse.status}`
+      );
+    }
 
-    let imageUrl = null;
+    const html =
+      await pageResponse.text();
 
-    /*
-     * اولویت اول:
-     * عکس og:image صفحه پروفایل
-     */
-    imageUrl =
-      await page
-        .locator(
-          'meta[property="og:image"]'
-        )
-        .getAttribute("content")
-        .catch(() => null);
+    const ogImageMatch =
+      html.match(
+        /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>/i
+      ) ||
+      html.match(
+        /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["'][^>]*>/i
+      );
 
-    /*
-     * اگر og:image پیدا نشد،
-     * از عکس‌های صفحه استفاده می‌کنیم.
-     */
-    if (!imageUrl) {
-      const imageUrls =
-        await page
-          .locator("img")
-          .evaluateAll(
-            (images) =>
-              images
-                .map(
-                  (image) =>
-                    image.src ||
-                    image.getAttribute(
-                      "src"
-                    )
-                )
-                .filter(Boolean)
-          )
-          .catch(() => []);
+    let imageUrl =
+      ogImageMatch?.[1] || null;
 
+    if (imageUrl) {
       imageUrl =
-        imageUrls.find(
-          (item) =>
-            item.includes(
-              "cdninstagram.com"
-            ) ||
-            item.includes(
-              "fbcdn.net"
-            ) ||
-            item.includes(
-              "scontent"
-            )
-        ) || null;
+        imageUrl
+          .replace(/&amp;/g, "&")
+          .replace(/\\u0026/g, "&")
+          .replace(/\\u003D/g, "=");
     }
 
     if (!imageUrl) {
@@ -379,28 +294,32 @@ async function downloadInstagramProfile({
     );
 
     const response =
-      await context.request.get(
+      await fetch(
         imageUrl,
         {
-          timeout: 60000,
           headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             Referer:
               "https://www.instagram.com/",
+            Accept:
+              "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
           },
+          redirect: "follow",
         }
       );
 
-    if (!response.ok()) {
+    if (!response.ok) {
       throw new Error(
-        `Instagram profile picture request failed: HTTP ${response.status()}`
+        `Instagram profile picture request failed: HTTP ${response.status}`
       );
     }
 
     const contentType =
       (
-        response.headers()[
+        response.headers.get(
           "content-type"
-        ] || ""
+        ) || ""
       ).toLowerCase();
 
     if (
@@ -414,7 +333,9 @@ async function downloadInstagramProfile({
     }
 
     const buffer =
-      await response.body();
+      Buffer.from(
+        await response.arrayBuffer()
+      );
 
     if (
       !buffer ||
@@ -486,12 +407,6 @@ async function downloadInstagramProfile({
     );
 
     throw error;
-  } finally {
-    if (browser) {
-      await browser.close().catch(
-        () => {}
-      );
-    }
   }
 }
 
