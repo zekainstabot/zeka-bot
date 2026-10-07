@@ -3,6 +3,15 @@ const path = require("path");
 const os = require("os");
 const { chromium } = require("playwright");
 
+process.env.PLAYWRIGHT_BROWSERS_PATH =
+  path.join(
+    __dirname,
+    "..",
+    "node_modules",
+    "playwright-core",
+    ".local-browsers"
+  );
+
 const DOWNLOAD_ROOT = path.join(
   os.tmpdir(),
   "zeka-instagram-downloads"
