@@ -319,27 +319,105 @@ async function downloadInstagramProfile({
 
     const imageUrl =
       await page.evaluate(() => {
-        const normalize =
-          (value) => {
-            if (!value) {
-              return null;
-            }
+        const normalize = (value) => {
+          if (!value) {
+            return null;
+          }
 
-            return String(value)
-              .replace(
-                /&amp;/g,
-                "&"
-              )
-              .replace(
-                /\\u0026/g,
-                "&"
-              )
-              .replace(
-                /\\u003D/g,
-                "="
-              )
-              .trim();
-          };
+          return String(value)
+            .replace(/&amp;/g, "&")
+            .replace(/\\u0026/g, "&")
+            .replace(/\\u003D/g, "=")
+            .trim();
+        };
+
+        const isInstagramImage = (value) => {
+          return (
+            value &&
+            /^https?:\/\//i.test(value) &&
+            /cdninstagram\.com|fbcdn\.net|scontent/i.test(
+              value
+            )
+          );
+        };
+
+        const images = Array.from(
+          document.querySelectorAll("img")
+        );
+
+        const candidates = images
+          .map((img) => ({
+            src: normalize(
+              img.currentSrc ||
+                img.src ||
+                img.getAttribute("src")
+            ),
+            alt:
+              img.getAttribute("alt") || "",
+            width: Number(
+              img.naturalWidth ||
+                img.width ||
+                0
+            ),
+            height: Number(
+              img.naturalHeight ||
+                img.height ||
+                0
+            ),
+          }))
+          .filter((item) =>
+            isInstagramImage(item.src)
+          );
+
+        const profileImages =
+          candidates.filter((item) => {
+            const alt = item.alt.toLowerCase();
+
+            return (
+              alt.includes("profile picture") ||
+              alt.includes("profile photo") ||
+              alt.includes("profile image") ||
+              alt.includes("عکس پروفایل")
+            );
+          });
+
+        if (profileImages.length) {
+          profileImages.sort(
+            (a, b) =>
+              b.width * b.height -
+              a.width * a.height
+          );
+
+          return profileImages[0].src;
+        }
+
+        const squareImages =
+          candidates
+            .filter((item) => {
+              if (
+                item.width < 100 ||
+                item.height < 100
+              ) {
+                return false;
+              }
+
+              const ratio =
+                item.width / item.height;
+
+              return (
+                ratio >= 0.9 &&
+                ratio <= 1.1
+              );
+            })
+            .sort(
+              (a, b) =>
+                b.width * b.height -
+                a.width * a.height
+            );
+
+        if (squareImages.length) {
+          return squareImages[0].src;
+        }
 
         const metaSelectors = [
           'meta[property="og:image"]',
@@ -348,122 +426,19 @@ async function downloadInstagramProfile({
           'meta[name="twitter:image:src"]',
         ];
 
-        for (
-          const selector of metaSelectors
-        ) {
+        for (const selector of metaSelectors) {
           const element =
-            document.querySelector(
-              selector
-            );
+            document.querySelector(selector);
 
-          const content =
-            element?.getAttribute(
-              "content"
-            );
+          const content = normalize(
+            element?.getAttribute("content")
+          );
 
-          if (content) {
-            return normalize(
-              content
-            );
+          if (
+            isInstagramImage(content)
+          ) {
+            return content;
           }
-        }
-
-        const images =
-          Array.from(
-            document.querySelectorAll(
-              "img"
-            )
-          );
-
-        const imageCandidates =
-          images
-            .map((img) => ({
-              src:
-                img.currentSrc ||
-                img.src ||
-                img.getAttribute(
-                  "src"
-                ),
-              alt:
-                img.getAttribute(
-                  "alt"
-                ) || "",
-              width:
-                Number(
-                  img.naturalWidth ||
-                    img.width ||
-                    0
-                ),
-              height:
-                Number(
-                  img.naturalHeight ||
-                    img.height ||
-                    0
-                ),
-            }))
-            .filter(
-              (item) =>
-                item.src &&
-                /^https?:\/\//i.test(
-                  item.src
-                )
-            );
-
-        const preferred =
-          imageCandidates
-            .filter((item) =>
-              /cdninstagram\.com|fbcdn\.net|scontent/i.test(
-                item.src
-              )
-            )
-            .sort(
-              (a, b) =>
-                b.width *
-                  b.height -
-                a.width *
-                  a.height
-            );
-
-        if (
-          preferred.length
-        ) {
-          return normalize(
-            preferred[0].src
-          );
-        }
-
-        const squareImages =
-          imageCandidates
-            .filter(
-              (item) =>
-                item.width >
-                  100 &&
-                item.height >
-                  100 &&
-                Math.abs(
-                  item.width -
-                    item.height
-                ) <
-                  Math.max(
-                    item.width,
-                    item.height
-                  ) *
-                    0.15
-            )
-            .sort(
-              (a, b) =>
-                b.width *
-                  b.height -
-                a.width *
-                  a.height
-            );
-
-        if (
-          squareImages.length
-        ) {
-          return normalize(
-            squareImages[0].src
-          );
         }
 
         return null;
