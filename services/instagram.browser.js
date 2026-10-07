@@ -1,16 +1,16 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { chromium } = require("playwright");
 
-process.env.PLAYWRIGHT_BROWSERS_PATH =
-  path.join(
-    __dirname,
-    "..",
-    "node_modules",
-    "playwright-core",
-    ".local-browsers"
-  );
+process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(
+  __dirname,
+  "..",
+  "node_modules",
+  "playwright-core",
+  ".local-browsers"
+);
+
+const { chromium } = require("playwright");
 
 const DOWNLOAD_ROOT = path.join(
   os.tmpdir(),
@@ -30,6 +30,18 @@ function cleanUrl(url) {
       .replace(/[?#].*$/, "")
       .replace(/\/+$/, "") + "/"
   );
+}
+
+function getExtension(contentType) {
+  const type = String(contentType || "").toLowerCase();
+
+  if (type.includes("png")) return ".png";
+  if (type.includes("webp")) return ".webp";
+  if (type.includes("avif")) return ".avif";
+  if (type.includes("gif")) return ".gif";
+  if (type.includes("mp4")) return ".mp4";
+
+  return ".jpg";
 }
 
 async function downloadInstagramWithBrowser({
@@ -99,18 +111,16 @@ async function downloadInstagramWithBrowser({
             img.currentSrc ||
             img.src ||
             img.getAttribute("src"),
-          width:
-            Number(
-              img.naturalWidth ||
-                img.width ||
-                0
-            ),
-          height:
-            Number(
-              img.naturalHeight ||
-                img.height ||
-                0
-            ),
+          width: Number(
+            img.naturalWidth ||
+              img.width ||
+              0
+          ),
+          height: Number(
+            img.naturalHeight ||
+              img.height ||
+              0
+          ),
           alt:
             img.getAttribute("alt") || "",
         }))
@@ -130,12 +140,11 @@ async function downloadInstagramWithBrowser({
 
       return (
         preferred[0] ||
-        candidates
-          .sort(
-            (a, b) =>
-              b.width * b.height -
-              a.width * a.height
-          )[0] ||
+        candidates.sort(
+          (a, b) =>
+            b.width * b.height -
+            a.width * a.height
+        )[0] ||
         null
       );
     });
@@ -182,29 +191,8 @@ async function downloadInstagramWithBrowser({
       );
     }
 
-    let extension = ".jpg";
-
-    if (
-      contentType.includes("png")
-    ) {
-      extension = ".png";
-    } else if (
-      contentType.includes("webp")
-    ) {
-      extension = ".webp";
-    } else if (
-      contentType.includes("gif")
-    ) {
-      extension = ".gif";
-    } else if (
-      contentType.includes("avif")
-    ) {
-      extension = ".avif";
-    } else if (
-      contentType.includes("mp4")
-    ) {
-      extension = ".mp4";
-    }
+    const extension =
+      getExtension(contentType);
 
     const filePath = path.join(
       jobDirectory,
@@ -317,7 +305,7 @@ async function downloadInstagramProfile({
       5000
     );
 
-    const imageUrl =
+    const profileData =
       await page.evaluate(() => {
         const normalize = (value) => {
           if (!value) {
@@ -325,98 +313,229 @@ async function downloadInstagramProfile({
           }
 
           return String(value)
-            .replace(/&amp;/g, "&")
-            .replace(/\\u0026/g, "&")
-            .replace(/\\u003D/g, "=")
+            .replace(
+              /&amp;/g,
+              "&"
+            )
+            .replace(
+              /\\u0026/g,
+              "&"
+            )
+            .replace(
+              /\\u003D/g,
+              "="
+            )
             .trim();
         };
 
-        const isInstagramImage = (value) => {
-          return (
-            value &&
-            /^https?:\/\//i.test(value) &&
-            /cdninstagram\.com|fbcdn\.net|scontent/i.test(
+        const isRealInstagramImage =
+          (value) => {
+            if (!value) {
+              return false;
+            }
+
+            if (
+              !/^https?:\/\//i.test(
+                value
+              )
+            ) {
+              return false;
+            }
+
+            if (
+              /static\.cdninstagram\.com/i.test(
+                value
+              )
+            ) {
+              return false;
+            }
+
+            return /scontent[^/]*\.(fbcdn|cdninstagram)|fbcdn\.net|cdninstagram\.com/i.test(
               value
-            )
-          );
-        };
+            );
+          };
 
         const images = Array.from(
-          document.querySelectorAll("img")
+          document.querySelectorAll(
+            "img"
+          )
         );
 
-        const candidates = images
-          .map((img) => ({
-            src: normalize(
-              img.currentSrc ||
-                img.src ||
-                img.getAttribute("src")
-            ),
-            alt:
-              img.getAttribute("alt") || "",
-            width: Number(
-              img.naturalWidth ||
-                img.width ||
-                0
-            ),
-            height: Number(
-              img.naturalHeight ||
-                img.height ||
-                0
-            ),
-          }))
-          .filter((item) =>
-            isInstagramImage(item.src)
-          );
-
-        const profileImages =
-          candidates.filter((item) => {
-            const alt = item.alt.toLowerCase();
-
-            return (
-              alt.includes("profile picture") ||
-              alt.includes("profile photo") ||
-              alt.includes("profile image") ||
-              alt.includes("عکس پروفایل")
+        const candidates =
+          images
+            .map((img) => ({
+              src: normalize(
+                img.currentSrc ||
+                  img.src ||
+                  img.getAttribute(
+                    "src"
+                  )
+              ),
+              alt:
+                img.getAttribute(
+                  "alt"
+                ) || "",
+              width:
+                Number(
+                  img.naturalWidth ||
+                    img.width ||
+                    0
+                ),
+              height:
+                Number(
+                  img.naturalHeight ||
+                    img.height ||
+                    0
+                ),
+              loading:
+                img.getAttribute(
+                  "loading"
+                ) || "",
+            }))
+            .filter(
+              (item) =>
+                isRealInstagramImage(
+                  item.src
+                )
             );
-          });
 
-        if (profileImages.length) {
-          profileImages.sort(
-            (a, b) =>
-              b.width * b.height -
-              a.width * a.height
+        const unique =
+          Array.from(
+            new Map(
+              candidates.map(
+                (item) => [
+                  item.src,
+                  item,
+                ]
+              )
+            ).values()
           );
 
-          return profileImages[0].src;
+        const profileByAlt =
+          unique.filter(
+            (item) => {
+              const alt =
+                item.alt
+                  .toLowerCase();
+
+              return (
+                alt.includes(
+                  "profile picture"
+                ) ||
+                alt.includes(
+                  "profile photo"
+                ) ||
+                alt.includes(
+                  "profile image"
+                ) ||
+                alt.includes(
+                  "profile picture of"
+                ) ||
+                alt.includes(
+                  "عکس پروفایل"
+                )
+              );
+            }
+          );
+
+        if (
+          profileByAlt.length
+        ) {
+          profileByAlt.sort(
+            (a, b) =>
+              b.width *
+                b.height -
+              a.width *
+                a.height
+          );
+
+          return {
+            url:
+              profileByAlt[0].src,
+            method:
+              "profile-alt",
+          };
         }
 
-        const squareImages =
-          candidates
-            .filter((item) => {
+        const squareCandidates =
+          unique.filter(
+            (item) => {
               if (
-                item.width < 100 ||
-                item.height < 100
+                item.width <
+                  150 ||
+                item.height <
+                  150
               ) {
                 return false;
               }
 
               const ratio =
-                item.width / item.height;
+                item.width /
+                item.height;
 
               return (
-                ratio >= 0.9 &&
-                ratio <= 1.1
+                ratio >= 0.95 &&
+                ratio <= 1.05
               );
-            })
+            }
+          );
+
+        const nonTinySquare =
+          squareCandidates
+            .filter(
+              (item) =>
+                item.width >=
+                  200 &&
+                item.height >=
+                  200
+            )
             .sort(
               (a, b) =>
-                b.width * b.height -
-                a.width * a.height
+                b.width *
+                  b.height -
+                a.width *
+                  a.height
             );
 
-        if (squareImages.length) {
-          return squareImages[0].src;
+        if (
+          nonTinySquare.length
+        ) {
+          return {
+            url:
+              nonTinySquare[0]
+                .src,
+            method:
+              "square-dom",
+          };
+        }
+
+        const largeCandidates =
+          unique
+            .filter(
+              (item) =>
+                item.width >=
+                  200 &&
+                item.height >=
+                  200
+            )
+            .sort(
+              (a, b) =>
+                b.width *
+                  b.height -
+                a.width *
+                  a.height
+            );
+
+        if (
+          largeCandidates.length
+        ) {
+          return {
+            url:
+              largeCandidates[0]
+                .src,
+            method:
+              "large-dom",
+          };
         }
 
         const metaSelectors = [
@@ -426,38 +545,57 @@ async function downloadInstagramProfile({
           'meta[name="twitter:image:src"]',
         ];
 
-        for (const selector of metaSelectors) {
+        for (
+          const selector of
+            metaSelectors
+        ) {
           const element =
-            document.querySelector(selector);
+            document.querySelector(
+              selector
+            );
 
-          const content = normalize(
-            element?.getAttribute("content")
-          );
+          const content =
+            normalize(
+              element?.getAttribute(
+                "content"
+              )
+            );
 
           if (
-            isInstagramImage(content)
+            isRealInstagramImage(
+              content
+            )
           ) {
-            return content;
+            return {
+              url: content,
+              method:
+                "meta-fallback",
+            };
           }
         }
 
         return null;
       });
 
-    if (!imageUrl) {
+    if (
+      !profileData?.url
+    ) {
       throw new Error(
         "Instagram profile picture URL was not found"
       );
     }
 
     console.log(
-      "Instagram profile picture detected:",
-      imageUrl.slice(0, 180)
+      `Instagram profile picture detected (${profileData.method}):`,
+      profileData.url.slice(
+        0,
+        220
+      )
     );
 
     const response =
       await context.request.get(
-        imageUrl,
+        profileData.url,
         {
           headers: {
             Referer:
@@ -503,33 +641,10 @@ async function downloadInstagramProfile({
       );
     }
 
-    let extension = ".jpg";
-
-    if (
-      contentType.includes(
-        "png"
-      )
-    ) {
-      extension = ".png";
-    } else if (
-      contentType.includes(
-        "webp"
-      )
-    ) {
-      extension = ".webp";
-    } else if (
-      contentType.includes(
-        "avif"
-      )
-    ) {
-      extension = ".avif";
-    } else if (
-      contentType.includes(
-        "gif"
-      )
-    ) {
-      extension = ".gif";
-    }
+    const extension =
+      getExtension(
+        contentType
+      );
 
     const filePath =
       path.join(
