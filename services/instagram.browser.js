@@ -409,6 +409,32 @@ async function downloadInstagramProfile({
 
     await page.waitForTimeout(5000);
 
+    const username = new URL(normalizedUrl).pathname
+  .split("/")
+  .filter(Boolean)[0];
+
+const apiUrl =
+  `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+
+const apiResponse = await fetch(apiUrl, {
+  headers: {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+    "X-IG-App-ID": "936619743392459",
+    "X-Requested-With": "XMLHttpRequest",
+    "Accept": "*/*",
+    "Referer": `https://www.instagram.com/${username}/`,
+  },
+});
+
+const apiBody = await apiResponse.text();
+
+console.log(
+  "Instagram profile API TEST:",
+  apiResponse.status,
+  apiBody.slice(0, 1000)
+);
+
     console.log(
   "Instagram profile final URL:",
   page.url()
