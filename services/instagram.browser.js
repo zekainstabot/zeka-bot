@@ -49,30 +49,31 @@ function isValidImageUrl(value) {
     return false;
   }
 
-  try {
-    const url = new URL(value);
+  const url = String(value)
+    .replace(/&amp;/g, "&")
+    .replace(/\\u0026/g, "&")
+    .replace(/\\u003D/g, "=")
+    .replace(/\\"/g, '"')
+    .replace(/\\\//g, "/")
+    .trim();
 
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return false;
-    }
-
-    const hostname = url.hostname.toLowerCase();
-
-    if (
-      hostname.includes("static.cdninstagram.com") ||
-      hostname.includes("instagram.com")
-    ) {
-      return false;
-    }
-
-    return (
-      hostname.includes("cdninstagram.com") ||
-      hostname.includes("fbcdn.net") ||
-      hostname.includes("scontent")
-    );
-  } catch {
+  if (!/^https?:\/\//i.test(url)) {
     return false;
   }
+
+  if (/static\.cdninstagram\.com/i.test(url)) {
+    return false;
+  }
+
+  if (/instagram\.com\/static/i.test(url)) {
+    return false;
+  }
+
+  return (
+    /scontent[^/]*\.(fbcdn|cdninstagram)/i.test(url) ||
+    /fbcdn\.net/i.test(url) ||
+    /cdninstagram\.com/i.test(url)
+  );
 }
 
 function normalizeImageUrl(value) {
@@ -84,62 +85,114 @@ function normalizeImageUrl(value) {
     .replace(/&amp;/g, "&")
     .replace(/\\u0026/g, "&")
     .replace(/\\u003D/g, "=")
-    .replace(/\\u002F/g, "/")
+    .replace(/\\"/g, '"')
+    .replace(/\\\//g, "/")
     .trim();
 
-  if (
-    result.startsWith('"') &&
-    result.endsWith('"')
-  ) {
-    result = result.slice(1, -1);
-  }
+  result = result.replace(/^["']+|["']+$/g, "");
 
-  if (!/^https?:\/\//i.test(result)) {
-    return null;
-  }
-
-  return isValidImageUrl(result)
-    ? result
-    : null;
+  return isValidImageUrl(result) ? result : null;
 }
 
-function collectImageUrlsFromText(text) {
-  const urls = new Set();
-
+function extractImageUrlsFromText(text) {
   if (!text) {
     return [];
   }
 
-  const normalizedText = String(text)
-    .replace(/\\u0026/g, "&")
-    .replace(/\\u003D/g, "=")
-    .replace(/\\u002F/g, "/")
-    .replace(/&amp;/g, "&");
+  const source = String(text);
+  const found = new Set();
 
-  const matches = normalizedText.match(
-    /https?:\\?\/\\?\/[^"'\\\s<>]+/g
-  );
+  const patterns = [
+    /"profile_pic_url_hd"\s*:\s*"([^"]+)"/gi,
+    /"profile_pic_url"\s*:\s*"([^"]+)"/gi,
+    /"profile_picture_url"\s*:\s*"([^"]+)"/gi,
+    /"profile_image_url"\s*:\s*"([^"]+)"/gi,
+    /profile_pic_url_hd\\?"?\s*:\s*\\?"([^"]+)/gi,
+    /profile_pic_url\\?"?\s*:\s*\\?"([^"]+)/gi,
+    /https?:\\?\/\\?\/[^"'\\\s]+(?:fbcdn|cdninstagram)[^"'\\\s]*/gi,
+  ];
 
-  if (!matches) {
-    return [];
-  }
+  for (const pattern of patterns) {
+    let match;
 
-  for (const raw of matches) {
-    const cleaned = raw
-      .replace(/\\\//g, "/")
-      .replace(/\\u0026/g, "&")
-      .replace(/\\u003D/g, "=")
-      .replace(/&amp;/g, "&")
-      .replace(/[\\"]+$/g, "");
+    while ((match = pattern.exec(source)) !== null) {
+      const raw = match[1] || match[0];
 
-    const url = normalizeImageUrl(cleaned);
+      const normalized = normalizeImageUrl(raw);
 
-    if (url) {
-      urls.add(url);
+      if (normalized) {
+        found.add(normalized);
+      }
     }
   }
 
-  return [...urls];
+  return Array.from(found);
+}
+
+async function downloadImage({
+  context,
+  imageUrl,
+  jobDirectory,
+  fileName,
+}) {
+  const response = await context.request.get(
+    imageUrl,
+    {
+      headers: {
+        Referer: "https://www.instagram.com/",
+        Origin: "https://www.instagram.com",
+        Accept:
+          "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      },
+      timeout: 30000,
+    }
+  );
+
+  if (!response.ok()) {
+    throw new Error(
+      `Instagram image request failed: HTTP ${response.status()}`
+    );
+  }
+
+  const contentType = (
+    response.headers()["content-type"] || ""
+  ).toLowerCase();
+
+  if (!contentType.startsWith("image/")) {
+    throw new Error(
+      `Instagram image response is not an image: ${contentType}`
+    );
+  }
+
+  const buffer = await response.body();
+
+  if (!buffer || !buffer.length) {
+    throw new Error(
+      "Instagram image response is empty"
+    );
+  }
+
+  const extension = getExtension(contentType);
+
+  const filePath = path.join(
+    jobDirectory,
+    `${fileName}${extension}`
+  );
+
+  fs.writeFileSync(
+    filePath,
+    buffer
+  );
+
+  const fileSize = fs.statSync(
+    filePath
+  ).size;
+
+  return {
+    filePath,
+    fileSize,
+    contentType,
+  };
 }
 
 async function downloadInstagramWithBrowser({
@@ -155,9 +208,12 @@ async function downloadInstagramWithBrowser({
     String(jobId || Date.now())
   );
 
-  fs.mkdirSync(jobDirectory, {
-    recursive: true,
-  });
+  fs.mkdirSync(
+    jobDirectory,
+    {
+      recursive: true,
+    }
+  );
 
   let browser;
 
@@ -191,10 +247,13 @@ async function downloadInstagramWithBrowser({
 
     const page = await context.newPage();
 
-    await page.goto(normalizedUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
+    await page.goto(
+      normalizedUrl,
+      {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      }
+    );
 
     await page.waitForTimeout(4000);
 
@@ -253,70 +312,29 @@ async function downloadInstagramWithBrowser({
       );
     }
 
-    const response =
-      await context.request.get(
-        media.src,
-        {
-          headers: {
-            Referer:
-              "https://www.instagram.com/",
-          },
-        }
-      );
-
-    if (!response.ok()) {
-      throw new Error(
-        `Instagram media request failed: HTTP ${response.status()}`
-      );
-    }
-
-    const contentType =
-      (
-        response.headers()[
-          "content-type"
-        ] || ""
-      ).toLowerCase();
-
-    const buffer =
-      await response.body();
-
-    if (
-      !buffer ||
-      !buffer.length
-    ) {
-      throw new Error(
-        "Instagram media is empty"
-      );
-    }
-
-    const extension =
-      getExtension(contentType);
-
-    const filePath = path.join(
+    const downloaded = await downloadImage({
+      context,
+      imageUrl: media.src,
       jobDirectory,
-      `instagram_media${extension}`
-    );
+      fileName: "instagram_media",
+    });
 
-    fs.writeFileSync(
-      filePath,
-      buffer
+    console.log(
+      "Instagram browser download completed:",
+      downloaded.filePath
     );
-
-    const fileSize =
-      fs.statSync(filePath).size;
 
     return {
       success: true,
-      filePath,
-      fileSize,
-      contentType,
+      filePath: downloaded.filePath,
+      fileSize: downloaded.fileSize,
+      contentType: downloaded.contentType,
       sourceUrl: normalizedUrl,
     };
   } catch (error) {
     console.error(
       "Instagram browser download failed:",
-      error?.message ||
-        String(error)
+      error?.message || String(error)
     );
 
     throw error;
@@ -329,227 +347,20 @@ async function downloadInstagramWithBrowser({
   }
 }
 
-async function findProfileImageWithPage(page) {
-  const result =
-    await page.evaluate(() => {
-      const urls = new Set();
-
-      const add = (value) => {
-        if (!value) {
-          return;
-        }
-
-        const text = String(value)
-          .replace(/&amp;/g, "&")
-          .replace(/\\u0026/g, "&")
-          .replace(/\\u003D/g, "=")
-          .replace(/\\u002F/g, "/")
-          .replace(/\\\//g, "/")
-          .trim();
-
-        if (
-          /^https?:\/\//i.test(text) &&
-          (
-            /cdninstagram\.com/i.test(text) ||
-            /fbcdn\.net/i.test(text) ||
-            /scontent/i.test(text)
-          ) &&
-          !/static\.cdninstagram\.com/i.test(text)
-        ) {
-          urls.add(text);
-        }
-      };
-
-      const images = Array.from(
-        document.querySelectorAll("img")
-      );
-
-      for (const img of images) {
-        add(img.currentSrc);
-        add(img.src);
-        add(
-          img.getAttribute("src")
-        );
-
-        const srcset =
-          img.getAttribute(
-            "srcset"
-          );
-
-        if (srcset) {
-          for (
-            const part of srcset.split(",")
-          ) {
-            add(
-              part
-                .trim()
-                .split(/\s+/)[0]
-            );
-          }
-        }
-
-        const alt =
-          (
-            img.getAttribute(
-              "alt"
-            ) || ""
-          ).toLowerCase();
-
-        if (
-          alt.includes(
-            "profile"
-          ) ||
-          alt.includes(
-            "پروفایل"
-          ) ||
-          alt.includes(
-            "عکس"
-          )
-        ) {
-          add(img.currentSrc);
-          add(img.src);
-        }
-      }
-
-      const metaSelectors = [
-        'meta[property="og:image"]',
-        'meta[property="og:image:url"]',
-        'meta[name="twitter:image"]',
-        'meta[name="twitter:image:src"]',
-      ];
-
-      for (
-        const selector of metaSelectors
-      ) {
-        const element =
-          document.querySelector(
-            selector
-          );
-
-        add(
-          element?.getAttribute(
-            "content"
-          )
-        );
-      }
-
-      const scripts =
-        Array.from(
-          document.querySelectorAll(
-            "script"
-          )
-        );
-
-      for (const script of scripts) {
-        const text =
-          script.textContent || "";
-
-        const matches =
-          text.match(
-            /https?:\\?\/\\?\/[^"'\\\s<>]+/g
-          );
-
-        if (!matches) {
-          continue;
-        }
-
-        for (const match of matches) {
-          add(match);
-        }
-      }
-
-      const ranked = [
-        ...urls,
-      ];
-
-      return ranked;
-    });
-
-  return Array.isArray(result)
-    ? result
-    : [];
-}
-
-async function findProfileImageFromResponses(
-  responses
-) {
-  const urls = new Set();
-
-  for (const response of responses) {
-    try {
-      const contentType =
-        (
-          response.headers()[
-            "content-type"
-          ] || ""
-        ).toLowerCase();
-
-      if (
-        contentType.startsWith(
-          "image/"
-        )
-      ) {
-        const url =
-          response.url();
-
-        if (
-          isValidImageUrl(url)
-        ) {
-          urls.add(url);
-        }
-
-        continue;
-      }
-
-      if (
-        contentType.includes(
-          "json"
-        ) ||
-        contentType.includes(
-          "javascript"
-        ) ||
-        contentType.includes(
-          "text"
-        )
-      ) {
-        const text =
-          await response.text();
-
-        for (
-          const url of
-            collectImageUrlsFromText(
-              text
-            )
-        ) {
-          urls.add(url);
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return [
-    ...urls,
-  ];
-}
-
 async function downloadInstagramProfile({
   url,
   jobId,
 }) {
   ensureDownloadRoot();
 
-  const normalizedUrl =
-    cleanUrl(url);
+  const normalizedUrl = cleanUrl(url);
 
-  const jobDirectory =
-    path.join(
-      DOWNLOAD_ROOT,
-      `profile-${String(
-        jobId || Date.now()
-      )}`
-    );
+  const jobDirectory = path.join(
+    DOWNLOAD_ROOT,
+    `profile-${String(
+      jobId || Date.now()
+    )}`
+  );
 
   fs.mkdirSync(
     jobDirectory,
@@ -575,253 +386,412 @@ async function downloadInstagramProfile({
       ],
     });
 
-    const context =
-      await browser.newContext({
-        userAgent:
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        locale: "en-US",
-        timezoneId: "UTC",
-        viewport: {
-          width: 1280,
-          height: 720,
-        },
-      });
+    const context = await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      locale: "en-US",
+      timezoneId: "UTC",
+      viewport: {
+        width: 1280,
+        height: 720,
+      },
+    });
 
-    const capturedResponses = [];
-
-    const responseListener =
-      (response) => {
-        const responseUrl =
-          response.url();
-
-        if (
-          /cdninstagram\.com|fbcdn\.net|scontent|graphql/i.test(
-            responseUrl
-          )
-        ) {
-          capturedResponses.push(
-            response
-          );
-        }
-      };
-
-    pageResponseSetup:
-    {
-      // Intentionally empty label scope.
-    }
-
-    const page =
-      await context.newPage();
-
-    page.on(
-      "response",
-      responseListener
-    );
+    const page = await context.newPage();
 
     await page.goto(
       normalizedUrl,
       {
-        waitUntil:
-          "domcontentloaded",
+        waitUntil: "domcontentloaded",
         timeout: 30000,
       }
     );
 
-    await page.waitForTimeout(
-      3000
-    );
+    await page.waitForTimeout(5000);
 
-    let imageUrls =
-      await findProfileImageWithPage(
-        page
-      );
+    const profileData = await page.evaluate(() => {
+      const normalize = (value) => {
+        if (!value) {
+          return null;
+        }
 
-    console.log(
-      "Instagram profile DOM image candidates:",
-      imageUrls.length
-    );
+        return String(value)
+          .replace(/&amp;/g, "&")
+          .replace(/\\u0026/g, "&")
+          .replace(/\\u003D/g, "=")
+          .replace(/\\"/g, '"')
+          .replace(/\\\//g, "/")
+          .trim()
+          .replace(/^["']+|["']+$/g, "");
+      };
 
-    if (
-      imageUrls.length === 0
-    ) {
-      await page.waitForTimeout(
-        3000
-      );
+      const isRealInstagramImage = (value) => {
+        if (!value) {
+          return false;
+        }
 
-      imageUrls =
-        await findProfileImageWithPage(
-          page
+        const normalized = normalize(value);
+
+        if (!normalized) {
+          return false;
+        }
+
+        if (
+          !/^https?:\/\//i.test(
+            normalized
+          )
+        ) {
+          return false;
+        }
+
+        if (
+          /static\.cdninstagram\.com/i.test(
+            normalized
+          )
+        ) {
+          return false;
+        }
+
+        if (
+          /instagram\.com\/static/i.test(
+            normalized
+          )
+        ) {
+          return false;
+        }
+
+        return (
+          /scontent[^/]*\.(fbcdn|cdninstagram)/i.test(
+            normalized
+          ) ||
+          /fbcdn\.net/i.test(
+            normalized
+          ) ||
+          /cdninstagram\.com/i.test(
+            normalized
+          )
         );
-    }
+      };
 
-    const responseUrls =
-      await findProfileImageFromResponses(
-        capturedResponses
+      const extractFromText = (text) => {
+        if (!text) {
+          return [];
+        }
+
+        const source = String(text);
+        const found = new Set();
+
+        const patterns = [
+          /"profile_pic_url_hd"\s*:\s*"([^"]+)"/gi,
+          /"profile_pic_url"\s*:\s*"([^"]+)"/gi,
+          /"profile_picture_url"\s*:\s*"([^"]+)"/gi,
+          /"profile_image_url"\s*:\s*"([^"]+)"/gi,
+          /profile_pic_url_hd\\?"?\s*:\s*\\?"([^"]+)/gi,
+          /profile_pic_url\\?"?\s*:\s*\\?"([^"]+)/gi,
+          /https?:\\?\/\\?\/[^"'\\\s]+(?:fbcdn|cdninstagram)[^"'\\\s]*/gi,
+        ];
+
+        for (const pattern of patterns) {
+          let match;
+
+          while (
+            (match = pattern.exec(source)) !== null
+          ) {
+            const raw =
+              match[1] ||
+              match[0];
+
+            const value =
+              normalize(raw);
+
+            if (
+              isRealInstagramImage(
+                value
+              )
+            ) {
+              found.add(value);
+            }
+          }
+        }
+
+        return Array.from(found);
+      };
+
+      const candidates = [];
+
+      const addCandidate = (
+        value,
+        method,
+        score = 0
+      ) => {
+        const normalized =
+          normalize(value);
+
+        if (
+          !isRealInstagramImage(
+            normalized
+          )
+        ) {
+          return;
+        }
+
+        if (
+          candidates.some(
+            (item) =>
+              item.url ===
+              normalized
+          )
+        ) {
+          return;
+        }
+
+        candidates.push({
+          url: normalized,
+          method,
+          score,
+        });
+      };
+
+      const scripts = Array.from(
+        document.querySelectorAll(
+          "script"
+        )
       );
 
-    for (
-      const responseUrl of
-        responseUrls
-    ) {
-      if (
-        !imageUrls.includes(
-          responseUrl
-        )
-      ) {
-        imageUrls.push(
-          responseUrl
+      for (const script of scripts) {
+        const text =
+          script.textContent || "";
+
+        const urls =
+          extractFromText(text);
+
+        for (const imageUrl of urls) {
+          let score = 50;
+
+          if (
+            /profile_pic_url_hd/i.test(
+              text
+            )
+          ) {
+            score = 100;
+          } else if (
+            /profile_pic_url/i.test(
+              text
+            )
+          ) {
+            score = 90;
+          }
+
+          addCandidate(
+            imageUrl,
+            "script-profile-data",
+            score
+          );
+        }
+      }
+
+      const html =
+        document.documentElement?.outerHTML ||
+        "";
+
+      const htmlUrls =
+        extractFromText(html);
+
+      for (const imageUrl of htmlUrls) {
+        addCandidate(
+          imageUrl,
+          "html-profile-data",
+          80
         );
       }
-    }
+
+      const metaSelectors = [
+        'meta[property="og:image"]',
+        'meta[property="og:image:url"]',
+        'meta[name="twitter:image"]',
+        'meta[name="twitter:image:src"]',
+      ];
+
+      for (const selector of metaSelectors) {
+        const element =
+          document.querySelector(
+            selector
+          );
+
+        const value =
+          element?.getAttribute(
+            "content"
+          );
+
+        addCandidate(
+          value,
+          "meta",
+          70
+        );
+      }
+
+      const images = Array.from(
+        document.querySelectorAll(
+          "img"
+        )
+      );
+
+      for (const img of images) {
+        const src =
+          img.currentSrc ||
+          img.src ||
+          img.getAttribute("src");
+
+        const alt =
+          img.getAttribute("alt") ||
+          "";
+
+        let score = 20;
+
+        if (
+          /profile picture|profile photo|profile image/i.test(
+            alt
+          )
+        ) {
+          score = 95;
+        }
+
+        const width = Number(
+          img.naturalWidth ||
+            img.width ||
+            0
+        );
+
+        const height = Number(
+          img.naturalHeight ||
+            img.height ||
+            0
+        );
+
+        if (
+          width >= 150 &&
+          height >= 150
+        ) {
+          score += 10;
+        }
+
+        addCandidate(
+          src,
+          "dom-image",
+          score
+        );
+      }
+
+      candidates.sort(
+        (a, b) =>
+          b.score - a.score
+      );
+
+      return {
+        candidates,
+        scriptCount: scripts.length,
+        imageCount: images.length,
+      };
+    });
 
     console.log(
-      "Instagram profile total image candidates:",
-      imageUrls.length
+      "Instagram profile script count:",
+      profileData?.scriptCount || 0
+    );
+
+    console.log(
+      "Instagram profile DOM image count:",
+      profileData?.imageCount || 0
+    );
+
+    console.log(
+      "Instagram profile candidate count:",
+      profileData?.candidates?.length || 0
     );
 
     if (
-      !imageUrls.length
+      profileData?.candidates?.length
+    ) {
+      console.log(
+        "Instagram profile candidate methods:",
+        profileData.candidates
+          .slice(0, 10)
+          .map(
+            (item) =>
+              `${item.method}:${item.score}`
+          )
+          .join(", ")
+      );
+    }
+
+    if (
+      !profileData?.candidates?.length
     ) {
       throw new Error(
         "Instagram profile picture URL was not found"
       );
     }
 
-    let downloaded = false;
     let lastError = null;
 
     for (
-      let i = 0;
-      i < Math.min(
-        imageUrls.length,
-        20
-      );
-      i++
+      const candidate of
+        profileData.candidates
     ) {
-      const imageUrl =
-        imageUrls[i];
-
       try {
         console.log(
-          `Instagram profile candidate ${i + 1}/${Math.min(
-            imageUrls.length,
-            20
-          )}:`,
-          imageUrl.slice(
+          `Trying Instagram profile candidate (${candidate.method}, score ${candidate.score}):`,
+          candidate.url.slice(
             0,
-            180
+            220
           )
         );
 
-        const response =
-          await context.request.get(
-            imageUrl,
-            {
-              headers: {
-                Referer:
-                  normalizedUrl,
-                Accept:
-                  "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-              },
-              timeout: 20000,
-            }
-          );
-
-        if (
-          !response.ok()
-        ) {
-          throw new Error(
-            `HTTP ${response.status()}`
-          );
-        }
-
-        const contentType =
-          (
-            response.headers()[
-              "content-type"
-            ] || ""
-          ).toLowerCase();
-
-        if (
-          !contentType.startsWith(
-            "image/"
-          )
-        ) {
-          throw new Error(
-            `Invalid content type: ${contentType}`
-          );
-        }
-
-        const buffer =
-          await response.body();
-
-        if (
-          !buffer ||
-          !buffer.length
-        ) {
-          throw new Error(
-            "Image is empty"
-          );
-        }
-
-        const extension =
-          getExtension(
-            contentType
-          );
-
-        const filePath =
-          path.join(
+        const downloaded =
+          await downloadImage({
+            context,
+            imageUrl:
+              candidate.url,
             jobDirectory,
-            `instagram_profile${extension}`
-          );
-
-        fs.writeFileSync(
-          filePath,
-          buffer
-        );
-
-        const fileSize =
-          fs.statSync(
-            filePath
-          ).size;
+            fileName:
+              "instagram_profile",
+          });
 
         console.log(
           "Instagram profile picture download completed:",
-          filePath
+          downloaded.filePath
         );
-
-        downloaded = true;
 
         return {
           success: true,
-          filePath,
-          fileSize,
-          contentType,
+          filePath:
+            downloaded.filePath,
+          fileSize:
+            downloaded.fileSize,
+          contentType:
+            downloaded.contentType,
           sourceUrl:
             normalizedUrl,
           mediaType:
             "PROFILE",
         };
       } catch (error) {
-        lastError =
-          error;
+        lastError = error;
 
-        console.log(
-          `Instagram profile candidate ${i + 1} failed:`,
+        console.error(
+          `Instagram profile candidate failed (${candidate.method}):`,
           error?.message ||
             String(error)
         );
       }
     }
 
-    if (!downloaded) {
-      throw new Error(
-        `Instagram profile picture download failed: ${
-          lastError?.message ||
-          "no usable image"
-        }`
-      );
-    }
+    throw (
+      lastError ||
+      new Error(
+        "Instagram profile picture download failed"
+      )
+    );
   } catch (error) {
     console.error(
       "Instagram profile download failed:",
