@@ -429,6 +429,11 @@ const apiResponse = await fetch(apiUrl, {
 
 const apiBody = await apiResponse.text();
 
+    console.log(
+  "Instagram profile API FULL RESPONSE:",
+  apiBody
+);
+
 console.log(
   "Instagram profile API TEST:",
   apiResponse.status,
