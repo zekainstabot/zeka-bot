@@ -409,6 +409,32 @@ async function downloadInstagramProfile({
 
     await page.waitForTimeout(5000);
 
+    console.log(
+  "Instagram profile final URL:",
+  page.url()
+);
+
+console.log(
+  "Instagram profile page title:",
+  await page.title()
+);
+
+console.log(
+  "Instagram profile body text:",
+  (
+    await page.locator("body").innerText().catch(() => "")
+  )
+    .replace(/\s+/g, " ")
+    .slice(0, 1000)
+);
+
+console.log(
+  "Instagram profile HTML length:",
+  (
+    await page.content()
+  ).length
+);
+
     const profileData = await page.evaluate(() => {
       const normalize = (value) => {
         if (!value) {
