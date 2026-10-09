@@ -552,13 +552,53 @@ function createDownloadHandler({
       const downloadCost =
         getDownloadCost(parsed.contentType);
 
-      const remainingCredit =
-        await getBalance(user.id);
+                  const remainingCredit =
+              await getBalance(userId);
 
-      const creditMessage = consumesCredit
-        ? `💳 هزینه دانلود: ${downloadCost} اعتبار\n` +
-          `💰 مانده اعتبار: ${remainingCredit} اعتبار`
-        : "⭐ زکا پرو: دانلود بدون کسر اعتبار";
+            const reservations =
+              await creditReservationRepository.findByJobId(
+                job.id
+              );
+
+            const releasedCredit =
+              reservations
+                .filter(
+                  (reservation) =>
+                    reservation.status === "RELEASED"
+                )
+                .reduce(
+                  (total, reservation) =>
+                    total + Number(reservation.amount || 0),
+                  0
+                );
+
+            const reservedCredit =
+              reservations
+                .filter(
+                  (reservation) =>
+                    reservation.status === "RESERVED"
+                )
+                .reduce(
+                  (total, reservation) =>
+                    total + Number(reservation.amount || 0),
+                  0
+                );
+
+            let creditMessage;
+
+            if (releasedCredit > 0 && reservedCredit === 0) {
+              creditMessage =
+                `✅ ${releasedCredit} اعتبار برگشت داده شد.\n` +
+                `💰 مانده اعتبار: ${remainingCredit}`;
+            } else if (reservedCredit > 0) {
+              creditMessage =
+                "⚠️ وضعیت بازگشت اعتبار هنوز نهایی نشده است.\n" +
+                `💰 مانده اعتبار فعلی: ${remainingCredit}`;
+            } else {
+              creditMessage =
+                "⭐ اعتباری از حساب شما کسر نشده است.\n" +
+                `💰 مانده اعتبار: ${remainingCredit}`;
+            }
 
       const statusMessage =
         await ctx.reply(
