@@ -434,27 +434,33 @@ function createDownloadHandler({
         return;
       }
 
+      
       const cooldownMs =
-  Number(queueConfig.cooldown?.downloadRequestMs) ||
-  20_000;
+        Number(queueConfig.cooldown?.downloadRequestMs) ||
+        20_000;
 
-const lastRequestAt =
-  downloadCooldowns.get(userId) || 0;
+      const remainingMs =
+        await downloadRequestCooldownRepository.getRemainingCooldown(
+          user.id,
+          cooldownMs
+        );
 
-const remainingMs =
-  cooldownMs - (Date.now() - lastRequestAt);
+      if (remainingMs > 0) {
+        const remainingSeconds = Math.ceil(
+          remainingMs / 1000
+        );
 
-if (remainingMs > 0) {
-  const remainingSeconds = Math.ceil(
-    remainingMs / 1000
-  );
+        await ctx.reply(
+          `⏳ برای ارسال لینک بعدی، ${remainingSeconds} ثانیه صبر کن.`
+        );
 
-  await ctx.reply(
-    `⏳ برای ارسال لینک بعدی، ${remainingSeconds} ثانیه صبر کن.`
-  );
+        return;
+      }
 
-  return;
-}
+      await downloadRequestCooldownRepository.setCooldown(
+        user.id
+      );
+
 
 downloadCooldowns.set(userId, Date.now());
 
