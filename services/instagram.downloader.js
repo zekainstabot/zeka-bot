@@ -45,6 +45,31 @@ function createOutputTemplate(jobId) {
   };
 }
 
+
+async function createStoryCookieFile(jobDirectory, contentType) {
+  if (contentType !== "STORY") {
+    return null;
+  }
+
+  const cookieText = await getInstagramCookie();
+
+  if (!cookieText) {
+    return null;
+  }
+
+  const cookiePath = path.join(
+    jobDirectory,
+    ".instagram-cookies.txt"
+  );
+
+  fs.writeFileSync(cookiePath, cookieText, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+
+  return cookiePath;
+}
+
 async function downloadStoryWithGalleryDl({
   url,
   jobDirectory,
