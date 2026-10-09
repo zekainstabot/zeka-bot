@@ -166,18 +166,29 @@ function createDownloadHandler({
           return;
         }
 
-        if (
+               if (
           job.status === "FAILED" ||
           job.status === "CANCELLED"
         ) {
           stop();
 
           try {
+            const remainingCredit =
+              await getBalance(userId);
+
+            const creditMessage =
+              Number(job.reserved_cost || 0) > 0
+                ? `💳 اعتبار برگشت داده شد.\n` +
+                  `💰 مانده اعتبار: ${remainingCredit}`
+                : "⭐ اعتباری از حساب شما کسر نشد.";
+
             await ctx.telegram.editMessageText(
               ctx.chat.id,
               messageId,
               undefined,
               "❌ دانلود انجام نشد.\n\n" +
+                creditMessage +
+                "\n\n" +
                 `⏱ زمان: ${formatElapsed(
                   elapsed
                 )}\n\n` +
