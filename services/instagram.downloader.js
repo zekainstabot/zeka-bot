@@ -1084,18 +1084,19 @@ async function downloadInstagramMedia({
     );
 
     if (
-      isRateLimitError(
-        error
-      )
-    ) {
-      console.log(
-        "Instagram yt-dlp received HTTP 429."
-      );
+  isRateLimitError(error) ||
+  (
+    normalizedContentType === "STORY" &&
+    /login|log in|authentication|cookies|sign in/i.test(message)
+  )
+) {
+  console.log(
+    "Instagram yt-dlp fallback condition detected."
+  );
 
-      console.log(
-        "Switching to Browser fallback."
-      );
-
+  console.log(
+    "Switching to Browser fallback."
+  );
       return await downloadWithBrowserFallback({
         url:
           normalizedUrl,
