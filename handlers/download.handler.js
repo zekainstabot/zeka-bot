@@ -571,46 +571,33 @@ function createDownloadHandler({
         return;
       }
 
-      const result =
-        await createDownloadRequest({
-          userId: user.id,
-          platform:
-            parsed.platform,
-          originalUrl: text,
-          normalizedUrl:
-            parsed.url,
-          contentType:
-            parsed.contentType,
-        });
+      ```
+  const result =
+    await createDownloadRequest({
+      userId: user.id,
+      platform: parsed.platform,
+      originalUrl: text,
+      normalizedUrl: parsed.url,
+      contentType: parsed.contentType,
+    });
 
-      
+  const job = result.job;
 
-      const statusMessage =
-        await ctx.reply(
-          "⏳ درخواستت ثبت شد.\n\n" +
-            creditMessage +
-            "\n\n" +
-            "⚙️ در حال آماده‌سازی فایل...\n\n" +
-            "⏱ زمان: 00:00",
-          statusKeyboard(job.id)
-        );
-            watchJob({
-        ctx,
-        jobId: job.id,
-        messageId:
-          statusMessage.message_id,
-        userId: user.id,
-      }).catch((error) => {
-        console.error(
-          "Failed to watch download:",
-          error
-        );
-      });
-    } catch (error) {
-      console.error(
-        "Download request failed:",
-        error
-      );
+  const consumesCredit =
+    await shouldConsumeCredit(user.id);
+
+  const downloadCost =
+    getDownloadCost(parsed.contentType);
+
+  const remainingCredit =
+    await getBalance(user.id);
+
+  const creditMessage = consumesCredit
+    ? `💳 هزینه دانلود: ${downloadCost} اعتبار\n` +
+      `💰 مانده اعتبار: ${remainingCredit} اعتبار`
+    : "⭐ زکا پرو: دانلود بدون کسر اعتبار";
+```
+
 
       if (
         error &&
