@@ -1,11 +1,11 @@
 const { Telegraf } = require("telegraf");
 
-const {
+cconst {
   mainMenu,
+  downloadMenu,
   accountMenu,
   gamesMenu,
 } = require("./config/bot-menus");
-
 const config = require("./config/app");
 
 const {
