@@ -1,6 +1,7 @@
 function createDownloadHandler({
   bot,
   mainMenu,
+  downloadMenu,
 }) {
   const {
     getOrCreateUser,
