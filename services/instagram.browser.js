@@ -202,13 +202,13 @@ async function downloadVideo({
     response.headers()["content-type"] || ""
   ).toLowerCase();
 
-  if (
-    !contentType.startsWith("video/") &&
-    !/\.mp4(?:$|[?#])/i.test(normalizedUrl)
-  ) {
-    throw new Error(
-      `Instagram response is not a video: ${contentType}`
-    );
+  if (!contentType.startsWith("video/")) {
+  throw new Error(
+    `Instagram response is not a video: ${
+      contentType || "missing content-type"
+    }`
+  );
+}
   }
 
   const buffer = await response.body();
