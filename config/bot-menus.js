@@ -14,7 +14,6 @@ const downloadMenu = Markup.keyboard([
   ["🔙 بازگشت"],
 ])
   .resize()
-  .persistent();
 
 const accountMenu = Markup.keyboard([
   ["📊 اعتبار من", "🏆 سطح و XP"],
