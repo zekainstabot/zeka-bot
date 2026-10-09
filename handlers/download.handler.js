@@ -161,10 +161,6 @@ function createDownloadHandler({
         ) {
           stop();
 
-          disableDownloadMode(
-            ctx.from.id
-          );
-
           try {
             await ctx.telegram.editMessageText(
               ctx.chat.id,
