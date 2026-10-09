@@ -1211,21 +1211,34 @@ async function downloadInstagramMedia({
   );
 
   try {
-    const downloadResult = await ytdlp(
-      normalizedUrl,
-      {
-        output: outputTemplate,
-        format,
-        noPlaylist: true,
-        noWarnings: true,
-        cookies: cookiePath || undefined,
-        print: "description",
-      }
-    );
+    
+const downloadResult = await ytdlp(
+  normalizedUrl,
+  {
+    output: outputTemplate,
+    format,
+    noPlaylist: true,
+    noWarnings: true,
+    cookies: cookiePath || undefined,
+    print: "description",
+  }
+);
 
-    var instagramCaption = String(
-      downloadResult?.stdout || ""
-    ).trim();
+console.log(
+  "Instagram yt-dlp diagnostic:",
+  JSON.stringify({
+    stdout: downloadResult?.stdout || "",
+    stderr: downloadResult?.stderr || "",
+    jobDirectory,
+    outputTemplate,
+    files: fs.readdirSync(jobDirectory),
+  })
+);
+
+var instagramCaption = String(
+  downloadResult?.stdout || ""
+).trim();
+
   } catch (
     error
   ) {
