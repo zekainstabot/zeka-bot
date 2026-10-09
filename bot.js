@@ -69,6 +69,11 @@ const {
   createSuperAdminHandler,
 } = require("./handlers/super-admin.handler");
 
+
+const {
+  createInstagramCookieHandler,
+} = require("./handlers/instagram-cookie.handler");
+
 const {
   createQuizHandler,
   cleanupQuizTimers,
