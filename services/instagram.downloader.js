@@ -1251,9 +1251,10 @@ async function downloadInstagramMedia({
 
   try {
     return await downloadStoryWithGalleryDl({
-      url: normalizedUrl,
-      jobDirectory,
-    });
+  url: normalizedUrl,
+  jobDirectory,
+  cookiePath,
+});
   } catch (galleryError) {
     console.error(
       "Instagram Story gallery-dl failed:",
