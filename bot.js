@@ -179,9 +179,10 @@ createInstagramCookieHandler(bot);
   );
 
     createDownloadHandler({
-    bot,
-    mainMenu,
-  });
+  bot,
+  mainMenu,
+  downloadMenu,
+});
 
   createNavigationHandler({
     bot,
