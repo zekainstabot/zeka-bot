@@ -1211,24 +1211,21 @@ async function downloadInstagramMedia({
   );
 
   try {
-    await ytdlp(
+    const downloadResult = await ytdlp(
       normalizedUrl,
       {
-        output:
-          outputTemplate,
-
+        output: outputTemplate,
         format,
-
-        noPlaylist:
-          true,
-
-        noWarnings:
-          true,
-
-        cookies:
-          cookiePath || undefined,
+        noPlaylist: true,
+        noWarnings: true,
+        cookies: cookiePath || undefined,
+        print: "description",
       }
     );
+
+    var instagramCaption = String(
+      downloadResult?.stdout || ""
+    ).trim();
   } catch (
     error
   ) {
