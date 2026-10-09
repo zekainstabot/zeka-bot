@@ -31,6 +31,9 @@ function createDownloadHandler({
   const jobRepository =
     require("../repositories/job.repository");
 
+    const creditReservationRepository =
+    require("../repositories/credit.reservation.repository");
+
   const activeWatchers = new Map();
   const reportStates = new Map();
   const downloadStates = new Map();
