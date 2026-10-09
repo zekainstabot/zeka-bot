@@ -212,8 +212,6 @@ async function downloadVideo({
 
   const buffer = await response.body();
 
-  const buffer = await response.body();
-
   if (!buffer || !buffer.length) {
     throw new Error("Instagram video response is empty");
   }
