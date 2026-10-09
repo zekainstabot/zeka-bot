@@ -536,10 +536,6 @@ function createDownloadHandler({
         error
       );
 
-      disableDownloadMode(
-        ctx.from.id
-      );
-
       if (
         error &&
         error.code ===
