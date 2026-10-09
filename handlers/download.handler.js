@@ -169,7 +169,7 @@ function createDownloadHandler({
           return;
         }
 
-               if (
+                       if (
           job.status === "FAILED" ||
           job.status === "CANCELLED"
         ) {
@@ -179,11 +179,53 @@ function createDownloadHandler({
             const remainingCredit =
               await getBalance(userId);
 
-            const creditMessage =
-              Number(job.reserved_cost || 0) > 0
-                ? `💳 اعتبار برگشت داده شد.\n` +
-                  `💰 مانده اعتبار: ${remainingCredit}`
-                : "⭐ اعتباری از حساب شما کسر نشد.";
+            const reservations =
+              await creditReservationRepository.findByJobId(
+                job.id
+              );
+
+            const releasedCredit =
+              reservations
+                .filter(
+                  (reservation) =>
+                    reservation.status === "RELEASED"
+                )
+                .reduce(
+                  (total, reservation) =>
+                    total + Number(reservation.amount || 0),
+                  0
+                );
+
+            const reservedCredit =
+              reservations
+                .filter(
+                  (reservation) =>
+                    reservation.status === "RESERVED"
+                )
+                .reduce(
+                  (total, reservation) =>
+                    total + Number(reservation.amount || 0),
+                  0
+                );
+
+            let creditMessage;
+
+            if (
+              releasedCredit > 0 &&
+              reservedCredit === 0
+            ) {
+              creditMessage =
+                `✅ ${releasedCredit} اعتبار برگشت داده شد.\n` +
+                `💰 مانده اعتبار: ${remainingCredit}`;
+            } else if (reservedCredit > 0) {
+              creditMessage =
+                "⚠️ وضعیت بازگشت اعتبار هنوز نهایی نشده است.\n" +
+                `💰 مانده اعتبار فعلی: ${remainingCredit}`;
+            } else {
+              creditMessage =
+                "⭐ اعتبار رزروشده‌ای برای این دانلود پیدا نشد.\n" +
+                `💰 مانده اعتبار: ${remainingCredit}`;
+            }
 
             await ctx.telegram.editMessageText(
               ctx.chat.id,
@@ -192,9 +234,7 @@ function createDownloadHandler({
               "❌ دانلود انجام نشد.\n\n" +
                 creditMessage +
                 "\n\n" +
-                `⏱ زمان: ${formatElapsed(
-                  elapsed
-                )}\n\n` +
+                `⏱ زمان: ${formatElapsed(elapsed)}\n\n` +
                 "اگر مشکل ادامه داشت، گزارش اشکال را بزن.",
               statusKeyboard(job.id)
             );
