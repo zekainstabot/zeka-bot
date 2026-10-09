@@ -498,6 +498,18 @@ await page.waitForTimeout(5000);
       }
     }
 
+    if (normalizedType === "STORY") {
+  throw new Error(
+    "Instagram story media was not identified. Refusing to send a profile image as story content."
+  );
+}
+
+if (!media.images.length) {
+  throw new Error(
+    "Instagram media URL was not found. The content may require login or may be unavailable."
+  );
+}
+
     if (!media.images.length) {
       throw new Error(
         "Instagram media URL was not found. The content may require login or may be unavailable."
