@@ -1333,6 +1333,7 @@ if (isRateLimitError(error)) {
     filePath
   );
 
+  
   return {
     success: true,
 
@@ -1346,9 +1347,13 @@ if (isRateLimitError(error)) {
     mediaType:
       normalizedContentType,
 
+    caption:
+      instagramCaption || "",
+
     finalCost:
       null,
   };
+
 }
 
 module.exports = {
