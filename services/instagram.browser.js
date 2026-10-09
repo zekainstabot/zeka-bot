@@ -485,9 +485,10 @@ await page.waitForTimeout(5000);
       }
 
       if (
-        normalizedType === "REEL" ||
-        normalizedType === "VIDEO"
-      ) {
+  normalizedType === "STORY" ||
+  normalizedType === "REEL" ||
+  normalizedType === "VIDEO"
+) {
         throw (
           lastVideoError ||
           new Error(
