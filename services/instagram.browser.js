@@ -404,11 +404,27 @@ async function downloadInstagramWithBrowser({
     const page = await context.newPage();
 
     await page.goto(normalizedUrl, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
+  waitUntil: "domcontentloaded",
+  timeout: 30000,
+});
 
-    await page.waitForTimeout(5000);
+if (normalizedType === "STORY") {
+  const finalUrl = new URL(page.url());
+  const pathParts = finalUrl.pathname
+    .split("/")
+    .filter(Boolean);
+
+  if (
+    pathParts[0] !== "stories" ||
+    pathParts.length < 3
+  ) {
+    throw new Error(
+      "Instagram redirected the story URL to a non-story page. Story download cancelled."
+    );
+  }
+}
+
+await page.waitForTimeout(5000);
 
     const media = await extractMediaFromPage(page);
 
