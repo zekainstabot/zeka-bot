@@ -267,6 +267,33 @@ function createDownloadHandler({
         ctx.from.id
       );
 
+        bot.hears(
+    "📥 دانلود",
+    async (ctx) => {
+      enableDownloadMode(ctx.from.id);
+
+      await ctx.reply(
+        "📥 حالت دانلود فعال شد.\n\n" +
+          "حالا لینک محتوایی که می‌خواهی دانلود شود را ارسال کن.\n\n" +
+          "مثال:\n" +
+          "https://www.instagram.com/...",
+        downloadMenu
+      );
+    }
+  );
+
+  bot.hears(
+    "🔙 بازگشت",
+    async (ctx) => {
+      disableDownloadMode(ctx.from.id);
+
+      await ctx.reply(
+        "🏠 منوی اصلی",
+        mainMenu
+      );
+    }
+  );
+
       await ctx.reply(
         "📥 حالت دانلود فعال شد.\n\n" +
           "حالا لینک محتوایی که می‌خواهی دانلود شود را ارسال کن.\n\n" +
