@@ -140,12 +140,11 @@ function createMultipartRequest({
       `Content-Disposition: form-data; name="${uploadConfig.fieldName}"; filename="${fileName}"\r\n` +
       `Content-Type: ${uploadConfig.mimeType}\r\n\r\n`;
 
-    const captionPart = captionValue
-      ? `--${boundary}\r\n` +
+        const captionPart = captionValue
+      ? `\r\n--${boundary}\r\n` +
         `Content-Disposition: form-data; name="caption"\r\n\r\n` +
         `${captionValue}\r\n`
       : "";
-
     const ending =
       `\r\n--${boundary}--\r\n`;
 
