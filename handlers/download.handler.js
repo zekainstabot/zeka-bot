@@ -113,93 +113,61 @@ function createDownloadHandler({
         );
 
         if (job.status === "COMPLETED") {
-          stop();
+  stop();
 
-          try {
-            await ctx.telegram.deleteMessage(
-              ctx.chat.id,
-              messageId
-            );
-          } catch (error) {
-            console.error(
-              "Failed to delete download status message:",
-              error
-            );
-          }
+  try {
+    await ctx.telegram.deleteMessage(
+      ctx.chat.id,
+      messageId
+    );
+  } catch (error) {
+    console.error(
+      "Failed to delete download status message:",
+      error
+    );
+  }
 
-          return;
-        }
+  try {
+    const consumesCredit = await shouldConsumeCredit(userId);
+    const remainingCredit = await getBalance(userId);
 
-        if (
-          job.status === "FAILED" ||
-          job.status === "CANCELLED"
-        ) {
-          stop();
+    if (consumesCredit) {
+      const reservations =
+        await creditReservationRepository.findByJobId(job.id);
 
-          try {
-            const remainingCredit = await getBalance(userId);
+      const consumedCredit = reservations
+        .filter(
+          (reservation) =>
+            reservation.status === "CONSUMED"
+        )
+        .reduce(
+          (total, reservation) =>
+            total + Number(reservation.amount || 0),
+          0
+        );
 
-            const reservations =
-              await creditReservationRepository.findByJobId(job.id);
+      if (consumedCredit > 0) {
+        await ctx.reply(
+          "✅ دانلود با موفقیت انجام شد.\n\n" +
+            `💳 اعتبار مصرف‌شده: ${consumedCredit}\n` +
+            `💰 مانده اعتبار: ${remainingCredit}`
+        );
+      }
+    } else {
+      await ctx.reply(
+        "✅ دانلود با موفقیت انجام شد.\n\n" +
+          "⭐ زکا پرو: اعتباری کسر نشد."
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Failed to send credit consumption message:",
+      error
+    );
+  }
 
-            const releasedCredit = reservations
-              .filter(
-                (reservation) =>
-                  reservation.status === "RELEASED"
-              )
-              .reduce(
-                (total, reservation) =>
-                  total + Number(reservation.amount || 0),
-                0
-              );
-
-            const reservedCredit = reservations
-              .filter(
-                (reservation) =>
-                  reservation.status === "RESERVED"
-              )
-              .reduce(
-                (total, reservation) =>
-                  total + Number(reservation.amount || 0),
-                0
-              );
-
-            let creditMessage;
-
-            if (releasedCredit > 0 && reservedCredit === 0) {
-              creditMessage =
-                `✅ ${releasedCredit} اعتبار برگشت داده شد.\n` +
-                `💰 مانده اعتبار: ${remainingCredit}`;
-            } else if (reservedCredit > 0) {
-              creditMessage =
-                "⚠️ وضعیت بازگشت اعتبار هنوز نهایی نشده است.\n" +
-                `💰 مانده اعتبار فعلی: ${remainingCredit}`;
-            } else {
-              creditMessage =
-                "⭐ اعتبار رزروشده‌ای برای این دانلود پیدا نشد.\n" +
-                `💰 مانده اعتبار: ${remainingCredit}`;
-            }
-
-            await ctx.telegram.editMessageText(
-              ctx.chat.id,
-              messageId,
-              undefined,
-              "❌ دانلود انجام نشد.\n\n" +
-                creditMessage +
-                "\n\n" +
-                `⏱ زمان: ${formatElapsed(elapsed)}\n\n` +
-                "اگر مشکل ادامه داشت، گزارش اشکال را بزن.",
-              statusKeyboard(job.id)
-            );
-          } catch (error) {
-            console.error(
-              "Failed to update failed download message:",
-              error
-            );
-          }
-
-          return;
-        }
+  return;
+}
 
         let status = "⚙️ در حال آماده‌سازی...";
 
