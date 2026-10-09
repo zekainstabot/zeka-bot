@@ -136,6 +136,9 @@ function createBot() {
 
   createSuperAdminHandler(bot);
 
+  
+createInstagramCookieHandler(bot);
+
   createBasicHandler({
     bot,
     mainMenu,
