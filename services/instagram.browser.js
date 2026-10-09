@@ -512,8 +512,6 @@ await page.waitForTimeout(5000);
 
     let lastImageError = null;
 
-    let lastImageError = null;
-
     for (const candidate of media.images.slice(0, 10)) {
       try {
         const downloaded = await downloadImage({
