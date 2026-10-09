@@ -5,6 +5,10 @@ const {
 } = require("../services/instagram.service");
 
 const {
+  downloadTikTok,
+} = require("../services/tiktok.service");
+
+const {
   sendFileToUser,
 } = require("../services/delivery.service");
 
