@@ -104,7 +104,7 @@ function isValidVideoUrl(value) {
 
     const looksLikeVideo =
       /\.mp4(?:$|\/)/i.test(parsed.pathname) ||
-      /video|\.mp4|\/v\/|\/o1\//i.test(
+      /\.mp4|\/v\/|\/o1\//i.test(
         parsed.pathname + parsed.search
       );
 
