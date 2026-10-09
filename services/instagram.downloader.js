@@ -1195,29 +1195,51 @@ async function downloadInstagramMedia({
     );
 
     if (
-  isRateLimitError(error) ||
-  (
-    normalizedContentType === "STORY" &&
-    /login|log in|authentication|cookies|sign in/i.test(message)
-  )
+  normalizedContentType === "STORY" &&
+  /login|log in|authentication|cookies|sign in/i.test(message)
 ) {
   console.log(
-    "Instagram yt-dlp fallback condition detected."
+    "Instagram Story authentication error detected."
+  );
+
+  try {
+    return await downloadStoryWithGalleryDl({
+      url: normalizedUrl,
+      jobDirectory,
+    });
+  } catch (galleryError) {
+    console.error(
+      "Instagram Story gallery-dl failed:",
+      galleryError?.message || String(galleryError)
+    );
+
+    console.log(
+      "Switching to Browser fallback."
+    );
+
+    return await downloadWithBrowserFallback({
+      url: normalizedUrl,
+      jobId,
+      contentType: normalizedContentType,
+    });
+  }
+}
+
+if (isRateLimitError(error)) {
+  console.log(
+    "Instagram rate limit detected."
   );
 
   console.log(
     "Switching to Browser fallback."
   );
-      return await downloadWithBrowserFallback({
-        url:
-          normalizedUrl,
 
-        jobId,
-
-        contentType:
-          normalizedContentType,
-      });
-    }
+  return await downloadWithBrowserFallback({
+    url: normalizedUrl,
+    jobId,
+    contentType: normalizedContentType,
+  });
+}
 
     throw error;
   }
