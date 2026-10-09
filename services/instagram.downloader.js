@@ -8,6 +8,10 @@ const execFileAsync = promisify(execFile);
 const ytdlp = require("yt-dlp-exec");
 
 const {
+  getInstagramCookie,
+} = require("./instagram-cookie.service");
+
+const {
   downloadInstagramWithBrowser,
   downloadInstagramProfile,
 } = require("./instagram.browser");
