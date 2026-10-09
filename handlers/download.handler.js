@@ -9,6 +9,7 @@ function createDownloadHandler({
   const { sendDownloadReport } = require("../services/report.service");
   const { getBalance, shouldConsumeCredit } = require("../services/credit.service");
   const { getDownloadCost } = require("../services/cost.service");
+  const downloadCooldowns = new Map();
 
   const jobRepository = require("../repositories/job.repository");
   const creditReservationRepository = require("../repositories/credit.reservation.repository");
