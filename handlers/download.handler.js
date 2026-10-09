@@ -531,14 +531,29 @@ function createDownloadHandler({
       const job =
         result.job;
 
+            const consumesCredit =
+        await shouldConsumeCredit(user.id);
+
+      const downloadCost =
+        getDownloadCost(parsed.contentType);
+
+      const remainingCredit =
+        await getBalance(user.id);
+
+      const creditMessage = consumesCredit
+        ? `💳 هزینه دانلود: ${downloadCost} اعتبار\n` +
+          `💰 مانده اعتبار: ${remainingCredit} اعتبار`
+        : "⭐ زکا پرو: دانلود بدون کسر اعتبار";
+
       const statusMessage =
         await ctx.reply(
           "⏳ درخواستت ثبت شد.\n\n" +
+            creditMessage +
+            "\n\n" +
             "⚙️ در حال آماده‌سازی فایل...\n\n" +
             "⏱ زمان: 00:00",
           statusKeyboard(job.id)
         );
-
       watchJob({
         ctx,
         jobId: job.id,
