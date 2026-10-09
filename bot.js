@@ -1,6 +1,6 @@
 const { Telegraf } = require("telegraf");
 
-cconst {
+const {
   mainMenu,
   downloadMenu,
   accountMenu,
