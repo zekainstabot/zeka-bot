@@ -7,7 +7,7 @@ const mainMenu = Markup.keyboard([
   ["🔮 فال"],
 ])
   .resize()
-  .persistent();
+  .oneTime(false);
 
 const accountMenu = Markup.keyboard([
   ["📊 اعتبار من", "🏆 سطح و XP"],
