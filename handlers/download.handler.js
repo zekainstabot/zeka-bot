@@ -17,6 +17,7 @@ function createDownloadHandler({
   const activeWatchers = new Map();
   const reportStates = new Map();
   const downloadStates = new Map();
+  const downloadCooldowns = new Map();
 
   function isDownloadMode(userId) {
     return downloadStates.has(String(userId));
