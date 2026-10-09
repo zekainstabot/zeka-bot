@@ -1,6 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const execFileAsync = promisify(execFile);
 const ytdlp = require("yt-dlp-exec");
 
 const DOWNLOAD_ROOT = path.join(
@@ -51,14 +54,8 @@ function readCaption(jobDirectory) {
 
   for (const infoFile of infoFiles) {
     try {
-      const infoPath = path.join(
-        jobDirectory,
-        infoFile
-      );
-
-      const info = JSON.parse(
-        fs.readFileSync(infoPath, "utf8")
-      );
+      const infoPath = path.join(jobDirectory, infoFile);
+      const info = JSON.parse(fs.readFileSync(infoPath, "utf8"));
 
       const caption =
         typeof info.description === "string"
@@ -82,6 +79,70 @@ function readCaption(jobDirectory) {
   }
 
   return "";
+}
+
+async function optimizeMp4ForStreaming(filePath) {
+  if (path.extname(filePath).toLowerCase() !== ".mp4") {
+    console.log(
+      "TikTok faststart skipped: downloaded file is not MP4"
+    );
+    return filePath;
+  }
+
+  const optimizedPath = path.join(
+    path.dirname(filePath),
+    `${path.basename(filePath, path.extname(filePath))}.streamable.mp4`
+  );
+
+  try {
+    await execFileAsync(
+      "ffmpeg",
+      [
+        "-y",
+        "-i",
+        filePath,
+        "-map",
+        "0",
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        optimizedPath
+      ],
+      {
+        timeout: 120000,
+        maxBuffer: 5 * 1024 * 1024
+      }
+    );
+
+    if (
+      !fs.existsSync(optimizedPath) ||
+      fs.statSync(optimizedPath).size <= 0
+    ) {
+      throw new Error("Optimized MP4 file was not created");
+    }
+
+    console.log(
+      "TikTok MP4 optimized for progressive playback"
+    );
+
+    return optimizedPath;
+  } catch (error) {
+    try {
+      if (fs.existsSync(optimizedPath)) {
+        fs.unlinkSync(optimizedPath);
+      }
+    } catch {
+      // Ignore temporary-file cleanup errors.
+    }
+
+    console.warn(
+      "TikTok faststart optimization unavailable; using original file:",
+      error.message
+    );
+
+    return filePath;
+  }
 }
 
 async function downloadTikTokMedia({ url, jobId }) {
@@ -125,7 +186,9 @@ async function downloadTikTokMedia({ url, jobId }) {
 
   await ytdlp(normalizedUrl, {
     output: outputTemplate,
-    format: "best",
+    format: "best[ext=mp4]/best",
+    mergeOutputFormat: "mp4",
+    remuxVideo: "mp4",
     noPlaylist: true,
     noWarnings: true,
     restrictFilenames: true,
@@ -158,13 +221,20 @@ async function downloadTikTokMedia({ url, jobId }) {
       fs.statSync(b).size - fs.statSync(a).size
   );
 
-  const filePath = files[0];
+  let filePath = files[0];
+
+  if (detectFileContentType(filePath) === "VIDEO") {
+    filePath = await optimizeMp4ForStreaming(filePath);
+  }
+
   const contentType = detectFileContentType(filePath);
   const caption = readCaption(jobDirectory);
 
   console.log(
     "TikTok download completed:",
     jobId,
+    "Content type:",
+    contentType,
     "Caption found:",
     Boolean(caption)
   );
