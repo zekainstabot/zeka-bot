@@ -87,6 +87,7 @@ function createDownloadHandler({
     ctx,
     jobId,
     messageId,
+    userId,
   }) {
     const key =
       `${ctx.chat.id}:${messageId}`;
