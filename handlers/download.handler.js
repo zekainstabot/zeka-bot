@@ -566,11 +566,12 @@ function createDownloadHandler({
             "⏱ زمان: 00:00",
           statusKeyboard(job.id)
         );
-      watchJob({
+            watchJob({
         ctx,
         jobId: job.id,
         messageId:
           statusMessage.message_id,
+        userId: user.id,
       }).catch((error) => {
         console.error(
           "Failed to watch download:",
