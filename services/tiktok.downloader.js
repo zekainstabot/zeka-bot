@@ -45,6 +45,45 @@ function detectFileContentType(filePath) {
   return "UNKNOWN";
 }
 
+function readCaption(jobDirectory) {
+  const infoFiles = fs.readdirSync(jobDirectory)
+    .filter((name) => name.endsWith(".info.json"));
+
+  for (const infoFile of infoFiles) {
+    try {
+      const infoPath = path.join(
+        jobDirectory,
+        infoFile
+      );
+
+      const info = JSON.parse(
+        fs.readFileSync(infoPath, "utf8")
+      );
+
+      const caption =
+        typeof info.description === "string"
+          ? info.description.trim()
+          : "";
+
+      const title =
+        typeof info.title === "string"
+          ? info.title.trim()
+          : "";
+
+      if (caption || title) {
+        return caption || title;
+      }
+    } catch (error) {
+      console.error(
+        "TikTok metadata read failed:",
+        error.message
+      );
+    }
+  }
+
+  return "";
+}
+
 async function downloadTikTokMedia({ url, jobId }) {
   if (!url || !jobId) {
     throw new Error("TikTok URL and job ID are required");
@@ -89,7 +128,8 @@ async function downloadTikTokMedia({ url, jobId }) {
     format: "best",
     noPlaylist: true,
     noWarnings: true,
-    restrictFilenames: true
+    restrictFilenames: true,
+    writeInfoJson: true
   });
 
   const files = fs.readdirSync(jobDirectory)
@@ -120,8 +160,14 @@ async function downloadTikTokMedia({ url, jobId }) {
 
   const filePath = files[0];
   const contentType = detectFileContentType(filePath);
+  const caption = readCaption(jobDirectory);
 
-  console.log("TikTok download completed:", jobId);
+  console.log(
+    "TikTok download completed:",
+    jobId,
+    "Caption found:",
+    Boolean(caption)
+  );
 
   return {
     success: true,
@@ -130,7 +176,7 @@ async function downloadTikTokMedia({ url, jobId }) {
     contentType,
     mediaType: contentType,
     sourceUrl: normalizedUrl,
-    caption: "",
+    caption,
     finalCost: null
   };
 }
