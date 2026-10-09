@@ -837,11 +837,13 @@ async function downloadWithBrowserFallback({
   );
 
   try {
-    const result =
-      await downloadInstagramWithBrowser({
-        url,
-        jobId,
-      });
+    
+const result =
+  await downloadInstagramWithBrowser({
+    url,
+    jobId,
+    contentType,
+  });
 
     if (
       !result?.success ||
