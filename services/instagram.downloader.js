@@ -1204,6 +1204,12 @@ async function downloadInstagramMedia({
     normalizedUrl
   );
 
+  
+  const cookiePath = await createStoryCookieFile(
+    jobDirectory,
+    normalizedContentType
+  );
+
   try {
     await ytdlp(
       normalizedUrl,
@@ -1218,6 +1224,9 @@ async function downloadInstagramMedia({
 
         noWarnings:
           true,
+
+        cookies:
+          cookiePath || undefined,
       }
     );
   } catch (
