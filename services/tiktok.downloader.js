@@ -6,86 +6,77 @@ const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 const ytdlp = require("yt-dlp-exec");
 
-const DOWNLOAD_ROOT = path.join(
-  os.tmpdir(),
-  "zeka-tiktok"
-);
+const DOWNLOAD_ROOT = path.join(os.tmpdir(), "zeka-tiktok");
 
 function createOutputTemplate(jobId) {
-  const jobDirectory = path.join(
-    DOWNLOAD_ROOT,
-    String(jobId)
-  );
-
-  fs.mkdirSync(jobDirectory, {
-    recursive: true
-  });
+  const jobDirectory = path.join(DOWNLOAD_ROOT, String(jobId));
+  fs.mkdirSync(jobDirectory, { recursive: true });
 
   return {
     jobDirectory,
-    outputTemplate: path.join(
-      jobDirectory,
-      "%(id)s.%(ext)s"
-    )
+    outputTemplate: path.join(jobDirectory, "%(id)s.%(ext)s")
   };
 }
 
 function detectFileContentType(filePath) {
   const extension = path.extname(filePath).toLowerCase();
 
-  if (
-    [".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(extension)
-  ) {
+  if ([".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(extension)) {
     return "PHOTO";
   }
 
-  if (
-    [".mp4", ".mov", ".webm", ".mkv"].includes(extension)
-  ) {
+  if ([".mp4", ".mov", ".webm", ".mkv"].includes(extension)) {
     return "VIDEO";
   }
 
   return "UNKNOWN";
 }
 
+function cleanCaption(value) {
+  if (typeof value !== "string") return "";
+
+  const caption = value
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+
+  if (!caption || ["NA", "null", "None"].includes(caption)) {
+    return "";
+  }
+
+  return caption.slice(0, 1024);
+}
+
 function readCaption(jobDirectory) {
   const infoFiles = fs.readdirSync(jobDirectory)
     .filter((name) => name.endsWith(".info.json"));
+
+  let fallbackCaption = "";
 
   for (const infoFile of infoFiles) {
     try {
       const infoPath = path.join(jobDirectory, infoFile);
       const info = JSON.parse(fs.readFileSync(infoPath, "utf8"));
 
-      const caption =
-        typeof info.description === "string"
-          ? info.description.trim()
-          : "";
+      const description = cleanCaption(info.description);
+      if (description) return description;
 
-      const title =
-        typeof info.title === "string"
-          ? info.title.trim()
-          : "";
-
-      if (caption || title) {
-        return caption || title;
+      for (const value of [info.title, info.fulltitle, info.alt_title]) {
+        const candidate = cleanCaption(value);
+        if (candidate && !fallbackCaption) {
+          fallbackCaption = candidate;
+        }
       }
     } catch (error) {
-      console.error(
-        "TikTok metadata read failed:",
-        error.message
-      );
+      console.error("TikTok metadata read failed:", error.message);
     }
   }
 
-  return "";
+  return fallbackCaption;
 }
 
 async function optimizeMp4ForStreaming(filePath) {
   if (path.extname(filePath).toLowerCase() !== ".mp4") {
-    console.log(
-      "TikTok faststart skipped: downloaded file is not MP4"
-    );
     return filePath;
   }
 
@@ -95,52 +86,29 @@ async function optimizeMp4ForStreaming(filePath) {
   );
 
   try {
-    await execFileAsync(
-      "ffmpeg",
-      [
-        "-y",
-        "-i",
-        filePath,
-        "-map",
-        "0",
-        "-c",
-        "copy",
-        "-movflags",
-        "+faststart",
-        optimizedPath
-      ],
-      {
-        timeout: 120000,
-        maxBuffer: 5 * 1024 * 1024
-      }
-    );
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-i", filePath,
+      "-map", "0",
+      "-c", "copy",
+      "-movflags", "+faststart",
+      optimizedPath
+    ], {
+      timeout: 120000,
+      maxBuffer: 5 * 1024 * 1024
+    });
 
-    if (
-      !fs.existsSync(optimizedPath) ||
-      fs.statSync(optimizedPath).size <= 0
-    ) {
+    if (!fs.existsSync(optimizedPath) || fs.statSync(optimizedPath).size <= 0) {
       throw new Error("Optimized MP4 file was not created");
     }
-
-    console.log(
-      "TikTok MP4 optimized for progressive playback"
-    );
 
     return optimizedPath;
   } catch (error) {
     try {
-      if (fs.existsSync(optimizedPath)) {
-        fs.unlinkSync(optimizedPath);
-      }
-    } catch {
-      // Ignore temporary-file cleanup errors.
-    }
+      if (fs.existsSync(optimizedPath)) fs.unlinkSync(optimizedPath);
+    } catch {}
 
-    console.warn(
-      "TikTok faststart optimization unavailable; using original file:",
-      error.message
-    );
-
+    console.warn("TikTok faststart optimization unavailable:", error.message);
     return filePath;
   }
 }
@@ -177,10 +145,7 @@ async function downloadTikTokMedia({ url, jobId }) {
     throw new Error(`Invalid TikTok URL: ${error.message}`);
   }
 
-  const {
-    jobDirectory,
-    outputTemplate
-  } = createOutputTemplate(jobId);
+  const { jobDirectory, outputTemplate } = createOutputTemplate(jobId);
 
   console.log("TikTok download started:", jobId);
 
@@ -205,21 +170,14 @@ async function downloadTikTokMedia({ url, jobId }) {
       }
     })
     .filter((filePath) =>
-      ["VIDEO", "PHOTO"].includes(
-        detectFileContentType(filePath)
-      )
+      ["VIDEO", "PHOTO"].includes(detectFileContentType(filePath))
     );
 
   if (!files.length) {
-    throw new Error(
-      "TikTok download completed but no supported media file was found"
-    );
+    throw new Error("TikTok download completed but no supported media file was found");
   }
 
-  files.sort(
-    (a, b) =>
-      fs.statSync(b).size - fs.statSync(a).size
-  );
+  files.sort((a, b) => fs.statSync(b).size - fs.statSync(a).size);
 
   let filePath = files[0];
 
@@ -236,7 +194,9 @@ async function downloadTikTokMedia({ url, jobId }) {
     "Content type:",
     contentType,
     "Caption found:",
-    Boolean(caption)
+    Boolean(caption),
+    "Caption length:",
+    caption.length
   );
 
   return {
