@@ -1292,6 +1292,19 @@ if (isRateLimitError(error)) {
     throw error;
   }
 
+  
+  finally {
+    if (cookiePath) {
+      try {
+        fs.unlinkSync(cookiePath);
+      } catch (cleanupError) {
+        console.error(
+          "Instagram cookie file cleanup failed."
+        );
+      }
+    }
+  }
+
   const files =
     fs
       .readdirSync(
