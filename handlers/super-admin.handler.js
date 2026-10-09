@@ -19,6 +19,15 @@ const {
   setSetting,
 } = require("../services/settings.service");
 
+const PLATFORMS = [
+  { key: "platform.instagram", name: "اینستاگرام" },
+  { key: "platform.tiktok", name: "تیک‌تاک" },
+  { key: "platform.youtube", name: "یوتیوب" },
+  { key: "platform.facebook", name: "فیسبوک" },
+  { key: "platform.x", name: "X" },
+  { key: "platform.pinterest", name: "پینترست" },
+];
+
 async function getSuperAdmin(ctx) {
   const telegramUserId = ctx.from?.id;
 
@@ -26,9 +35,7 @@ async function getSuperAdmin(ctx) {
     return null;
   }
 
-  const admin = await getAdminByTelegramId(
-    telegramUserId
-  );
+  const admin = await getAdminByTelegramId(telegramUserId);
 
   if (
     !admin ||
@@ -43,43 +50,16 @@ async function getSuperAdmin(ctx) {
 
 function buildSuperAdminMenu() {
   return Markup.keyboard([
-    [
-      "👥 مدیریت کاربران",
-      "⚙️ تنظیمات",
-    ],
-    [
-      "📥 مدیریت درخواست‌ها",
-      "💳 مدیریت اعتبار",
-    ],
-    [
-      "🎁 مدیریت جوایز",
-      "🌐 مدیریت پلتفرم‌ها",
-    ],
-    [
-      "🍪 کوکی اینستاگرام",
-    ],
-    [
-      "✨ مدیریت امکانات",
-      "🆘 پشتیبانی",
-    ],
-    [
-      "📊 مانیتورینگ",
-      "🛠 مدیریت ادمین",
-    ],
-    [
-      "📋 گزارش‌ها",
-      "🐞 گزارش مشکلات",
-    ],
-    [
-      "🧠 مدیریت مسابقه",
-      "💎 مدیریت Pro",
-    ],
-    [
-      "🔮 مدیریت فال",
-    ],
-    [
-      "🔙 خروج از پنل Super Admin",
-    ],
+    ["👥 مدیریت کاربران", "⚙️ تنظیمات"],
+    ["📥 مدیریت درخواست‌ها", "💳 مدیریت اعتبار"],
+    ["🎁 مدیریت جوایز", "🌐 مدیریت پلتفرم‌ها"],
+    ["🍪 کوکی اینستاگرام"],
+    ["✨ مدیریت امکانات", "🆘 پشتیبانی"],
+    ["📊 مانیتورینگ", "🛠 مدیریت ادمین"],
+    ["📋 گزارش‌ها", "🐞 گزارش مشکلات"],
+    ["🧠 مدیریت مسابقه", "💎 مدیریت Pro"],
+    ["🔮 مدیریت فال"],
+    ["🔙 خروج از پنل Super Admin"],
   ])
     .resize()
     .oneTime(false);
@@ -93,7 +73,6 @@ async function handleSuperAdminCommand(ctx) {
       await ctx.reply(
         "⛔ شما دسترسی به پنل Super Admin ندارید."
       );
-
       return;
     }
 
@@ -109,10 +88,7 @@ async function handleSuperAdminCommand(ctx) {
       buildSuperAdminMenu()
     );
   } catch (error) {
-    console.error(
-      "Super Admin command failed:",
-      error
-    );
+    console.error("Super Admin command failed:", error);
 
     await ctx.reply(
       "❌ دریافت پنل Super Admin انجام نشد."
@@ -127,13 +103,11 @@ async function handleSuperAdminQuizMenu(ctx) {
     await ctx.reply(
       "⛔ فقط Super Admin به این بخش دسترسی دارد."
     );
-
     return;
   }
 
   await ctx.reply(
-    "🧠 مدیریت مسابقه\n\n" +
-      "بخش موردنظر را انتخاب کنید.",
+    "🧠 مدیریت مسابقه\n\nبخش موردنظر را انتخاب کنید.",
     Markup.keyboard([
       ["➕ افزودن سؤال"],
       ["🚨 گزارش‌های سؤالات"],
@@ -151,22 +125,14 @@ async function handleProAdminMenu(ctx) {
     await ctx.reply(
       "⛔ فقط Super Admin به مدیریت Pro دسترسی دارد."
     );
-
     return;
   }
 
   await ctx.reply(
-    "💎 مدیریت Pro\n\n" +
-      "عملیات موردنظر را انتخاب کنید.",
+    "💎 مدیریت Pro\n\nعملیات موردنظر را انتخاب کنید.",
     Markup.keyboard([
-      [
-        "⭐ فعال‌سازی Pro",
-        "⏳ تمدید Pro",
-      ],
-      [
-        "🟢 روشن کردن Pro",
-        "🔴 خاموش کردن Pro",
-      ],
+      ["⭐ فعال‌سازی Pro", "⏳ تمدید Pro"],
+      ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
       ["❌ لغو Pro"],
       ["🔙 پنل Super Admin"],
     ])
@@ -182,41 +148,14 @@ async function handlePlatformMenu(ctx) {
     await ctx.reply(
       "⛔ فقط Super Admin به مدیریت پلتفرم‌ها دسترسی دارد."
     );
-
     return;
   }
 
   try {
-    const platforms = [
-      {
-        key: "platform.instagram",
-        name: "اینستاگرام",
-      },
-      {
-        key: "platform.tiktok",
-        name: "تیک‌تاک",
-      },
-      {
-        key: "platform.youtube",
-        name: "یوتیوب",
-      },
-      {
-        key: "platform.facebook",
-        name: "فیسبوک",
-      },
-      {
-        key: "platform.x",
-        name: "X",
-      },
-      {
-        key: "platform.pinterest",
-        name: "پینترست",
-      },
-    ];
-
     const lines = [];
+    const buttons = [];
 
-    for (const platform of platforms) {
+    for (const platform of PLATFORMS) {
       const enabled = await getSetting(
         platform.key,
         false
@@ -225,34 +164,27 @@ async function handlePlatformMenu(ctx) {
       lines.push(
         `${enabled ? "🟢 فعال" : "🔴 غیرفعال"} — ${platform.name}`
       );
+
+      buttons.push([
+        `${enabled ? "🔴 خاموش کردن" : "🟢 روشن کردن"} ${platform.name}`,
+      ]);
     }
 
-    const tiktokEnabled = await getSetting(
-      "platform.tiktok",
-      false
+    buttons.push(
+      ["🔄 تازه‌سازی وضعیت پلتفرم‌ها"],
+      ["🔙 پنل Super Admin"]
     );
-
-    const toggleButton = tiktokEnabled
-      ? "🔴 غیرفعال کردن تیک‌تاک"
-      : "🟢 فعال کردن تیک‌تاک";
 
     await ctx.reply(
       "🌐 مدیریت پلتفرم‌ها\n\n" +
         lines.join("\n") +
-        "\n\nبرای تغییر وضعیت تیک‌تاک، دکمه زیر را بزنید.",
-      Markup.keyboard([
-        [toggleButton],
-        ["🔄 تازه‌سازی وضعیت پلتفرم‌ها"],
-        ["🔙 پنل Super Admin"],
-      ])
+        "\n\nبرای تغییر وضعیت هر پلتفرم، دکمه مربوط به آن را بزن.",
+      Markup.keyboard(buttons)
         .resize()
         .oneTime(false)
     );
   } catch (error) {
-    console.error(
-      "Platform menu failed:",
-      error
-    );
+    console.error("Platform menu failed:", error);
 
     await ctx.reply(
       "❌ دریافت وضعیت پلتفرم‌ها انجام نشد."
@@ -260,45 +192,66 @@ async function handlePlatformMenu(ctx) {
   }
 }
 
-async function handleTikTokToggle(ctx) {
+async function handlePlatformToggle(ctx) {
   const admin = await getSuperAdmin(ctx);
 
   if (!admin) {
     await ctx.reply(
-      "⛔ فقط Super Admin اجازه تغییر وضعیت تیک‌تاک را دارد."
+      "⛔ فقط Super Admin اجازه تغییر وضعیت پلتفرم‌ها را دارد."
     );
+    return;
+  }
 
+  const text = ctx.message?.text || "";
+
+  const platform = PLATFORMS.find((item) =>
+    text.endsWith(item.name) &&
+    (
+      text.startsWith("🟢 روشن کردن") ||
+      text.startsWith("🔴 خاموش کردن")
+    )
+  );
+
+  if (!platform) {
     return;
   }
 
   try {
     const currentValue = await getSetting(
-      "platform.tiktok",
+      platform.key,
       false
     );
 
-    const nextValue = !currentValue;
+    const requestedValue = text.startsWith(
+      "🟢 روشن کردن"
+    );
+
+    if (Boolean(currentValue) === requestedValue) {
+      await ctx.reply(
+        requestedValue
+          ? "🟢 این پلتفرم از قبل فعال است."
+          : "🔴 این پلتفرم از قبل غیرفعال است."
+      );
+
+      await handlePlatformMenu(ctx);
+      return;
+    }
 
     await setSetting(
-      "platform.tiktok",
-      nextValue
+      platform.key,
+      requestedValue
     );
 
     await ctx.reply(
-      nextValue
-        ? "🟢 دانلود تیک‌تاک فعال شد."
-        : "🔴 دانلود تیک‌تاک غیرفعال شد."
+      `${requestedValue ? "🟢 فعال شد" : "🔴 غیرفعال شد"}: ${platform.name}`
     );
 
     await handlePlatformMenu(ctx);
   } catch (error) {
-    console.error(
-      "TikTok setting update failed:",
-      error
-    );
+    console.error("Platform setting update failed:", error);
 
     await ctx.reply(
-      "❌ تغییر وضعیت تیک‌تاک انجام نشد. خطای ثبت تنظیمات را بررسی کنید."
+      `❌ تغییر وضعیت ${platform.name} انجام نشد. خطای ثبت تنظیمات را بررسی کنید.`
     );
   }
 }
@@ -310,7 +263,6 @@ async function handleBackToSuperAdmin(ctx) {
     await ctx.reply(
       "⛔ فقط Super Admin به این بخش دسترسی دارد."
     );
-
     return;
   }
 
@@ -333,7 +285,6 @@ async function handleSuperAdminExit(ctx) {
     await ctx.reply(
       "⛔ فقط Super Admin می‌تواند از این پنل خارج شود."
     );
-
     return;
   }
 
@@ -361,13 +312,8 @@ function createSuperAdminHandler(bot) {
   );
 
   bot.hears(
-    "🟢 فعال کردن تیک‌تاک",
-    handleTikTokToggle
-  );
-
-  bot.hears(
-    "🔴 غیرفعال کردن تیک‌تاک",
-    handleTikTokToggle
+    /^(🟢 روشن کردن|🔴 خاموش کردن) (اینستاگرام|تیک‌تاک|یوتیوب|فیسبوک|X|پینترست)$/,
+    handlePlatformToggle
   );
 
   bot.hears(
