@@ -70,22 +70,31 @@ async function createStoryCookieFile(jobDirectory, contentType) {
   return cookiePath;
 }
 
+
 async function downloadStoryWithGalleryDl({
   url,
   jobDirectory,
+  cookiePath,
 }) {
   console.log(
     "Instagram Story gallery-dl fallback started."
   );
 
+  const args = [
+    "-D",
+    jobDirectory,
+    "--no-mtime",
+  ];
+
+  if (cookiePath) {
+    args.push("--cookies", cookiePath);
+  }
+
+  args.push(url);
+
   await execFileAsync(
     "gallery-dl",
-    [
-      "-D",
-      jobDirectory,
-      "--no-mtime",
-      url,
-    ],
+    args,
     {
       timeout: 90000,
       maxBuffer: 5 * 1024 * 1024,
