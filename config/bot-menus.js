@@ -1,3 +1,4 @@
+
 const { Markup } = require("telegraf");
 
 const mainMenu = Markup.keyboard([
@@ -8,6 +9,12 @@ const mainMenu = Markup.keyboard([
 ])
   .resize()
   .oneTime(false);
+
+const downloadMenu = Markup.keyboard([
+  ["🔙 بازگشت"],
+])
+  .resize()
+  .persistent();
 
 const accountMenu = Markup.keyboard([
   ["📊 اعتبار من", "🏆 سطح و XP"],
@@ -35,6 +42,7 @@ const fortuneMenu = Markup.keyboard([
 
 module.exports = {
   mainMenu,
+  downloadMenu,
   accountMenu,
   gamesMenu,
   fortuneMenu,
