@@ -58,9 +58,10 @@ async function processJob(job) {
   try {
     let result;
 
-    if (job.platform === "instagram") {
-      result =
-        await downloadInstagram(job);
+        if (job.platform === "instagram") {
+      result = await downloadInstagram(job);
+    } else if (job.platform === "tiktok") {
+      result = await downloadTikTok(job);
     } else {
       throw new Error(
         `Unsupported platform: ${job.platform}`
