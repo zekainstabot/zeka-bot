@@ -19,6 +19,15 @@ function createDownloadHandler({
     sendDownloadReport,
   } = require("../services/report.service");
 
+    const {
+    getBalance,
+    shouldConsumeCredit,
+  } = require("../services/credit.service");
+
+  const {
+    getDownloadCost,
+  } = require("../services/cost.service");
+
   const jobRepository =
     require("../repositories/job.repository");
 
