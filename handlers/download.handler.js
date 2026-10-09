@@ -460,9 +460,6 @@ function createDownloadHandler({
         user.id
       );
 
-
-downloadCooldowns.set(userId, Date.now());
-
       const result = await createDownloadRequest({
         userId: user.id,
         platform: parsed.platform,
