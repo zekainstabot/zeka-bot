@@ -263,7 +263,7 @@ async function extractMediaFromPage(page) {
 
       const looksLikeVideo =
         /\.mp4(?:$|[?#])/i.test(url) ||
-        /video|\.mp4|\/v\/|\/o1\//i.test(url);
+        /\.mp4|\/v\/|\/o1\//i.test(url)
 
       if (!looksLikeVideo) return;
 
