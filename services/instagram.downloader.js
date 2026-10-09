@@ -1,6 +1,10 @@
+
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const execFileAsync = promisify(execFile);
 const ytdlp = require("yt-dlp-exec");
 
 const {
