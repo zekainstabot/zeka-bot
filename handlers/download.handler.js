@@ -10,6 +10,9 @@ function createDownloadHandler({
   const { getBalance, shouldConsumeCredit } = require("../services/credit.service");
   const { getDownloadCost } = require("../services/cost.service");
   const queueConfig = require("../config/queue");
+  const downloadRequestCooldownRepository = require(
+  "../repositories/download-request-cooldown.repository"
+);
 
   const jobRepository = require("../repositories/job.repository");
   const creditReservationRepository = require("../repositories/credit.reservation.repository");
