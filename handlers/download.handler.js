@@ -583,33 +583,7 @@ function createDownloadHandler({
             parsed.contentType,
         });
 
-      const job =
-        result.job;
-
-            const consumesCredit =
-        await shouldConsumeCredit(user.id);
-
-      const downloadCost =
-        getDownloadCost(parsed.contentType);
-
-                        const consumesCredit =
-        await shouldConsumeCredit(user.id);
-
-      const downloadCost =
-        getDownloadCost(parsed.contentType);
-
-      const remainingCredit =
-        await getBalance(user.id);
-
-      const creditMessage = consumesCredit
-        ? `💳 هزینه دانلود: ${downloadCost} اعتبار\n` +
-          `💰 مانده اعتبار: ${remainingCredit} اعتبار`
-        : "⭐ زکا پرو: دانلود بدون کسر اعتبار";
-            } else {
-              creditMessage =
-                "⭐ اعتباری از حساب شما کسر نشده است.\n" +
-                `💰 مانده اعتبار: ${remainingCredit}`;
-            }
+      
 
       const statusMessage =
         await ctx.reply(
