@@ -431,6 +431,30 @@ function createDownloadHandler({
         return;
       }
 
+      const cooldownMs =
+  Number(queueConfig.cooldown?.downloadRequestMs) ||
+  20_000;
+
+const lastRequestAt =
+  downloadCooldowns.get(userId) || 0;
+
+const remainingMs =
+  cooldownMs - (Date.now() - lastRequestAt);
+
+if (remainingMs > 0) {
+  const remainingSeconds = Math.ceil(
+    remainingMs / 1000
+  );
+
+  await ctx.reply(
+    `⏳ برای ارسال لینک بعدی، ${remainingSeconds} ثانیه صبر کن.`
+  );
+
+  return;
+}
+
+downloadCooldowns.set(userId, Date.now());
+
       const result = await createDownloadRequest({
         userId: user.id,
         platform: parsed.platform,
