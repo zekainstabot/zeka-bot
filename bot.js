@@ -178,15 +178,15 @@ createInstagramCookieHandler(bot);
     bot
   );
 
-  createHelpHandler({
-    bot,
-    mainMenu,
-  });
+  createDownloadHandler({
+  bot,
+  mainMenu,
+});
 
-  createNavigationHandler({
-    bot,
-    mainMenu,
-  });
+createNavigationHandler({
+  bot,
+  mainMenu,
+});
 
   createDownloadHandler({
     bot,
