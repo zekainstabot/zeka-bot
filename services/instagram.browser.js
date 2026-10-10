@@ -46,7 +46,7 @@ function getExtension(contentType) {
 function normalizeMediaUrl(value) {
   if (!value) return null;
 
-  let result = String(value)
+  const result = String(value)
     .replace(/&amp;/g, "&")
     .replace(/\\u0026/g, "&")
     .replace(/\\u003D/g, "=")
@@ -72,14 +72,8 @@ function isValidImageUrl(value) {
   const url = normalizeMediaUrl(value);
 
   if (!url) return false;
-
-  if (/static\.cdninstagram\.com/i.test(url)) {
-    return false;
-  }
-
-  if (/instagram\.com\/static/i.test(url)) {
-    return false;
-  }
+  if (/static\.cdninstagram\.com/i.test(url)) return false;
+  if (/instagram\.com\/static/i.test(url)) return false;
 
   return (
     /scontent[^/]*\.(fbcdn|cdninstagram)/i.test(url) ||
@@ -202,7 +196,10 @@ async function downloadVideo({
     response.headers()["content-type"] || ""
   ).toLowerCase();
 
-    if (!contentType.startsWith("video/")) {
+  if (
+    !contentType.startsWith("video/") &&
+    !contentType.includes("application/octet-stream")
+  ) {
     throw new Error(
       `Instagram response is not a video: ${
         contentType || "missing content-type"
@@ -245,13 +242,10 @@ async function extractMediaFromPage(page) {
         .replace(/^["']+|["']+$/g, "");
     };
 
-    const isInstagramCdn = (value) => {
-      if (!value) return false;
-
-      return (
-        /fbcdn\.net|cdninstagram\.com|scontent/i.test(value)
+    const isInstagramCdn = (value) =>
+      /fbcdn\.net|cdninstagram\.com|scontent/i.test(
+        String(value || "")
       );
-    };
 
     const videos = [];
 
@@ -263,10 +257,9 @@ async function extractMediaFromPage(page) {
 
       const looksLikeVideo =
         /\.mp4(?:$|[?#])/i.test(url) ||
-        /\.mp4|\/v\/|\/o1\//i.test(url)
+        /\.mp4|\/v\/|\/o1\//i.test(url);
 
       if (!looksLikeVideo) return;
-
       if (videos.some((item) => item.url === url)) return;
 
       videos.push({ url, source });
@@ -277,7 +270,10 @@ async function extractMediaFromPage(page) {
       addVideo(video.src, "video-src");
 
       video.querySelectorAll("source").forEach((source) => {
-        addVideo(source.src || source.getAttribute("src"), "video-source");
+        addVideo(
+          source.src || source.getAttribute("src"),
+          "video-source"
+        );
       });
     });
 
@@ -293,22 +289,24 @@ async function extractMediaFromPage(page) {
       addVideo(element?.getAttribute("content"), "video-meta");
     }
 
-    const resources = performance
+    for (const resource of performance
       .getEntriesByType("resource")
-      .map((entry) => entry.name);
-
-    for (const resource of resources) {
+      .map((entry) => entry.name)) {
       addVideo(resource, "performance-resource");
     }
 
     const images = [];
 
-    const addImage = (value, width = 0, height = 0, source = "") => {
+    const addImage = (
+      value,
+      width = 0,
+      height = 0,
+      source = ""
+    ) => {
       const url = normalize(value);
 
       if (!url || !/^https?:\/\//i.test(url)) return;
       if (!isInstagramCdn(url)) return;
-
       if (images.some((item) => item.url === url)) return;
 
       images.push({ url, width, height, source });
@@ -332,7 +330,12 @@ async function extractMediaFromPage(page) {
 
     for (const selector of imageMetaSelectors) {
       const element = document.querySelector(selector);
-      addImage(element?.getAttribute("content"), 0, 0, "image-meta");
+      addImage(
+        element?.getAttribute("content"),
+        0,
+        0,
+        "image-meta"
+      );
     }
 
     images.sort(
@@ -347,7 +350,6 @@ async function extractMediaFromPage(page) {
     };
   });
 }
-
 
 async function downloadInstagramWithBrowser({
   url,
@@ -429,20 +431,22 @@ async function downloadInstagramWithBrowser({
       timeout: 45000,
     });
 
+    const currentPageUrl = page.url();
+
     console.log(
       "Instagram browser step 4: page loaded",
       "status:",
-      page.url().includes("/accounts/login")
+      currentPageUrl.includes("/accounts/login")
         ? "LOGIN_REDIRECT"
         : "PAGE_OPEN",
       "title:",
       await page.title().catch(() => "unavailable"),
       "url:",
-      page.url().split("?")[0]
+      currentPageUrl.split("?")[0]
     );
 
     if (normalizedType === "STORY") {
-      const finalUrl = new URL(page.url());
+      const finalUrl = new URL(currentPageUrl);
       const pathParts = finalUrl.pathname
         .split("/")
         .filter(Boolean);
@@ -523,161 +527,18 @@ async function downloadInstagramWithBrowser({
       }
 
       if (
-        normalizedType === "STORY" ||
-        normalizedType === "REEL" ||
-        normalizedType === "VIDEO"
+        ["STORY", "REEL", "VIDEO"].includes(normalizedType)
       ) {
         throw (
           lastVideoError ||
           new Error(
-            "Instagram video could not be downloaded without authentication"
+            "Instagram video could not be downloaded. Authentication may be required."
           )
         );
       }
     }
 
     if (normalizedType === "STORY") {
-      throw new Error(
-        "Instagram story media was not identified. Refusing to send a profile image as story content."
-      );
-    }
-
-    if (!media.images.length) {
-      throw new Error(
-        "Instagram media URL was not found. The content may require login or may be unavailable."
-      );
-    }
-
-    let lastImageError = null;
-
-    for (const candidate of media.images.slice(0, 10)) {
-      try {
-        const downloaded = await downloadImage({
-          context,
-          imageUrl: candidate.url,
-          jobDirectory,
-          fileName: "instagram_media",
-        });
-
-        return {
-          success: true,
-          filePath: downloaded.filePath,
-          fileSize: downloaded.fileSize,
-          contentType: downloaded.contentType,
-          sourceUrl: normalizedUrl,
-          mediaType: "PHOTO",
-        };
-      } catch (error) {
-        lastImageError = error;
-
-        console.error(
-          "Instagram browser image candidate failed:",
-          error?.message || String(error)
-        );
-      }
-    }
-
-    throw (
-      lastImageError ||
-      new Error("Instagram media download failed")
-    );
-  } catch (error) {
-    console.error(
-      "Instagram browser download failed:",
-      error?.stack || error?.message || String(error)
-    );
-
-    throw error;
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-        console.log("Instagram browser closed");
-      } catch (error) {
-        console.error(
-          "Instagram browser close failed:",
-          error?.message || String(error)
-        );
-      }
-    }
-  }
-}
-
-
-    const media = await extractMediaFromPage(page);
-
-    console.log(
-      "Instagram browser video candidates:",
-      media.videos.length
-    );
-
-    console.log(
-      "Instagram browser image candidates:",
-      media.images.length
-    );
-
-    const shouldTryVideo = [
-      "STORY",
-      "REEL",
-      "VIDEO",
-      "OTHER",
-    ].includes(normalizedType);
-
-    if (shouldTryVideo && media.videos.length) {
-      let lastVideoError = null;
-
-      for (const candidate of media.videos.slice(0, 5)) {
-        try {
-          console.log(
-            "Trying Instagram browser video candidate:",
-            candidate.source
-          );
-
-          const downloaded = await downloadVideo({
-            context,
-            videoUrl: candidate.url,
-            jobDirectory,
-            fileName: "instagram_media",
-          });
-
-          console.log(
-            "Instagram browser video download completed:",
-            downloaded.filePath
-          );
-
-          return {
-            success: true,
-            filePath: downloaded.filePath,
-            fileSize: downloaded.fileSize,
-            contentType: downloaded.contentType,
-            sourceUrl: normalizedUrl,
-            mediaType: "VIDEO",
-          };
-        } catch (error) {
-          lastVideoError = error;
-
-          console.error(
-            "Instagram browser video candidate failed:",
-            error?.message || String(error)
-          );
-        }
-      }
-
-      if (
-  normalizedType === "STORY" ||
-  normalizedType === "REEL" ||
-  normalizedType === "VIDEO"
-) {
-        throw (
-          lastVideoError ||
-          new Error(
-            "Instagram video could not be downloaded without authentication"
-          )
-        );
-      }
-    }
-
-        if (normalizedType === "STORY") {
       throw new Error(
         "Instagram story media was not identified. Refusing to send a profile image as story content."
       );
@@ -725,12 +586,12 @@ async function downloadInstagramWithBrowser({
 
     throw (
       lastImageError ||
-      new Error("Instagram browser media download failed")
+      new Error("Instagram media download failed")
     );
   } catch (error) {
     console.error(
       "Instagram browser download failed:",
-      error?.message || String(error)
+      error?.stack || error?.message || String(error)
     );
 
     throw error;
@@ -738,7 +599,13 @@ async function downloadInstagramWithBrowser({
     if (browser) {
       try {
         await browser.close();
-      } catch {}
+        console.log("Instagram browser closed");
+      } catch (error) {
+        console.error(
+          "Instagram browser close failed:",
+          error?.message || String(error)
+        );
+      }
     }
   }
 }
@@ -765,11 +632,13 @@ async function downloadInstagramProfile({ url, jobId }) {
 
     browser = await chromium.launch({
       headless: true,
+      timeout: 30000,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
+        "--no-zygote",
       ],
     });
 
@@ -788,7 +657,7 @@ async function downloadInstagramProfile({ url, jobId }) {
 
     await page.goto(normalizedUrl, {
       waitUntil: "domcontentloaded",
-      timeout: 30000,
+      timeout: 45000,
     });
 
     await page.waitForTimeout(5000);
@@ -832,13 +701,18 @@ async function downloadInstagramProfile({ url, jobId }) {
       };
 
       const candidates = [];
+
       const addCandidate = (value, method, score = 0) => {
         const normalized = normalize(value);
 
         if (!isRealInstagramImage(normalized)) return;
         if (candidates.some((item) => item.url === normalized)) return;
 
-        candidates.push({ url: normalized, method, score });
+        candidates.push({
+          url: normalized,
+          method,
+          score,
+        });
       };
 
       const extractFromText = (text) => {
@@ -861,8 +735,7 @@ async function downloadInstagramProfile({ url, jobId }) {
           let match;
 
           while ((match = pattern.exec(source)) !== null) {
-            const raw = match[1] || match[0];
-            const value = normalize(raw);
+            const value = normalize(match[1] || match[0]);
 
             if (isRealInstagramImage(value)) {
               found.add(value);
@@ -878,15 +751,15 @@ async function downloadInstagramProfile({ url, jobId }) {
       );
 
       for (const script of scripts) {
-        const text = script.textContent || "";
-        const urls = extractFromText(text);
+        const scriptText = script.textContent || "";
+        const urls = extractFromText(scriptText);
 
         for (const imageUrl of urls) {
           let score = 50;
 
-          if (/profile_pic_url_hd/i.test(text)) {
+          if (/profile_pic_url_hd/i.test(scriptText)) {
             score = 100;
-          } else if (/profile_pic_url/i.test(text)) {
+          } else if (/profile_pic_url/i.test(scriptText)) {
             score = 90;
           }
 
@@ -1010,7 +883,7 @@ async function downloadInstagramProfile({ url, jobId }) {
   } catch (error) {
     console.error(
       "Instagram profile download failed:",
-      error?.message || String(error)
+      error?.stack || error?.message || String(error)
     );
 
     throw error;
