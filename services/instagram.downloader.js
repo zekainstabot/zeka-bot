@@ -1332,11 +1332,19 @@ if (isRateLimitError(error)) {
           .isFile()
       );
 
+  
   if (!files.length) {
-    throw new Error(
-      "Instagram download completed but no file was found"
+    console.log(
+      "Instagram yt-dlp returned no file. Switching to Browser fallback."
     );
+
+    return await downloadWithBrowserFallback({
+      url: normalizedUrl,
+      jobId,
+      contentType: normalizedContentType,
+    });
   }
+
 
   const filePath =
     files[0];
