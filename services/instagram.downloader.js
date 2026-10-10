@@ -1333,9 +1333,100 @@ if (isRateLimitError(error)) {
       );
 
   
+  
   if (!files.length) {
     console.log(
-      "Instagram yt-dlp returned no file. Switching to Browser fallback."
+      "Instagram yt-dlp returned no file. Trying gallery-dl."
+    );
+
+    try {
+      await execFileAsync(
+        "gallery-dl",
+        [
+          "-D",
+          jobDirectory,
+          "--no-mtime",
+          normalizedUrl,
+        ],
+        {
+          timeout: 90000,
+          maxBuffer: 5 * 1024 * 1024,
+        }
+      );
+
+      const supportedExtensions = [
+        ".mp4",
+        ".mov",
+        ".webm",
+        ".mkv",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+        ".avif",
+      ];
+
+      function collectMediaFiles(directory) {
+        const found = [];
+
+        for (const entry of fs.readdirSync(directory, {
+          withFileTypes: true,
+        })) {
+          const fullPath = path.join(directory, entry.name);
+
+          if (entry.isDirectory()) {
+            found.push(...collectMediaFiles(fullPath));
+          } else if (
+            entry.isFile() &&
+            supportedExtensions.includes(
+              path.extname(entry.name).toLowerCase()
+            )
+          ) {
+            found.push(fullPath);
+          }
+        }
+
+        return found;
+      }
+
+      const galleryFiles = collectMediaFiles(jobDirectory);
+
+      if (galleryFiles.length) {
+        galleryFiles.sort(
+          (a, b) =>
+            fs.statSync(b).size - fs.statSync(a).size
+        );
+
+        const filePath = galleryFiles[0];
+
+        console.log(
+          "Instagram gallery-dl completed:",
+          filePath
+        );
+
+        return {
+          success: true,
+          filePath,
+          fileSize: fs.statSync(filePath).size,
+          contentType: detectFileContentType(filePath),
+          mediaType: normalizedContentType,
+          sourceUrl: normalizedUrl,
+          finalCost: null,
+        };
+      }
+
+      console.log(
+        "Instagram gallery-dl completed without media."
+      );
+    } catch (error) {
+      console.error(
+        "Instagram gallery-dl failed:",
+        error?.stderr || error?.message || String(error)
+      );
+    }
+
+    console.log(
+      "Switching to Instagram Browser fallback."
     );
 
     return await downloadWithBrowserFallback({
@@ -1345,37 +1436,6 @@ if (isRateLimitError(error)) {
     });
   }
 
-
-  const filePath =
-    files[0];
-
-  console.log(
-    "Instagram download completed:",
-    filePath
-  );
-
-  
-  return {
-    success: true,
-
-    filePath,
-
-    contentType:
-      detectFileContentType(
-        filePath
-      ),
-
-    mediaType:
-      normalizedContentType,
-
-    caption:
-      instagramCaption || "",
-
-    finalCost:
-      null,
-  };
-
-}
 
 module.exports = {
   downloadInstagramMedia,
