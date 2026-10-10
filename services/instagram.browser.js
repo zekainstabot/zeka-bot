@@ -348,6 +348,7 @@ async function extractMediaFromPage(page) {
   });
 }
 
+
 async function downloadInstagramWithBrowser({
   url,
   jobId,
@@ -377,17 +378,21 @@ async function downloadInstagramWithBrowser({
       normalizedType
     );
 
+    console.log("Instagram browser step 1: launching Chromium");
+
     browser = await chromium.launch({
       headless: true,
+      timeout: 30000,
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--no-zygote",
-        "--single-process",
       ],
     });
+
+    console.log("Instagram browser step 2: Chromium launched");
 
     const context = await browser.newContext({
       userAgent:
@@ -402,28 +407,202 @@ async function downloadInstagramWithBrowser({
 
     const page = await context.newPage();
 
+    page.on("pageerror", (error) => {
+      console.error(
+        "Instagram browser page error:",
+        error?.message || String(error)
+      );
+    });
+
+    page.on("requestfailed", (request) => {
+      console.error(
+        "Instagram browser request failed:",
+        request.url().split("?")[0],
+        request.failure()?.errorText || "unknown"
+      );
+    });
+
+    console.log("Instagram browser step 3: opening Instagram page");
+
     await page.goto(normalizedUrl, {
-  waitUntil: "domcontentloaded",
-  timeout: 30000,
-});
+      waitUntil: "domcontentloaded",
+      timeout: 45000,
+    });
 
-if (normalizedType === "STORY") {
-  const finalUrl = new URL(page.url());
-  const pathParts = finalUrl.pathname
-    .split("/")
-    .filter(Boolean);
-
-  if (
-    pathParts[0] !== "stories" ||
-    pathParts.length < 3
-  ) {
-    throw new Error(
-      "Instagram redirected the story URL to a non-story page. Story download cancelled."
+    console.log(
+      "Instagram browser step 4: page loaded",
+      "status:",
+      page.url().includes("/accounts/login")
+        ? "LOGIN_REDIRECT"
+        : "PAGE_OPEN",
+      "title:",
+      await page.title().catch(() => "unavailable"),
+      "url:",
+      page.url().split("?")[0]
     );
+
+    if (normalizedType === "STORY") {
+      const finalUrl = new URL(page.url());
+      const pathParts = finalUrl.pathname
+        .split("/")
+        .filter(Boolean);
+
+      if (
+        pathParts[0] !== "stories" ||
+        pathParts.length < 3
+      ) {
+        throw new Error(
+          "Instagram redirected the story URL to a non-story page. Story download cancelled."
+        );
+      }
+    }
+
+    console.log("Instagram browser step 5: waiting for media");
+
+    await page.waitForTimeout(5000);
+
+    console.log("Instagram browser step 6: extracting media");
+
+    const media = await extractMediaFromPage(page);
+
+    console.log(
+      "Instagram browser video candidates:",
+      media.videos.length
+    );
+
+    console.log(
+      "Instagram browser image candidates:",
+      media.images.length
+    );
+
+    const shouldTryVideo = [
+      "STORY",
+      "REEL",
+      "VIDEO",
+      "OTHER",
+    ].includes(normalizedType);
+
+    if (shouldTryVideo && media.videos.length) {
+      let lastVideoError = null;
+
+      for (const candidate of media.videos.slice(0, 5)) {
+        try {
+          console.log(
+            "Trying Instagram browser video candidate:",
+            candidate.source
+          );
+
+          const downloaded = await downloadVideo({
+            context,
+            videoUrl: candidate.url,
+            jobDirectory,
+            fileName: "instagram_media",
+          });
+
+          console.log(
+            "Instagram browser video download completed:",
+            downloaded.filePath
+          );
+
+          return {
+            success: true,
+            filePath: downloaded.filePath,
+            fileSize: downloaded.fileSize,
+            contentType: downloaded.contentType,
+            sourceUrl: normalizedUrl,
+            mediaType: "VIDEO",
+          };
+        } catch (error) {
+          lastVideoError = error;
+
+          console.error(
+            "Instagram browser video candidate failed:",
+            error?.message || String(error)
+          );
+        }
+      }
+
+      if (
+        normalizedType === "STORY" ||
+        normalizedType === "REEL" ||
+        normalizedType === "VIDEO"
+      ) {
+        throw (
+          lastVideoError ||
+          new Error(
+            "Instagram video could not be downloaded without authentication"
+          )
+        );
+      }
+    }
+
+    if (normalizedType === "STORY") {
+      throw new Error(
+        "Instagram story media was not identified. Refusing to send a profile image as story content."
+      );
+    }
+
+    if (!media.images.length) {
+      throw new Error(
+        "Instagram media URL was not found. The content may require login or may be unavailable."
+      );
+    }
+
+    let lastImageError = null;
+
+    for (const candidate of media.images.slice(0, 10)) {
+      try {
+        const downloaded = await downloadImage({
+          context,
+          imageUrl: candidate.url,
+          jobDirectory,
+          fileName: "instagram_media",
+        });
+
+        return {
+          success: true,
+          filePath: downloaded.filePath,
+          fileSize: downloaded.fileSize,
+          contentType: downloaded.contentType,
+          sourceUrl: normalizedUrl,
+          mediaType: "PHOTO",
+        };
+      } catch (error) {
+        lastImageError = error;
+
+        console.error(
+          "Instagram browser image candidate failed:",
+          error?.message || String(error)
+        );
+      }
+    }
+
+    throw (
+      lastImageError ||
+      new Error("Instagram media download failed")
+    );
+  } catch (error) {
+    console.error(
+      "Instagram browser download failed:",
+      error?.stack || error?.message || String(error)
+    );
+
+    throw error;
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+        console.log("Instagram browser closed");
+      } catch (error) {
+        console.error(
+          "Instagram browser close failed:",
+          error?.message || String(error)
+        );
+      }
+    }
   }
 }
 
-await page.waitForTimeout(5000);
 
     const media = await extractMediaFromPage(page);
 
