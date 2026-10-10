@@ -871,9 +871,6 @@ async function downloadInstagramMedia({
 
     return makeResult(files[0]);
   }
-
-  let instagramCaption = "";
-
   
   let instagramCaption = "";
   let primaryCookiePath = null;
