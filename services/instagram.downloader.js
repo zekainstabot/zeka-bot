@@ -874,16 +874,37 @@ async function downloadInstagramMedia({
 
   let instagramCaption = "";
 
+  
+  let instagramCaption = "";
+  let primaryCookiePath = null;
+
   try {
+    try {
+      primaryCookiePath = await createInstagramCookieFile(
+        jobDirectory
+      );
+    } catch (cookieError) {
+      console.error(
+        "Instagram primary cookie preparation failed:",
+        cookieError?.message || String(cookieError)
+      );
+    }
+
+    const downloadOptions = {
+      output: outputTemplate,
+      format,
+      noPlaylist: true,
+      noWarnings: true,
+      print: "description",
+    };
+
+    if (primaryCookiePath) {
+      downloadOptions.cookies = primaryCookiePath;
+    }
+
     const downloadResult = await ytdlp(
       normalizedUrl,
-      {
-        output: outputTemplate,
-        format,
-        noPlaylist: true,
-        noWarnings: true,
-        print: "description",
-      }
+      downloadOptions
     );
 
     instagramCaption = String(
@@ -895,6 +916,7 @@ async function downloadInstagramMedia({
       JSON.stringify({
         stdout: instagramCaption,
         stderr: downloadResult?.stderr || "",
+        cookieProvided: Boolean(primaryCookiePath),
         jobDirectory,
         outputTemplate,
         files: getDownloadedFiles().map(
@@ -904,7 +926,7 @@ async function downloadInstagramMedia({
     );
   } catch (error) {
     console.log(
-      "Instagram yt-dlp download failed without cookies:",
+      "Instagram yt-dlp download failed:",
       error?.stderr || error?.message || String(error)
     );
 
@@ -912,6 +934,17 @@ async function downloadInstagramMedia({
       console.log(
         "Instagram rate limit detected on initial yt-dlp attempt."
       );
+    }
+  } finally {
+    if (primaryCookiePath) {
+      try {
+        fs.unlinkSync(primaryCookiePath);
+      } catch (cleanupError) {
+        console.error(
+          "Instagram primary cookie cleanup failed:",
+          cleanupError?.message || String(cleanupError)
+        );
+      }
     }
   }
 
