@@ -1,3 +1,4 @@
+
 function createDownloadHandler({
   bot,
   mainMenu,
@@ -11,8 +12,8 @@ function createDownloadHandler({
   const { getDownloadCost } = require("../services/cost.service");
   const queueConfig = require("../config/queue");
   const downloadRequestCooldownRepository = require(
-  "../repositories/download-request-cooldown.repository"
-);
+    "../repositories/download-request-cooldown.repository"
+  );
 
   const jobRepository = require("../repositories/job.repository");
   const creditReservationRepository = require("../repositories/credit.reservation.repository");
@@ -77,6 +78,7 @@ function createDownloadHandler({
     const watcher = {
       stopped: false,
       timer: null,
+      nextEditAt: 0,
     };
 
     activeWatchers.set(key, watcher);
@@ -113,61 +115,86 @@ function createDownloadHandler({
         );
 
         if (job.status === "COMPLETED") {
-  stop();
+          stop();
 
-  try {
-    await ctx.telegram.deleteMessage(
-      ctx.chat.id,
-      messageId
-    );
-  } catch (error) {
-    console.error(
-      "Failed to delete download status message:",
-      error
-    );
-  }
+          try {
+            await ctx.telegram.deleteMessage(
+              ctx.chat.id,
+              messageId
+            );
+          } catch (error) {
+            console.error(
+              "Failed to delete download status message:",
+              error?.message || error
+            );
+          }
 
-  try {
-    const consumesCredit = await shouldConsumeCredit(userId);
-    const remainingCredit = await getBalance(userId);
+          try {
+            const consumesCredit = await shouldConsumeCredit(userId);
+            const remainingCredit = await getBalance(userId);
 
-    if (consumesCredit) {
-      const reservations =
-        await creditReservationRepository.findByJobId(job.id);
+            if (consumesCredit) {
+              const reservations =
+                await creditReservationRepository.findByJobId(job.id);
 
-      const consumedCredit = reservations
-        .filter(
-          (reservation) =>
-            reservation.status === "CONSUMED"
-        )
-        .reduce(
-          (total, reservation) =>
-            total + Number(reservation.amount || 0),
-          0
-        );
+              const consumedCredit = reservations
+                .filter(
+                  (reservation) =>
+                    reservation.status === "CONSUMED"
+                )
+                .reduce(
+                  (total, reservation) =>
+                    total + Number(reservation.amount || 0),
+                  0
+                );
 
-      if (consumedCredit > 0) {
-        await ctx.reply(
-          "✅ دانلود با موفقیت انجام شد.\n\n" +
-            `💳 اعتبار مصرف‌شده: ${consumedCredit}\n` +
-            `💰 مانده اعتبار: ${remainingCredit}`
-        );
-      }
-    } else {
-      await ctx.reply(
-        "✅ دانلود با موفقیت انجام شد.\n\n" +
-          "⭐ زکا پرو: اعتباری کسر نشد."
-      );
-    }
-  } catch (error) {
-    console.error(
-      "Failed to send credit consumption message:",
-      error
-    );
-  }
+              if (consumedCredit > 0) {
+                await ctx.reply(
+                  "✅ دانلود با موفقیت انجام شد.\n\n" +
+                    `💳 اعتبار مصرف‌شده: ${consumedCredit}\n` +
+                    `💰 مانده اعتبار: ${remainingCredit}`
+                );
+              }
+            } else {
+              await ctx.reply(
+                "✅ دانلود با موفقیت انجام شد.\n\n" +
+                  "⭐ زکا پرو: اعتباری کسر نشد."
+              );
+            }
+          } catch (error) {
+            console.error(
+              "Failed to send credit consumption message:",
+              error?.message || error
+            );
+          }
 
-  return;
-}
+          return;
+        }
+
+        if (
+          job.status === "FAILED" ||
+          job.status === "CANCELLED"
+        ) {
+          stop();
+
+          try {
+            await ctx.telegram.editMessageText(
+              ctx.chat.id,
+              messageId,
+              undefined,
+              job.status === "FAILED"
+                ? "❌ دانلود ناموفق بود."
+                : "❌ دانلود لغو شد."
+            );
+          } catch (error) {
+            console.error(
+              "Failed to update final download status:",
+              error?.message || error
+            );
+          }
+
+          return;
+        }
 
         let status = "⚙️ در حال آماده‌سازی...";
 
@@ -181,33 +208,47 @@ function createDownloadHandler({
           status = "⏳ در صف پردازش...";
         }
 
-        try {
-          await ctx.telegram.editMessageText(
-            ctx.chat.id,
-            messageId,
-            undefined,
-            `${status}\n\n⏱ زمان: ${formatElapsed(elapsed)}`,
-            statusKeyboard(job.id)
-          );
-        } catch (error) {
-          const message = String(error?.message || "");
-
-          if (!message.includes("message is not modified")) {
-            console.error(
-              "Failed to update download status:",
-              error
+        if (Date.now() >= watcher.nextEditAt) {
+          try {
+            await ctx.telegram.editMessageText(
+              ctx.chat.id,
+              messageId,
+              undefined,
+              `${status}\n\n⏱ زمان: ${formatElapsed(elapsed)}`,
+              statusKeyboard(job.id)
             );
+          } catch (error) {
+            const message = String(error?.message || "");
+            const retryAfter = Number(
+              error?.response?.parameters?.retry_after || 0
+            );
+
+            if (retryAfter > 0) {
+              watcher.nextEditAt =
+                Date.now() + retryAfter * 1000;
+
+              console.warn(
+                `Download status updates paused for ${retryAfter} seconds.`
+              );
+            } else if (
+              !message.includes("message is not modified")
+            ) {
+              console.error(
+                "Failed to update download status:",
+                message
+              );
+            }
           }
         }
 
-        watcher.timer = setTimeout(update, 2000);
+        watcher.timer = setTimeout(update, 15000);
       } catch (error) {
         console.error(
           "Download status watcher failed:",
-          error
+          error?.message || error
         );
 
-        watcher.timer = setTimeout(update, 5000);
+        watcher.timer = setTimeout(update, 15000);
       }
     };
 
@@ -277,7 +318,10 @@ function createDownloadHandler({
           "✏️ متن مشکلت را ارسال کن:"
       );
     } catch (error) {
-      console.error("Download report action failed:", error);
+      console.error(
+        "Download report action failed:",
+        error?.message || error
+      );
 
       await ctx.reply(
         "❌ ثبت گزارش انجام نشد.\nلطفاً دوباره تلاش کن.",
@@ -299,7 +343,10 @@ function createDownloadHandler({
     if (reportState) {
       reportStates.delete(userId);
 
-      if (Date.now() - reportState.createdAt > 10 * 60 * 1000) {
+      if (
+        Date.now() - reportState.createdAt >
+        10 * 60 * 1000
+      ) {
         await ctx.reply(
           "⏱ زمان ثبت گزارش تمام شده است.\n\n" +
             "لطفاً دوباره روی «🐞 گزارش اشکال» بزن.",
@@ -336,7 +383,7 @@ function createDownloadHandler({
       } catch (error) {
         console.error(
           "Download report submission failed:",
-          error
+          error?.message || error
         );
 
         await ctx.reply(
@@ -401,10 +448,9 @@ function createDownloadHandler({
         return;
       }
 
-      
       const cooldownMs =
         Number(queueConfig.cooldown?.downloadRequestMs) ||
-        20_000;
+        20000;
 
       const remainingMs =
         await downloadRequestCooldownRepository.getRemainingCooldown(
@@ -439,7 +485,9 @@ function createDownloadHandler({
       const job = result.job;
 
       if (!job || !job.id) {
-        throw new Error("Download job was not created correctly");
+        throw new Error(
+          "Download job was not created correctly"
+        );
       }
 
       const consumesCredit = await shouldConsumeCredit(user.id);
@@ -466,10 +514,16 @@ function createDownloadHandler({
         messageId: statusMessage.message_id,
         userId: user.id,
       }).catch((error) => {
-        console.error("Failed to watch download:", error);
+        console.error(
+          "Failed to watch download:",
+          error?.message || error
+        );
       });
     } catch (error) {
-      console.error("Download request failed:", error);
+      console.error(
+        "Download request failed:",
+        error?.message || error
+      );
 
       if (error?.code === "DUPLICATE_ACTIVE_REQUEST") {
         await ctx.reply(
