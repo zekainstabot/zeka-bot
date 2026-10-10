@@ -112,6 +112,16 @@ function createBot() {
     config.bot.token
   );
 
+    bot.catch((error, ctx) => {
+    console.error("Telegram update handler failed:", {
+      updateId: ctx?.update?.update_id,
+      updateType: ctx?.updateType,
+      errorCode: error?.response?.error_code,
+      retryAfter: error?.response?.parameters?.retry_after,
+      message: error?.message,
+    });
+  });
+
   bot.use(async (ctx, next) => {
   console.log(
     "TELEGRAM UPDATE RECEIVED:",
