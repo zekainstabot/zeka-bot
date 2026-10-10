@@ -1,3 +1,4 @@
+
 const {
   setUserCommands,
 } = require("../services/command.service");
@@ -80,22 +81,14 @@ function createBasicHandler({
     } catch (error) {
       console.error(
         "Start handler failed:",
-        error
+        {
+          errorCode:
+            error?.response?.error_code,
+          retryAfter:
+            error?.response?.parameters?.retry_after,
+          message: error?.message,
+        }
       );
-
-      try {
-        await ctx.reply(
-          "سلام 👋\n\n" +
-            "به زکا خوش آمدی.\n\n" +
-            "از منوی پایین، بخش موردنظرت را انتخاب کن.",
-          mainMenu
-        );
-      } catch (replyError) {
-        console.error(
-          "Start fallback reply failed:",
-          replyError
-        );
-      }
     }
   });
 
