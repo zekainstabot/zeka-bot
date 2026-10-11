@@ -60,13 +60,22 @@ function startScheduledPublishing(bot) {
     "Scheduled publishing scheduler started."
   );
 
-  processDuePosts(bot).catch((error) => {
-    console.error(
-      "Initial scheduled publishing check failed:",
-      error?.message || error
-    );
-  });
+    recoverStuckScheduledPosts()
+    .then((count) => {
+      if (count > 0) {
+        console.log(
+          `Recovered ${count} interrupted scheduled post(s).`
+        );
+      }
 
+      return processDuePosts(bot);
+    })
+    .catch((error) => {
+      console.error(
+        "Scheduled publishing recovery failed:",
+        error?.message || error
+      );
+    });
   schedulerTimer = setInterval(() => {
     processDuePosts(bot).catch((error) => {
       console.error(
