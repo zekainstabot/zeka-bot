@@ -154,32 +154,19 @@ function createFeaturesHandler({
     };
   }
 
-  async function verifyChannel(ctx, text) {
-    const channel = await ctx.telegram.getChat(text);
-
-    if (channel.type !== "channel") {
-      throw new Error("مقصد واردشده کانال تلگرام نیست.");
-    }
-
-    const botInfo = await ctx.telegram.getMe();
-
-    const member = await ctx.telegram.getChatMember(
-      channel.id,
-      botInfo.id
-    );
-
-    if (
-      !["administrator", "creator"].includes(member.status) ||
-      member.can_post_messages === false
-    ) {
-      throw new Error(
-        "ربات باید ادمین کانال باشد و اجازه انتشار پیام داشته باشد."
-      );
-    }
-
-    return channel;
-  }
-
+  await ctx.reply(
+  "➕ ثبت کانال\n\n" +
+    "یکی از این موارد را بفرست:\n\n" +
+    "• آیدی با @ مثل @mychannel\n" +
+    "• نام کاربری بدون @ مثل mychannel\n" +
+    "• لینک کانال مثل https://t.me/mychannel\n" +
+    "• آیدی عددی مثل -1001234567890\n" +
+    "• لینک پست کانال خصوصی مثل https://t.me/c/123456789/10\n\n" +
+    "ربات باید در کانال ادمین باشد و اجازه انتشار پیام داشته باشد.\n\n" +
+    "لینک دعوت خصوصی به‌تنهایی برای ثبت کانال کافی نیست.\n" +
+    "برای لغو، «🔙 بازگشت» را بزن.",
+  featuresMenu
+);
   bot.hears("🛠 امکانات ویژه", async (ctx) => {
     clearState(ctx);
 
