@@ -9,7 +9,7 @@ const bugReportCleanupService = require(
 );
 
 const {
-  cleanupStaleScheduledFiles,
+  startTempFileCleanupService,
 } = require("./services/scheduled-file-cleanup.service");
 
 const PORT = Number(process.env.PORT) || 10000;
