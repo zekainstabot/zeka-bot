@@ -259,11 +259,13 @@ async function startBot() {
     "Queue recovery finished."
   );
 
-  await telegramBot.launch();
+ await telegramBot.launch();
 
-  console.log(
-    "Telegram bot started."
-  );
+console.log(
+  "Telegram bot started."
+);
+
+startScheduledPublishing(telegramBot);
 }
 
 module.exports = {
