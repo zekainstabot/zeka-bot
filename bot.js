@@ -58,6 +58,11 @@ const {
 } = require("./handlers/navigation.handler");
 
 const {
+  startScheduledPublishing,
+  stopScheduledPublishing,
+} = require("./features/scheduled-publishing/publishing.scheduler");
+
+const {
   createDownloadHandler,
 } = require("./handlers/download.handler");
 
