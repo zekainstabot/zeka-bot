@@ -1,15 +1,34 @@
-
 function createFeaturesHandler({
   bot,
   mainMenu,
 }) {
   const { getOrCreateUser } = require("../services/user.service");
+
   const {
     createScheduledPost,
   } = require("../features/scheduled-publishing/publishing.repository");
 
+  const {
+    addUserChannel,
+    listUserChannels,
+    removeUserChannel,
+  } = require("../features/scheduled-publishing/channels.repository");
+
   const states = new Map();
   const SESSION_TIMEOUT = 10 * 60 * 1000;
+
+  const featuresMenu = {
+    reply_markup: {
+      keyboard: [
+        ["📢 اتصال کانال من", "➕ ثبت کانال"],
+        ["📋 کانال‌های من", "🗑 حذف کانال"],
+        ["📅 انتشار زمان‌بندی‌شده"],
+        ["🔙 بازگشت"],
+      ],
+      resize_keyboard: true,
+      persistent: true,
+    },
+  };
 
   const scheduleMenu = {
     reply_markup: {
@@ -18,17 +37,6 @@ function createFeaturesHandler({
         ["⏱ 7 ساعت", "⏱ 12 ساعت"],
         ["📅 فردا", "📅 پس‌فردا"],
         ["📅 یک هفته بعد"],
-        ["🔙 بازگشت"],
-      ],
-      resize_keyboard: true,
-      persistent: true,
-    },
-  };
-
-  const featuresMenu = {
-    reply_markup: {
-      keyboard: [
-        ["📅 انتشار زمان‌بندی‌شده"],
         ["🔙 بازگشت"],
       ],
       resize_keyboard: true,
@@ -49,6 +57,16 @@ function createFeaturesHandler({
 
   function clearState(ctx) {
     states.delete(String(ctx.from.id));
+  }
+
+  async function getDatabaseUser(ctx) {
+    const user = await getOrCreateUser(ctx.from);
+
+    if (!user || !user.id) {
+      throw new Error("User database record not found");
+    }
+
+    return user;
   }
 
   function isInstagramUrl(value) {
@@ -104,14 +122,193 @@ function createFeaturesHandler({
     return null;
   }
 
+  function getChannelTitle(channel) {
+    return (
+      channel.channel_title ||
+      channel.channel_username ||
+      String(channel.telegram_chat_id)
+    );
+  }
+
+  function getChannelLabel(channel) {
+    return `📢 ${getChannelTitle(channel)} [${channel.id}]`;
+  }
+
+  function getRemoveLabel(channel) {
+    return `🗑 ${getChannelTitle(channel)} [${channel.id}]`;
+  }
+
+  function getChannelKeyboard(channels, labelFunction) {
+    const keyboard = channels.map((channel) => [
+      labelFunction(channel),
+    ]);
+
+    keyboard.push(["🔙 بازگشت"]);
+
+    return {
+      reply_markup: {
+        keyboard,
+        resize_keyboard: true,
+        persistent: true,
+      },
+    };
+  }
+
+  async function verifyChannel(ctx, text) {
+    const channel = await ctx.telegram.getChat(text);
+
+    if (channel.type !== "channel") {
+      throw new Error("مقصد واردشده کانال تلگرام نیست.");
+    }
+
+    const botInfo = await ctx.telegram.getMe();
+
+    const member = await ctx.telegram.getChatMember(
+      channel.id,
+      botInfo.id
+    );
+
+    if (
+      !["administrator", "creator"].includes(member.status) ||
+      member.can_post_messages === false
+    ) {
+      throw new Error(
+        "ربات باید ادمین کانال باشد و اجازه انتشار پیام داشته باشد."
+      );
+    }
+
+    return channel;
+  }
+
   bot.hears("🛠 امکانات ویژه", async (ctx) => {
     clearState(ctx);
 
     await ctx.reply(
       "🛠 امکانات ویژه\n\n" +
-        "امکان موردنظرت را انتخاب کن.",
+        "مدیریت کانال و انتشار زمان‌بندی‌شده را انتخاب کن.",
       featuresMenu
     );
+  });
+
+  bot.hears("📢 اتصال کانال من", async (ctx) => {
+    clearState(ctx);
+
+    await ctx.reply(
+      "📢 راهنمای اتصال کانال به زکا\n\n" +
+        "۱. وارد کانال تلگرامت شو.\n" +
+        "۲. تنظیمات کانال را باز کن.\n" +
+        "۳. بخش مدیران یا Administrators را انتخاب کن.\n" +
+        "۴. ربات زکا را به‌عنوان ادمین اضافه کن.\n" +
+        "۵. اجازه ارسال پیام یا Post Messages را فعال کن.\n" +
+        "۶. تغییرات را ذخیره کن.\n\n" +
+        "بعد از این کار، گزینه «➕ ثبت کانال» را بزن.\n\n" +
+        "برای کانال عمومی، آیدی آن مثل @mychannel را بفرست. " +
+        "برای کانال خصوصی، باید آیدی عددی کانال را داشته باشی.",
+      featuresMenu
+    );
+  });
+
+  bot.hears("➕ ثبت کانال", async (ctx) => {
+    clearState(ctx);
+
+    setState(ctx, {
+      step: "register_channel",
+    });
+
+    await ctx.reply(
+      "➕ ثبت کانال\n\n" +
+        "آیدی کانال عمومی را بفرست.\n\n" +
+        "مثال: @mychannel\n\n" +
+        "ربات باید از قبل در کانال ادمین شده باشد و اجازه انتشار پیام داشته باشد.\n\n" +
+        "برای لغو، «🔙 بازگشت» را بزن.",
+      featuresMenu
+    );
+  });
+
+  bot.hears("📋 کانال‌های من", async (ctx) => {
+    clearState(ctx);
+
+    try {
+      const user = await getDatabaseUser(ctx);
+      const channels = await listUserChannels(user.id);
+
+      if (!channels.length) {
+        await ctx.reply(
+          "📋 هنوز کانالی ثبت نکرده‌ای.\n\n" +
+            "ابتدا گزینه «➕ ثبت کانال» را انتخاب کن.",
+          featuresMenu
+        );
+
+        return;
+      }
+
+      const lines = channels.map((channel, index) => {
+        const username = channel.channel_username
+          ? `\n   آیدی: @${channel.channel_username}`
+          : "";
+
+        return (
+          `${index + 1}. ${getChannelTitle(channel)}\n` +
+          `   شناسه ثبت: ${channel.id}\n` +
+          `   آیدی تلگرام: ${channel.telegram_chat_id}` +
+          username
+        );
+      });
+
+      await ctx.reply(
+        "📋 کانال‌های ثبت‌شده حساب تو:\n\n" +
+          lines.join("\n\n"),
+        featuresMenu
+      );
+    } catch (error) {
+      console.error(
+        "List user channels failed:",
+        error?.message || error
+      );
+
+      await ctx.reply(
+        "❌ دریافت فهرست کانال‌ها انجام نشد. دوباره تلاش کن.",
+        featuresMenu
+      );
+    }
+  });
+
+  bot.hears("🗑 حذف کانال", async (ctx) => {
+    clearState(ctx);
+
+    try {
+      const user = await getDatabaseUser(ctx);
+      const channels = await listUserChannels(user.id);
+
+      if (!channels.length) {
+        await ctx.reply(
+          "کانالی برای حذف وجود ندارد.",
+          featuresMenu
+        );
+
+        return;
+      }
+
+      setState(ctx, {
+        step: "remove_channel",
+        channels,
+      });
+
+      await ctx.reply(
+        "🗑 کانالی را که می‌خواهی از حساب خودت حذف کنی انتخاب کن.",
+        getChannelKeyboard(channels, getRemoveLabel)
+      );
+    } catch (error) {
+      console.error(
+        "Prepare channel removal failed:",
+        error?.message || error
+      );
+
+      await ctx.reply(
+        "❌ دریافت کانال‌ها انجام نشد. دوباره تلاش کن.",
+        featuresMenu
+      );
+    }
   });
 
   bot.hears("📅 انتشار زمان‌بندی‌شده", async (ctx) => {
@@ -133,7 +330,6 @@ function createFeaturesHandler({
       return next();
     }
 
-    const userId = String(ctx.from.id);
     const text = ctx.message.text.trim();
 
     if (Date.now() - state.createdAt > SESSION_TIMEOUT) {
@@ -161,10 +357,119 @@ function createFeaturesHandler({
         "🎮 مینی‌گیم‌ها",
         "🛠 امکانات ویژه",
         "🔮 فال",
+        "📢 اتصال کانال من",
+        "➕ ثبت کانال",
+        "📋 کانال‌های من",
+        "🗑 حذف کانال",
+        "📅 انتشار زمان‌بندی‌شده",
       ].includes(text)
     ) {
       clearState(ctx);
       return next();
+    }
+
+    if (state.step === "register_channel") {
+      let channel;
+
+      try {
+        channel = await verifyChannel(ctx, text);
+      } catch (error) {
+        await ctx.reply(
+          "❌ ثبت کانال انجام نشد.\n\n" +
+            (error.message || "کانال پیدا نشد یا دسترسی ربات کافی نیست.") +
+            "\n\n" +
+            "آیدی کانال را بررسی کن و مطمئن شو ربات ادمین است و اجازه انتشار پیام دارد.\n\n" +
+            "مثال کانال عمومی: @mychannel"
+        );
+
+        return;
+      }
+
+      try {
+        const user = await getDatabaseUser(ctx);
+
+        const savedChannel = await addUserChannel({
+          userId: user.id,
+          telegramChatId: String(channel.id),
+          channelTitle: channel.title || channel.username || null,
+          channelUsername: channel.username || null,
+        });
+
+        clearState(ctx);
+
+        await ctx.reply(
+          "✅ کانال با موفقیت ثبت شد.\n\n" +
+            `📢 نام کانال: ${getChannelTitle(savedChannel)}\n` +
+            `🆔 آیدی کانال: ${savedChannel.telegram_chat_id}\n\n` +
+            "این کانال به حساب خودت متصل شد.",
+          featuresMenu
+        );
+      } catch (error) {
+        console.error(
+          "Register user channel failed:",
+          error?.message || error
+        );
+
+        await ctx.reply(
+          "❌ ذخیره کانال در پایگاه داده انجام نشد. دوباره تلاش کن.",
+          featuresMenu
+        );
+      }
+
+      return;
+    }
+
+    if (state.step === "remove_channel") {
+      const selectedChannel = state.channels.find(
+        (channel) => getRemoveLabel(channel) === text
+      );
+
+      if (!selectedChannel) {
+        await ctx.reply(
+          "از دکمه‌های فهرست، کانال موردنظر را انتخاب کن.",
+          getChannelKeyboard(state.channels, getRemoveLabel)
+        );
+
+        return;
+      }
+
+      try {
+        const user = await getDatabaseUser(ctx);
+
+        const removedChannel = await removeUserChannel(
+          selectedChannel.id,
+          user.id
+        );
+
+        clearState(ctx);
+
+        if (!removedChannel) {
+          await ctx.reply(
+            "این کانال در حساب تو ثبت نشده یا قبلاً حذف شده است.",
+            featuresMenu
+          );
+
+          return;
+        }
+
+        await ctx.reply(
+          "✅ کانال از فهرست حساب تو حذف شد.\n\n" +
+            "برنامه‌های انتشار قبلی به‌صورت خودکار حذف نمی‌شوند.",
+          featuresMenu
+        );
+      } catch (error) {
+        console.error(
+          "Remove user channel failed:",
+          error?.message || error
+        );
+
+        await ctx.reply(
+          "❌ حذف کانال انجام نشد. دوباره تلاش کن.",
+          featuresMenu
+        );
+      }
+
+      return;
     }
 
     if (state.step === "instagram_url") {
@@ -177,66 +482,60 @@ function createFeaturesHandler({
         return;
       }
 
-      setState(ctx, {
-        step: "channel",
-        sourceUrl: text,
-      });
-
-      await ctx.reply(
-        "✅ لینک دریافت شد.\n\n" +
-          "حالا آیدی یا لینک کانال مقصد را بفرست.\n\n" +
-          "مثال: @mychannel\n\n" +
-          "ربات باید در همان کانال دسترسی انتشار داشته باشد."
-      );
-
-      return;
-    }
-
-    if (state.step === "channel") {
-      let channel;
-
       try {
-        channel = await ctx.telegram.getChat(text);
-      } catch (error) {
-        await ctx.reply(
-          "❌ کانال پیدا نشد یا ربات به آن دسترسی ندارد.\n\n" +
-            "آیدی یا لینک کانال را بررسی کن و دوباره بفرست."
-        );
+        const user = await getDatabaseUser(ctx);
+        const channels = await listUserChannels(user.id);
 
-        return;
-      }
+        if (!channels.length) {
+          clearState(ctx);
 
-      if (channel.type !== "channel") {
-        await ctx.reply(
-          "❌ مقصد واردشده کانال تلگرام نیست.\n" +
-            "آیدی یا لینک یک کانال را بفرست."
-        );
-
-        return;
-      }
-
-      try {
-        const botInfo = await ctx.telegram.getMe();
-        const member = await ctx.telegram.getChatMember(
-          channel.id,
-          botInfo.id
-        );
-
-        if (
-          !["administrator", "creator"].includes(member.status) ||
-          member.can_post_messages === false
-        ) {
           await ctx.reply(
-            "❌ ربات در این کانال دسترسی انتشار ندارد.\n\n" +
-              "ربات را ادمین کن و اجازه ارسال پیام بده؛ سپس دوباره آیدی کانال را بفرست."
+            "❌ هنوز کانالی ثبت نکرده‌ای.\n\n" +
+              "۱. از امکانات ویژه، «📢 اتصال کانال من» را باز کن.\n" +
+              "۲. ربات را در کانالت ادمین کن.\n" +
+              "۳. گزینه «➕ ثبت کانال» را بزن.\n" +
+              "۴. دوباره انتشار زمان‌بندی‌شده را شروع کن.",
+            featuresMenu
           );
 
           return;
         }
-      } catch (error) {
+
+        setState(ctx, {
+          step: "select_schedule_channel",
+          sourceUrl: text,
+          channels,
+        });
+
         await ctx.reply(
-          "❌ نتوانستم دسترسی انتشار ربات را تأیید کنم.\n\n" +
-            "بررسی کن ربات ادمین کانال باشد و دوباره تلاش کن."
+          "✅ لینک دریافت شد.\n\n" +
+            "📢 کانالی را برای انتشار انتخاب کن:",
+          getChannelKeyboard(channels, getChannelLabel)
+        );
+      } catch (error) {
+        console.error(
+          "Load channels for scheduling failed:",
+          error?.message || error
+        );
+
+        await ctx.reply(
+          "❌ دریافت کانال‌ها انجام نشد. دوباره تلاش کن.",
+          featuresMenu
+        );
+      }
+
+      return;
+    }
+
+    if (state.step === "select_schedule_channel") {
+      const selectedChannel = state.channels.find(
+        (channel) => getChannelLabel(channel) === text
+      );
+
+      if (!selectedChannel) {
+        await ctx.reply(
+          "از دکمه‌های فهرست، کانال مقصد را انتخاب کن.",
+          getChannelKeyboard(state.channels, getChannelLabel)
         );
 
         return;
@@ -245,13 +544,13 @@ function createFeaturesHandler({
       setState(ctx, {
         step: "schedule",
         sourceUrl: state.sourceUrl,
-        telegramChatId: String(channel.id),
-        channelTitle: channel.title || channel.username || null,
+        telegramChatId: String(selectedChannel.telegram_chat_id),
+        channelTitle: getChannelTitle(selectedChannel),
       });
 
       await ctx.reply(
-        "✅ کانال تأیید شد.\n" +
-          `📢 مقصد: ${channel.title || channel.username || channel.id}\n\n` +
+        "✅ کانال انتخاب شد.\n" +
+          `📢 مقصد: ${getChannelTitle(selectedChannel)}\n\n` +
           "زمان انتشار را انتخاب کن:",
         scheduleMenu
       );
@@ -272,11 +571,7 @@ function createFeaturesHandler({
       }
 
       try {
-        const user = await getOrCreateUser(ctx.from);
-
-        if (!user || !user.id) {
-          throw new Error("User database record not found");
-        }
+        const user = await getDatabaseUser(ctx);
 
         const post = await createScheduledPost({
           userId: user.id,
