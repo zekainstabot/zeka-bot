@@ -205,14 +205,16 @@ createInstagramCookieHandler(bot);
   });
 
   register(async () => {
-    cleanupQuizTimers();
+  stopScheduledPublishing();
 
-    if (bot) {
-      await bot.stop(
-        "shutdown"
-      );
-    }
-  });
+  cleanupQuizTimers();
+
+  if (bot) {
+    await bot.stop(
+      "shutdown"
+    );
+  }
+});
 
   register(async () => {
     await close();
