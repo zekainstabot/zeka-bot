@@ -888,12 +888,16 @@ async function downloadInstagramMedia({
     }
 
     const downloadOptions = {
-      output: outputTemplate,
-      format,
-      noPlaylist: true,
-      noWarnings: true,
-      print: "description",
-    };
+  output: outputTemplate,
+  format,
+  noPlaylist: true,
+  verbose: true,
+  retries: 3,
+  extractorRetries: 3,
+  fragmentRetries: 3,
+  socketTimeout: 30,
+  print: "description",
+};
 
     if (primaryCookiePath) {
       downloadOptions.cookies = primaryCookiePath;
