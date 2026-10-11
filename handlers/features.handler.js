@@ -5,6 +5,8 @@ function createFeaturesHandler({
 }) {
   const { getOrCreateUser } = require("../services/user.service");
 
+  const { parseUrl } = require("../services/url.service");
+
   const {
     createScheduledPost,
   } = require("../features/scheduled-publishing/publishing.repository");
