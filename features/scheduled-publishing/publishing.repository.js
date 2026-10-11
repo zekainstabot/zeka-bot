@@ -241,6 +241,25 @@ async function updatePostStatus(
   return result.rows[0] || null;
 }
 
+async function recoverStuckScheduledPosts() {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      UPDATE scheduled_posts
+      SET
+        status = 'pending',
+        error_message = 'Publication was interrupted; the post was returned to the queue.',
+        updated_at = NOW()
+      WHERE status = 'processing'
+        AND updated_at < NOW() - INTERVAL '30 minutes'
+      RETURNING id
+    `
+  );
+
+  return result.rowCount;
+}
+
 async function claimDueScheduledPosts(limit = 5) {
   const db = getClient();
 
