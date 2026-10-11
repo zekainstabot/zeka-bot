@@ -925,18 +925,24 @@ async function downloadInstagramMedia({
         ),
       })
     );
+  
   } catch (error) {
-    console.log(
-      "Instagram yt-dlp download failed:",
-      error?.stderr || error?.message || String(error)
-    );
+    console.error("Instagram yt-dlp download failed:", {
+      message: error?.message || String(error),
+      code: error?.code || null,
+      stderr: error?.stderr || null,
+      stdout: error?.stdout || null,
+      shortMessage: error?.shortMessage || null,
+      command: error?.command || null,
+    });
 
     if (isRateLimitError(error)) {
-      console.log(
+      console.error(
         "Instagram rate limit detected on initial yt-dlp attempt."
       );
     }
   } finally {
+
     if (primaryCookiePath) {
       try {
         fs.unlinkSync(primaryCookiePath);
