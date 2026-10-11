@@ -1,4 +1,6 @@
 
+const { Markup } = require("telegraf");
+
 const {
   createPurchaseRequest,
   getProManagers,
@@ -7,15 +9,12 @@ const {
 
 const purchaseFlow = new Map();
 
-const durationKeyboard = {
-  keyboard: [
-    [{ text: "۱ ماهه" }, { text: "۲ ماهه" }],
-    [{ text: "۳ ماهه" }, { text: "۶ ماهه" }],
-    [{ text: "۱۲ ماهه" }],
-    [{ text: "🔙 بازگشت" }, { text: "❌ لغو درخواست" }],
-  ],
-  resize_keyboard: true,
-};
+const durationKeyboard = Markup.keyboard([
+  ["۱ ماهه", "۲ ماهه"],
+  ["۳ ماهه", "۶ ماهه"],
+  ["۱۲ ماهه"],
+  ["🔙 بازگشت", "❌ لغو درخواست"],
+]).resize().persistent();
 
 const durationValues = {
   "۱ ماهه": 1,
@@ -40,16 +39,16 @@ function createProHandler({ bot, mainMenu }) {
         "🚀 امکانات بیشتر\n" +
         "💎 انتخاب مدت اشتراک\n" +
         "🎁 امکانات ویژهٔ پرو\n\n" +
-        "مدت اشتراک موردنظرت را انتخاب کن. پس از ثبت درخواست، ادمین برای هماهنگی خرید و فعال‌سازی با تو پیگیری می‌کند.",
+        "مدت اشتراک موردنظرت را انتخاب کن. پس از ثبت درخواست، ادمین برای هماهنگی خرید و فعال‌سازی پیگیری می‌کند.",
       durationKeyboard
     );
   });
 
   bot.hears(
     ["🔙 بازگشت", "❌ لغو درخواست"],
-    async (ctx) => {
+    async (ctx, next) => {
       if (!purchaseFlow.has(ctx.from.id)) {
-        return;
+        return next();
       }
 
       purchaseFlow.delete(ctx.from.id);
@@ -117,7 +116,7 @@ function createProHandler({ bot, mainMenu }) {
                 }\n` +
                 `🆔 شناسه تلگرام: ${request.telegram_user_id}\n` +
                 `⏳ مدت اشتراک: ${request.duration_months} ماه\n\n` +
-                "پس از دریافت وجه، از پنل سوپر ادمین بخش مدیریت Pro، اشتراک کاربر را دستی فعال کن."
+                "پس از دریافت وجه، از پنل Super Admin و بخش مدیریت Pro، اشتراک کاربر را دستی فعال کن."
             );
 
             notified++;
@@ -131,16 +130,16 @@ function createProHandler({ bot, mainMenu }) {
 
         if (notified === 0) {
           await ctx.reply(
-            "⚠️ درخواستت در سیستم ثبت شد، اما پیام آن به ادمین‌ها ارسال نشد.\n\n" +
+            "⚠️ درخواستت ثبت شد، اما پیام آن به ادمین‌ها ارسال نشد.\n\n" +
               `شماره درخواست: ${request.id}\n` +
-              "لطفاً بعداً با پشتیبانی تماس بگیر.",
+              "لطفاً با پشتیبانی تماس بگیر.",
             mainMenu
           );
           return;
         }
 
         await ctx.reply(
-          "✅ درخواست خرید پرو با موفقیت ثبت شد.\n\n" +
+          "✅ درخواست خرید پرو ثبت شد.\n\n" +
             `🆔 شماره درخواست: ${request.id}\n` +
             `⏳ مدت اشتراک: ${request.duration_months} ماه\n\n` +
             "درخواست برای ادمین ارسال شد. پس از هماهنگی پرداخت، اشتراک به‌صورت دستی فعال می‌شود.",
