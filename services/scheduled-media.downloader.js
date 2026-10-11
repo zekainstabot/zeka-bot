@@ -4,7 +4,6 @@ const path = require("path");
 const ytdlp = require("yt-dlp-exec");
 
 const { parseUrl } = require("./url.service");
-
 const { downloadInstagramMedia } = require("./instagram.downloader");
 const { downloadTikTokMedia } = require("./tiktok.downloader");
 
@@ -95,7 +94,10 @@ function readCaption(directory, fallback = "") {
         return caption.slice(0, 1024);
       }
     } catch (error) {
-      console.error("Scheduled media metadata read failed:", error.message);
+      console.error(
+        "Scheduled media metadata read failed:",
+        error?.message || error
+      );
     }
   }
 
@@ -110,7 +112,9 @@ async function downloadScheduledMedia({ url, jobId }) {
   const parsed = parseUrl(url);
 
   if (!parsed.valid || !parsed.platform || !parsed.url) {
-    throw new Error("این لینک معتبر نیست یا پلتفرم آن هنوز پشتیبانی نمی‌شود.");
+    throw new Error(
+      "این لینک معتبر نیست یا پلتفرم آن هنوز پشتیبانی نمی‌شود."
+    );
   }
 
   const normalizedUrl = parsed.url;
@@ -119,7 +123,7 @@ async function downloadScheduledMedia({ url, jobId }) {
   if (platform === "instagram") {
     return downloadInstagramMedia({
       url: normalizedUrl,
-      jobId: `scheduled-${jobId}`,
+      jobId,
       contentType: parsed.contentType || "OTHER",
     });
   }
@@ -127,7 +131,7 @@ async function downloadScheduledMedia({ url, jobId }) {
   if (platform === "tiktok") {
     return downloadTikTokMedia({
       url: normalizedUrl,
-      jobId: `scheduled-${jobId}`,
+      jobId,
     });
   }
 
