@@ -120,7 +120,7 @@ async function start() {
 
     await initializeDatabase();
 
-    await cleanupStaleScheduledFiles();
+    startTempFileCleanupService();
 
     console.log("Zeka Bot database initialized.");
 
