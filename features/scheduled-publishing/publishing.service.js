@@ -3,65 +3,28 @@ const os = require("os");
 const path = require("path");
 
 const {
-  downloadInstagramMedia,
+  downloadScheduledMedia,
   detectFileContentType,
-} = require("../../services/instagram.downloader");
+} = require("../../services/scheduled-media.downloader");
+
+const {
+  parseUrl,
+} = require("../../services/url.service");
 
 const {
   updatePostStatus,
 } = require("./publishing.repository");
 
-function detectInstagramContentType(url) {
-  const parsedUrl = new URL(url);
-  const parts = parsedUrl.pathname
-    .split("/")
-    .filter(Boolean)
-    .map((part) => part.toLowerCase());
+function validateSourceUrl(input) {
+  const parsed = parseUrl(input);
 
-  if (parts.includes("stories")) {
-    return "STORY";
-  }
-
-  if (parts.includes("reel") || parts.includes("reels")) {
-    return "REEL";
-  }
-
-  if (parts.includes("tv")) {
-    return "VIDEO";
-  }
-
-  if (parts.includes("p")) {
-    return "POST";
-  }
-
-  return "OTHER";
-}
-
-function validateInstagramUrl(url) {
-  let parsedUrl;
-
-  try {
-    parsedUrl = new URL(url);
-  } catch {
-    throw new Error("لینک واردشده معتبر نیست.");
-  }
-
-  const hostname = parsedUrl.hostname.toLowerCase();
-
-  if (
-    parsedUrl.protocol !== "https:" ||
-    ![
-      "instagram.com",
-      "www.instagram.com",
-      "m.instagram.com",
-    ].includes(hostname)
-  ) {
+  if (!parsed.valid || !parsed.url || !parsed.platform) {
     throw new Error(
-      "فعلاً انتشار زمان‌بندی‌شده فقط از لینک‌های اینستاگرام پشتیبانی می‌کند."
+      "لینک معتبر نیست یا پلتفرم آن پشتیبانی نمی‌شود."
     );
   }
 
-  return parsedUrl.toString();
+  return parsed;
 }
 
 function buildCaption(post, downloadedCaption) {
@@ -113,30 +76,23 @@ async function sendMediaToChannel({
   filePath,
   caption,
 }) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error("فایل رسانه برای انتشار پیدا نشد.");
+  }
+
   const fileType = detectFileContentType(filePath);
   const options = caption ? { caption } : {};
+  const media = { source: filePath };
 
   if (fileType === "PHOTO") {
-    return bot.telegram.sendPhoto(
-      chatId,
-      { source: filePath },
-      options
-    );
+    return bot.telegram.sendPhoto(chatId, media, options);
   }
 
   if (fileType === "VIDEO") {
-    return bot.telegram.sendVideo(
-      chatId,
-      { source: filePath },
-      options
-    );
+    return bot.telegram.sendVideo(chatId, media, options);
   }
 
-  return bot.telegram.sendDocument(
-    chatId,
-    { source: filePath },
-    options
-  );
+  return bot.telegram.sendDocument(chatId, media, options);
 }
 
 async function publishScheduledPost(post, bot) {
@@ -148,26 +104,17 @@ async function publishScheduledPost(post, bot) {
     throw new Error("ربات تلگرام مقداردهی نشده است.");
   }
 
+  let downloaded = null;
   let jobId = null;
-  let jobDirectory = null;
 
   try {
-    const sourceUrl = validateInstagramUrl(
-      post.source_url
-    );
+    const parsed = validateSourceUrl(post.source_url);
 
     jobId = `scheduled-${post.id}-${Date.now()}`;
 
-    jobDirectory = path.join(
-      os.tmpdir(),
-      "zeka-instagram",
-      jobId
-    );
-
-    const downloaded = await downloadInstagramMedia({
-      url: sourceUrl,
+    downloaded = await downloadScheduledMedia({
+      url: parsed.url,
       jobId,
-      contentType: detectInstagramContentType(sourceUrl),
     });
 
     if (
@@ -197,13 +144,14 @@ async function publishScheduledPost(post, bot) {
     });
 
     console.log(
-      `Scheduled post published: ${post.id}`
+      `Scheduled post published: ${post.id} (${parsed.platform})`
     );
 
     return {
       success: true,
       postId: post.id,
       messageId: message.message_id,
+      platform: parsed.platform,
     };
   } catch (error) {
     const errorMessage = String(
@@ -232,17 +180,25 @@ async function publishScheduledPost(post, bot) {
       error: errorMessage,
     };
   } finally {
-    if (jobDirectory) {
-      try {
-        fs.rmSync(jobDirectory, {
-          recursive: true,
-          force: true,
-        });
-      } catch (cleanupError) {
-        console.error(
-          "Scheduled publishing temporary-file cleanup failed:",
-          cleanupError?.message || cleanupError
-        );
+    if (jobId) {
+      const directories = [
+        path.join(os.tmpdir(), "zeka-instagram", jobId),
+        path.join(os.tmpdir(), "zeka-tiktok", jobId),
+        path.join(os.tmpdir(), "zeka-scheduled-media", jobId),
+      ];
+
+      for (const directory of directories) {
+        try {
+          fs.rmSync(directory, {
+            recursive: true,
+            force: true,
+          });
+        } catch (cleanupError) {
+          console.error(
+            "Scheduled publishing cleanup failed:",
+            cleanupError?.message || cleanupError
+          );
+        }
       }
     }
   }
