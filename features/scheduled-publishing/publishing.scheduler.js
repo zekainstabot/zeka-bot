@@ -1,7 +1,7 @@
 const {
   claimDueScheduledPosts,
+  recoverStuckScheduledPosts,
 } = require("./publishing.repository");
-
 const {
   publishScheduledPost,
 } = require("./publishing.service");
