@@ -1,3 +1,4 @@
+
 function createFeaturesHandler({
   bot,
   mainMenu,
@@ -86,6 +87,127 @@ function createFeaturesHandler({
     }
   }
 
+  async function verifyChannel(ctx, text) {
+    const input = text.trim();
+    let chatId = input;
+
+    if (!input) {
+      throw new Error("آیدی یا لینک کانال را وارد کن.");
+    }
+
+    if (
+      /^https?:\/\//i.test(input) ||
+      /^(t\.me|telegram\.me)\//i.test(input)
+    ) {
+      let url;
+
+      try {
+        url = new URL(
+          /^https?:\/\//i.test(input)
+            ? input
+            : `https://${input}`
+        );
+      } catch {
+        throw new Error("لینک واردشده معتبر نیست.");
+      }
+
+      const hostname = url.hostname.toLowerCase();
+
+      if (
+        !["t.me", "www.t.me", "telegram.me", "www.telegram.me"].includes(
+          hostname
+        )
+      ) {
+        throw new Error("لطفاً لینک کانال تلگرام را وارد کن.");
+      }
+
+      const parts = url.pathname.split("/").filter(Boolean);
+
+      if (
+        parts.length >= 2 &&
+        parts[0] === "c" &&
+        /^\d+$/.test(parts[1])
+      ) {
+        chatId = `-100${parts[1]}`;
+      } else if (
+        parts.length >= 1 &&
+        /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(parts[0]) &&
+        ![
+          "joinchat",
+          "addstickers",
+          "share",
+          "proxy",
+          "socks",
+          "login",
+          "confirmphone",
+        ].includes(parts[0].toLowerCase())
+      ) {
+        chatId = `@${parts[0]}`;
+      } else {
+        throw new Error(
+          "این لینک قابل شناسایی نیست. لینک عمومی یا آیدی عددی کانال را بفرست."
+        );
+      }
+    } else if (
+      /^@[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(input)
+    ) {
+      chatId = input;
+    } else if (
+      /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(input)
+    ) {
+      chatId = `@${input}`;
+    } else if (/^-100\d+$/.test(input)) {
+      chatId = input;
+    } else if (/^100\d+$/.test(input)) {
+      chatId = `-${input}`;
+    } else {
+      throw new Error(
+        "فرمت آیدی کانال معتبر نیست.\n\n" +
+          "آیدی با @، نام کاربری بدون @، لینک کانال یا آیدی عددی با -100 را بفرست."
+      );
+    }
+
+    let channel;
+
+    try {
+      channel = await ctx.telegram.getChat(chatId);
+    } catch {
+      throw new Error(
+        "کانال پیدا نشد. آیدی را بررسی کن و مطمئن شو ربات به کانال دسترسی دارد."
+      );
+    }
+
+    if (channel.type !== "channel") {
+      throw new Error("مقصد واردشده کانال تلگرام نیست.");
+    }
+
+    const botInfo = await ctx.telegram.getMe();
+
+    let member;
+
+    try {
+      member = await ctx.telegram.getChatMember(
+        channel.id,
+        botInfo.id
+      );
+    } catch {
+      throw new Error(
+        "دریافت دسترسی ربات ممکن نشد. ربات را به کانال اضافه کن و دوباره امتحان کن."
+      );
+    }
+
+    if (
+      !["administrator", "creator"].includes(member.status) ||
+      member.can_post_messages === false
+    ) {
+      throw new Error(
+        "ربات باید ادمین کانال باشد و اجازه انتشار پیام داشته باشد."
+      );
+    }
+
+    return channel;
+  }
+
   function getScheduledAt(choice) {
     const now = new Date();
     const scheduledAt = new Date(now);
@@ -154,19 +276,6 @@ function createFeaturesHandler({
     };
   }
 
-  await ctx.reply(
-  "➕ ثبت کانال\n\n" +
-    "یکی از این موارد را بفرست:\n\n" +
-    "• آیدی با @ مثل @mychannel\n" +
-    "• نام کاربری بدون @ مثل mychannel\n" +
-    "• لینک کانال مثل https://t.me/mychannel\n" +
-    "• آیدی عددی مثل -1001234567890\n" +
-    "• لینک پست کانال خصوصی مثل https://t.me/c/123456789/10\n\n" +
-    "ربات باید در کانال ادمین باشد و اجازه انتشار پیام داشته باشد.\n\n" +
-    "لینک دعوت خصوصی به‌تنهایی برای ثبت کانال کافی نیست.\n" +
-    "برای لغو، «🔙 بازگشت» را بزن.",
-  featuresMenu
-);
   bot.hears("🛠 امکانات ویژه", async (ctx) => {
     clearState(ctx);
 
@@ -177,7 +286,6 @@ function createFeaturesHandler({
     );
   });
 
-  
   bot.hears("📢 اتصال کانال من", async (ctx) => {
     clearState(ctx);
 
@@ -187,7 +295,7 @@ function createFeaturesHandler({
         "سپس دسترسی ارسال پیام را تأیید کن.\n\n" +
         "بعد از ادمین‌کردن ربات، گزینه «➕ ثبت کانال» را بزن.\n\n" +
         "برای کانال عمومی، آیدی آن مثل @mychannel را بفرست. " +
-        "برای کانال خصوصی، باید آیدی عددی کانال را داشته باشی.",
+        "برای کانال خصوصی، آیدی عددی کانال یا لینک پست آن را بفرست.",
       {
         reply_markup: {
           inline_keyboard: [
@@ -203,7 +311,6 @@ function createFeaturesHandler({
     );
   });
 
-
   bot.hears("➕ ثبت کانال", async (ctx) => {
     clearState(ctx);
 
@@ -212,18 +319,18 @@ function createFeaturesHandler({
     });
 
     await ctx.reply(
-  "➕ ثبت کانال\n\n" +
-    "یکی از این موارد را بفرست:\n\n" +
-    "• آیدی با @ مثل @mychannel\n" +
-    "• نام کاربری بدون @ مثل mychannel\n" +
-    "• لینک کانال مثل https://t.me/mychannel\n" +
-    "• آیدی عددی مثل -1001234567890\n" +
-    "• لینک پست کانال خصوصی مثل https://t.me/c/123456789/10\n\n" +
-    "ربات باید در کانال ادمین باشد و اجازه انتشار پیام داشته باشد.\n\n" +
-    "لینک دعوت خصوصی به‌تنهایی برای ثبت کانال کافی نیست.\n" +
-    "برای لغو، «🔙 بازگشت» را بزن.",
-  featuresMenu
-);
+      "➕ ثبت کانال\n\n" +
+        "یکی از این موارد را بفرست:\n\n" +
+        "• آیدی با @ مثل @mychannel\n" +
+        "• نام کاربری بدون @ مثل mychannel\n" +
+        "• لینک کانال مثل https://t.me/mychannel\n" +
+        "• آیدی عددی مثل -1001234567890\n" +
+        "• لینک پست کانال خصوصی مثل https://t.me/c/123456789/10\n\n" +
+        "ربات باید در کانال ادمین باشد و اجازه انتشار پیام داشته باشد.\n\n" +
+        "لینک دعوت خصوصی به‌تنهایی برای ثبت کانال کافی نیست.\n" +
+        "برای لغو، «🔙 بازگشت» را بزن.",
+      featuresMenu
+    );
   });
 
   bot.hears("📋 کانال‌های من", async (ctx) => {
@@ -377,7 +484,8 @@ function createFeaturesHandler({
       } catch (error) {
         await ctx.reply(
           "❌ ثبت کانال انجام نشد.\n\n" +
-            (error.message || "کانال پیدا نشد یا دسترسی ربات کافی نیست.") +
+            (error.message ||
+              "کانال پیدا نشد یا دسترسی ربات کافی نیست.") +
             "\n\n" +
             "آیدی کانال را بررسی کن و مطمئن شو ربات ادمین است و اجازه انتشار پیام دارد.\n\n" +
             "مثال کانال عمومی: @mychannel"
