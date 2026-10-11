@@ -241,6 +241,40 @@ async function updatePostStatus(
   return result.rows[0] || null;
 }
 
+async function claimDueScheduledPosts(limit = 5) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(20, Number.parseInt(limit, 10) || 5)
+  );
+
+  const result = await db.query(
+    `
+      WITH due_posts AS (
+        SELECT id
+        FROM scheduled_posts
+        WHERE status = 'pending'
+          AND scheduled_at <= NOW()
+        ORDER BY scheduled_at ASC, id ASC
+        LIMIT $1
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE scheduled_posts AS posts
+      SET
+        status = 'processing',
+        attempts = posts.attempts + 1,
+        updated_at = NOW()
+      FROM due_posts
+      WHERE posts.id = due_posts.id
+      RETURNING posts.*
+    `,
+    [safeLimit]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   createScheduledPost,
   getScheduledPostById,
