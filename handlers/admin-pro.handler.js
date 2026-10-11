@@ -1,6 +1,9 @@
+
 const {
   Markup,
 } = require("telegraf");
+
+const adminService = require("../services/admin.service");
 
 const adminProService = require(
   "../services/admin-pro.service"
@@ -10,35 +13,41 @@ const adminProStates = new Map();
 
 const CANCEL_TEXT = "❌ لغو";
 
-const adminProMenu = Markup.keyboard([
-  ["⭐ فعال‌سازی Pro", "⏳ تمدید Pro"],
-  ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
-  ["❌ لغو Pro"],
-  ["🔙 پنل Super Admin"],
-]).resize();
-
 const cancelMenu = Markup.keyboard([
   [CANCEL_TEXT],
 ]).resize();
 
 function getState(userId) {
-  return (
-    adminProStates.get(userId) ||
-    null
-  );
+  return adminProStates.get(userId) || null;
 }
 
 function setState(userId, state) {
-  adminProStates.set(
-    userId,
-    state
-  );
+  adminProStates.set(userId, state);
 }
 
 function clearState(userId) {
-  adminProStates.delete(
-    userId
+  adminProStates.delete(userId);
+}
+
+async function buildAdminProMenu(telegramUserId) {
+  const admin = await adminService.getAdminByTelegramId(
+    telegramUserId
   );
+
+  const isSuperAdmin =
+    admin?.is_active &&
+    admin.role_key === "super_admin";
+
+  return Markup.keyboard([
+    ["⭐ فعال‌سازی Pro", "⏳ تمدید Pro"],
+    ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
+    ["❌ لغو Pro"],
+    [
+      isSuperAdmin
+        ? "🔙 پنل Super Admin"
+        : "🔙 پنل ادمین",
+    ],
+  ]).resize();
 }
 
 function durationMenu() {
@@ -61,14 +70,11 @@ function formatDate(value) {
     return "نامعتبر";
   }
 
-  return date.toLocaleDateString(
-    "fa-IR",
-    {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }
-  );
+  return date.toLocaleDateString("fa-IR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
 }
 
 function durationFromText(text) {
@@ -83,32 +89,23 @@ function durationFromText(text) {
   return map[text] || null;
 }
 
-async function requireAccess(
-  ctx
-) {
-  const telegramUserId =
-    ctx.from?.id;
+async function requireAccess(ctx) {
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return false;
   }
 
   try {
-    await adminProService
-      .requireProManagePermission(
-        telegramUserId
-      );
+    await adminProService.requireProManagePermission(
+      telegramUserId
+    );
 
     return true;
   } catch (error) {
-    if (
-      error.code ===
-        "SUPER_ADMIN_REQUIRED" ||
-      error.code ===
-        "PERMISSION_DENIED"
-    ) {
+    if (error.code === "PERMISSION_DENIED") {
       await ctx.reply(
-        "⛔ فقط Super Admin به مدیریت Pro دسترسی دارد."
+        "⛔ مجوز مدیریت Pro برای حساب شما فعال نیست."
       );
 
       return false;
@@ -122,95 +119,80 @@ async function requireAccess(
   }
 }
 
-async function startDurationFlow(
+async function replyWithProMenu(
   ctx,
-  action
+  message
 ) {
-  const telegramUserId =
-    ctx.from?.id;
+  const menu = await buildAdminProMenu(ctx.from.id);
+
+  await ctx.reply(message, menu);
+}
+
+async function startDurationFlow(ctx, action) {
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
   }
 
-  if (
-    !(await requireAccess(ctx))
-  ) {
+  if (!(await requireAccess(ctx))) {
     return;
   }
 
-  setState(
-    telegramUserId,
-    {
-      step: "targetUser",
-      action,
-    }
-  );
+  setState(telegramUserId, {
+    step: "targetUser",
+    action,
+  });
 
   await ctx.reply(
     "👤 شناسه عددی تلگرام کاربر را ارسال کنید.\n\n" +
       "مثال:\n" +
       "123456789\n\n" +
-      "برای لغو، «❌ لغو» را بزنید.",
+      "برای لغو، دکمه «❌ لغو» را بزنید.",
     cancelMenu
   );
 }
 
-async function startSimpleFlow(
-  ctx,
-  action
-) {
-  const telegramUserId =
-    ctx.from?.id;
+async function startSimpleFlow(ctx, action) {
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
   }
 
-  if (
-    !(await requireAccess(ctx))
-  ) {
+  if (!(await requireAccess(ctx))) {
     return;
   }
 
-  setState(
-    telegramUserId,
-    {
-      step: "targetUser",
-      action,
-    }
-  );
+  setState(telegramUserId, {
+    step: "targetUser",
+    action,
+  });
 
   await ctx.reply(
     "👤 شناسه عددی تلگرام کاربر را ارسال کنید.\n\n" +
       "مثال:\n" +
       "123456789\n\n" +
-      "برای لغو، «❌ لغو» را بزنید.",
+      "برای لغو، دکمه «❌ لغو» را بزنید.",
     cancelMenu
   );
 }
 
-async function handleAdminProText(
-  ctx,
-  next
-) {
-  const telegramUserId =
-    ctx.from?.id;
+async function handleAdminProText(ctx, next) {
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return next();
   }
 
-  const state =
-    getState(telegramUserId);
+  const state = getState(telegramUserId);
 
   if (!state) {
     return next();
   }
 
   const text =
-    typeof ctx.message?.text ===
-    "string"
+    typeof ctx.message?.text === "string"
       ? ctx.message.text.trim()
       : "";
 
@@ -222,13 +204,11 @@ async function handleAdminProText(
     text === CANCEL_TEXT ||
     text === "/cancel"
   ) {
-    clearState(
-      telegramUserId
-    );
+    clearState(telegramUserId);
 
-    await ctx.reply(
-      "❌ عملیات مدیریت Pro لغو شد.",
-      adminProMenu
+    await replyWithProMenu(
+      ctx,
+      "❌ عملیات مدیریت Pro لغو شد."
     );
 
     return;
@@ -237,9 +217,7 @@ async function handleAdminProText(
   try {
     switch (state.step) {
       case "targetUser": {
-        if (
-          !/^\d+$/.test(text)
-        ) {
+        if (!/^\d+$/.test(text)) {
           await ctx.reply(
             "❌ شناسه تلگرام باید فقط عدد باشد.\n\n" +
               "مثال: 123456789",
@@ -249,17 +227,13 @@ async function handleAdminProText(
           return;
         }
 
-        state.targetTelegramUserId =
-          text;
+        state.targetTelegramUserId = text;
 
         if (
-          state.action ===
-          "activate" ||
-          state.action ===
-          "renew"
+          state.action === "activate" ||
+          state.action === "renew"
         ) {
-          state.step =
-            "duration";
+          state.step = "duration";
 
           await ctx.reply(
             "⏳ مدت Pro را انتخاب کنید:",
@@ -269,117 +243,87 @@ async function handleAdminProText(
           return;
         }
 
-        if (
-          state.action ===
-          "disable"
-        ) {
-          const result =
-            await adminProService
-              .disablePro({
-                telegramUserId,
-                targetTelegramUserId:
-                  text,
-              });
+        if (state.action === "disable") {
+          const result = await adminProService.disablePro({
+            telegramUserId,
+            targetTelegramUserId: text,
+          });
 
-          clearState(
-            telegramUserId
-          );
+          clearState(telegramUserId);
 
-          await ctx.reply(
+          await replyWithProMenu(
+            ctx,
             "🔴 Pro کاربر خاموش شد.\n\n" +
               `👤 کاربر: ${
                 result.username
-                  ? "@" +
-                    result.username
+                  ? "@" + result.username
                   : result.telegram_user_id
               }\n` +
               `📅 تاریخ انقضا: ${formatDate(
                 result.pro_expires_at
-              )}`,
-            adminProMenu
+              )}`
           );
 
           return;
         }
 
-        if (
-          state.action ===
-          "enable"
-        ) {
-          const result =
-            await adminProService
-              .enablePro({
-                telegramUserId,
-                targetTelegramUserId:
-                  text,
-              });
+        if (state.action === "enable") {
+          const result = await adminProService.enablePro({
+            telegramUserId,
+            targetTelegramUserId: text,
+          });
 
-          clearState(
-            telegramUserId
-          );
+          clearState(telegramUserId);
 
-          await ctx.reply(
+          await replyWithProMenu(
+            ctx,
             "🟢 Pro کاربر روشن شد.\n\n" +
               `👤 کاربر: ${
                 result.username
-                  ? "@" +
-                    result.username
+                  ? "@" + result.username
                   : result.telegram_user_id
               }\n` +
               `📅 تاریخ انقضا: ${formatDate(
                 result.pro_expires_at
-              )}`,
-            adminProMenu
+              )}`
           );
 
           return;
         }
 
-        if (
-          state.action ===
-          "cancel"
-        ) {
-          const result =
-            await adminProService
-              .cancelPro({
-                telegramUserId,
-                targetTelegramUserId:
-                  text,
-              });
+        if (state.action === "cancel") {
+          const result = await adminProService.cancelPro({
+            telegramUserId,
+            targetTelegramUserId: text,
+          });
 
-          clearState(
-            telegramUserId
-          );
+          clearState(telegramUserId);
 
-          await ctx.reply(
+          await replyWithProMenu(
+            ctx,
             "❌ Pro کاربر لغو شد.\n\n" +
               `👤 کاربر: ${
                 result.username
-                  ? "@" +
-                    result.username
+                  ? "@" + result.username
                   : result.telegram_user_id
-              }`,
-            adminProMenu
+              }`
           );
 
           return;
         }
 
-        clearState(
-          telegramUserId
-        );
+        clearState(telegramUserId);
 
-        await ctx.reply(
-          "❌ عملیات نامعتبر است.",
-          adminProMenu
+        await replyWithProMenu(
+          ctx,
+          "❌ عملیات نامعتبر است."
         );
 
         return;
       }
 
       case "duration": {
-        const duration =
-          durationFromText(text);
+        const duration = durationFromText(text);
 
         if (!duration) {
           await ctx.reply(
@@ -392,168 +336,122 @@ async function handleAdminProText(
         }
 
         const method =
-          state.action ===
-          "renew"
+          state.action === "renew"
             ? "renewPro"
             : "activatePro";
 
-        const result =
-          await adminProService[
-            method
-          ]({
-            telegramUserId,
-            targetTelegramUserId:
-              state.targetTelegramUserId,
-            durationMonths:
-              duration,
-          });
+        const result = await adminProService[method]({
+          telegramUserId,
+          targetTelegramUserId:
+            state.targetTelegramUserId,
+          durationMonths: duration,
+        });
 
-        clearState(
-          telegramUserId
-        );
+        clearState(telegramUserId);
 
-        await ctx.reply(
+        await replyWithProMenu(
+          ctx,
           "✅ Pro با موفقیت فعال شد.\n\n" +
             `👤 کاربر: ${
               result.user.username
-                ? "@" +
-                  result.user.username
+                ? "@" + result.user.username
                 : result.user.telegram_user_id
             }\n` +
             `⏳ مدت: ${duration} ماه\n` +
-            `📅 شروع: ${formatDate(
-              result.startsAt
-            )}\n` +
-            `📅 انقضا: ${formatDate(
-              result.expiresAt
-            )}`,
-          adminProMenu
+            `📅 شروع: ${formatDate(result.startsAt)}\n` +
+            `📅 انقضا: ${formatDate(result.expiresAt)}`
         );
 
         return;
       }
 
       default: {
-        clearState(
-          telegramUserId
-        );
+        clearState(telegramUserId);
 
-        await ctx.reply(
-          "⚠️ وضعیت مدیریت Pro نامعتبر بود.",
-          adminProMenu
+        await replyWithProMenu(
+          ctx,
+          "⚠️ وضعیت مدیریت Pro نامعتبر بود."
         );
 
         return;
       }
     }
   } catch (error) {
-    console.error(
-      "Admin Pro handler failed:",
-      error
-    );
+    console.error("Admin Pro handler failed:", error);
 
-    clearState(
-      telegramUserId
-    );
+    clearState(telegramUserId);
 
-    if (
-      error.code ===
-      "USER_NOT_FOUND"
-    ) {
-      await ctx.reply(
-        "❌ کاربری با این Telegram ID در دیتابیس پیدا نشد.\n\n" +
-          "اول باید کاربر ربات را /start کرده باشد.",
-        adminProMenu
+    if (error.code === "USER_NOT_FOUND") {
+      await replyWithProMenu(
+        ctx,
+        "❌ کاربری با این شناسه در دیتابیس پیدا نشد.\n\n" +
+          "اول باید کاربر ربات را /start کرده باشد."
       );
 
       return;
     }
 
-    if (
-      error.code ===
-      "PRO_EXPIRED"
-    ) {
-      await ctx.reply(
-        "⚠️ Pro این کاربر منقضی شده است.\n\n" +
-          "برای فعال‌سازی مجدد، از «⭐ فعال‌سازی Pro» یا «⏳ تمدید Pro» استفاده کنید.",
-        adminProMenu
+    if (error.code === "PRO_EXPIRED") {
+      await replyWithProMenu(
+        ctx,
+        "⚠️ اشتراک Pro این کاربر منقضی شده است.\n\n" +
+          "برای فعال‌سازی مجدد، از «⭐ فعال‌سازی Pro» یا «⏳ تمدید Pro» استفاده کنید."
       );
 
       return;
     }
 
-    if (
-      error.code ===
-      "SUPER_ADMIN_REQUIRED"
-    ) {
+    if (error.code === "PERMISSION_DENIED") {
       await ctx.reply(
-        "⛔ فقط Super Admin می‌تواند Pro را مدیریت کند.",
-        adminProMenu
+        "⛔ مجوز مدیریت Pro برای حساب شما فعال نیست."
       );
 
       return;
     }
 
-    await ctx.reply(
+    if (error.code === "ADMIN_ACCESS_DENIED") {
+      await ctx.reply(
+        "⛔ حساب شما ادمین فعال نیست."
+      );
+
+      return;
+    }
+
+    await replyWithProMenu(
+      ctx,
       "❌ عملیات Pro انجام نشد.\n\n" +
-        "خطا در سرور ثبت شد.",
-      adminProMenu
+        "خطا در سرور ثبت شد؛ لاگ Render را بررسی کنید."
     );
   }
 }
 
-function createAdminProHandler(
-  bot
-) {
+function createAdminProHandler(bot) {
   bot.hears(
     "⭐ فعال‌سازی Pro",
-    (ctx) =>
-      startDurationFlow(
-        ctx,
-        "activate"
-      )
+    (ctx) => startDurationFlow(ctx, "activate")
   );
 
   bot.hears(
     "⏳ تمدید Pro",
-    (ctx) =>
-      startDurationFlow(
-        ctx,
-        "renew"
-      )
+    (ctx) => startDurationFlow(ctx, "renew")
   );
 
   bot.hears(
     "🟢 روشن کردن Pro",
-    (ctx) =>
-      startSimpleFlow(
-        ctx,
-        "enable"
-      )
+    (ctx) => startSimpleFlow(ctx, "enable")
   );
 
   bot.hears(
     "🔴 خاموش کردن Pro",
-    (ctx) =>
-      startSimpleFlow(
-        ctx,
-        "disable"
-      )
+    (ctx) => startSimpleFlow(ctx, "disable")
   );
 
   bot.hears(
     "❌ لغو Pro",
-    (ctx) =>
-      startSimpleFlow(
-        ctx,
-        "cancel"
-      )
+    (ctx) => startSimpleFlow(ctx, "cancel")
   );
 
-  bot.on(
-    "text",
-    handleAdminProText
-  );
+  bot.on("text", handleAdminProText);
 }
 
 module.exports = {
