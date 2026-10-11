@@ -1,4 +1,3 @@
-
 const { getClient } = require("../../database/client");
 
 const ALLOWED_CAPTION_MODES = new Set([
@@ -74,8 +73,8 @@ async function createScheduledPost({
     [
       userId,
       telegramChatId,
-      sourceUrl,
       channelTitle,
+      sourceUrl,
       mediaType,
       mediaFileId,
       mediaFilePath,
