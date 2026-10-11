@@ -601,7 +601,7 @@ function createFeaturesHandler({
 
         setState(ctx, {
           step: "select_schedule_channel",
-          sourceUrl: text,
+          sourceUrl: parsedUrl.url,
           channels,
         });
 
