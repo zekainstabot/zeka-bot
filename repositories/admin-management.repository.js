@@ -576,7 +576,7 @@ async function getActiveAdminsWithPermission(
 
   const result = await db.query(
     `
-      SELECT DISTINCT
+      SELECT
         u.telegram_user_id,
         u.username,
         u.display_name,
