@@ -276,6 +276,7 @@ async function claimDueScheduledPosts(limit = 5) {
 }
 
 module.exports = {
+  claimDueScheduledPosts,
   createScheduledPost,
   getScheduledPostById,
   listScheduledPosts,
