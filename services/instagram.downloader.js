@@ -891,7 +891,7 @@ async function downloadInstagramMedia({
   output: outputTemplate,
   format,
   noPlaylist: true,
-      noSimulate: true,
+  noSimulate: true,
   verbose: true,
   retries: 3,
   extractorRetries: 3,
