@@ -1016,11 +1016,15 @@ async function downloadInstagramMedia({
 
     const cookieResult = await ytdlp(
       normalizedUrl,
-      {
+            {
         output: outputTemplate,
         format,
         noPlaylist: true,
-        noWarnings: true,
+        verbose: true,
+        retries: 3,
+        extractorRetries: 3,
+        fragmentRetries: 3,
+        socketTimeout: 30,
         cookies: cookiePath,
         print: "description",
       }
