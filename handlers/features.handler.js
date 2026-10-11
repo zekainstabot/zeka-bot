@@ -72,23 +72,10 @@ function createFeaturesHandler({
     return user;
   }
 
-  function isInstagramUrl(value) {
-    try {
-      const url = new URL(value.trim());
-
-      return (
-        url.protocol === "https:" &&
-        [
-          "instagram.com",
-          "www.instagram.com",
-          "m.instagram.com",
-        ].includes(url.hostname.toLowerCase())
-      );
-    } catch {
-      return false;
-    }
-  }
-
+  function isSupportedMediaUrl(value) {
+  const parsed = parseUrl(value);
+  return Boolean(parsed.valid && parsed.url && parsed.platform);
+}
   async function verifyChannel(ctx, text) {
     const input = text.trim();
     let chatId = input;
