@@ -1,3 +1,4 @@
+
 const {
   Markup,
 } = require("telegraf");
@@ -6,9 +7,7 @@ const {
   mainMenu,
 } = require("../config/bot-menus");
 
-const {
-  getAdminByTelegramId,
-} = require("../services/admin.service");
+const adminService = require("../services/admin.service");
 
 const {
   setUserCommands,
@@ -35,7 +34,9 @@ async function getSuperAdmin(ctx) {
     return null;
   }
 
-  const admin = await getAdminByTelegramId(telegramUserId);
+  const admin = await adminService.getAdminByTelegramId(
+    telegramUserId
+  );
 
   if (
     !admin ||
@@ -119,26 +120,65 @@ async function handleSuperAdminQuizMenu(ctx) {
 }
 
 async function handleProAdminMenu(ctx) {
-  const admin = await getSuperAdmin(ctx);
+  const telegramUserId = ctx.from?.id;
 
-  if (!admin) {
-    await ctx.reply(
-      "⛔ فقط Super Admin به مدیریت Pro دسترسی دارد."
-    );
+  if (!telegramUserId) {
     return;
   }
 
-  await ctx.reply(
-    "💎 مدیریت Pro\n\nعملیات موردنظر را انتخاب کنید.",
-    Markup.keyboard([
+  try {
+    const admin = await adminService.getAdminByTelegramId(
+      telegramUserId
+    );
+
+    if (!admin || !admin.is_active) {
+      await ctx.reply(
+        "⛔ شما دسترسی به مدیریت Pro ندارید."
+      );
+      return;
+    }
+
+    const isSuperAdmin =
+      admin.role_key === "super_admin";
+
+    const hasProPermission = isSuperAdmin
+      ? true
+      : await adminService.hasPermission(
+          admin.user_id,
+          "pro"
+        );
+
+    if (!hasProPermission) {
+      await ctx.reply(
+        "⛔ شما مجوز مدیریت Pro را ندارید."
+      );
+      return;
+    }
+
+    const buttons = [
       ["⭐ فعال‌سازی Pro", "⏳ تمدید Pro"],
       ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
       ["❌ لغو Pro"],
-      ["🔙 پنل Super Admin"],
-    ])
-      .resize()
-      .oneTime(false)
-  );
+      [
+        isSuperAdmin
+          ? "🔙 پنل Super Admin"
+          : "🔙 پنل ادمین",
+      ],
+    ];
+
+    await ctx.reply(
+      "💎 مدیریت Pro\n\nعملیات موردنظر را انتخاب کنید.",
+      Markup.keyboard(buttons)
+        .resize()
+        .oneTime(false)
+    );
+  } catch (error) {
+    console.error("Pro admin menu failed:", error);
+
+    await ctx.reply(
+      "❌ دریافت منوی مدیریت Pro انجام نشد."
+    );
+  }
 }
 
 async function handlePlatformMenu(ctx) {
