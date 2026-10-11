@@ -538,6 +538,12 @@ async function downloadInstagramWithBrowser({
       }
     }
 
+    if (["REEL", "VIDEO"].includes(normalizedType)) {
+  throw new Error(
+    "Instagram video media was not identified. Refusing to send an image as a video."
+  );
+}
+
     if (normalizedType === "STORY") {
       throw new Error(
         "Instagram story media was not identified. Refusing to send a profile image as story content."
