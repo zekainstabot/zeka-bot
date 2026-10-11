@@ -152,8 +152,6 @@ async function publishScheduledPost(post, bot) {
   let jobDirectory = null;
 
   try {
-    await updatePostStatus(post.id, "processing");
-
     const sourceUrl = validateInstagramUrl(
       post.source_url
     );
