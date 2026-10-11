@@ -1,10 +1,5 @@
-
-function createFeaturesHandler({
-  bot,
-  mainMenu,
-}) {
+function createFeaturesHandler({ bot, mainMenu }) {
   const { getOrCreateUser } = require("../services/user.service");
-
   const { parseUrl } = require("../services/url.service");
 
   const {
@@ -36,6 +31,7 @@ function createFeaturesHandler({
   const scheduleMenu = {
     reply_markup: {
       keyboard: [
+        ["⚡ به‌محض آماده‌شدن"],
         ["⏱ 1 ساعت", "⏱ 3 ساعت"],
         ["⏱ 7 ساعت", "⏱ 12 ساعت"],
         ["📅 فردا", "📅 پس‌فردا"],
@@ -73,9 +69,15 @@ function createFeaturesHandler({
   }
 
   function isSupportedMediaUrl(value) {
-  const parsed = parseUrl(value);
-  return Boolean(parsed.valid && parsed.url && parsed.platform);
-}
+    const parsed = parseUrl(value);
+
+    return Boolean(
+      parsed.valid &&
+      parsed.url &&
+      parsed.platform
+    );
+  }
+
   async function verifyChannel(ctx, text) {
     const input = text.trim();
     let chatId = input;
@@ -103,9 +105,12 @@ function createFeaturesHandler({
       const hostname = url.hostname.toLowerCase();
 
       if (
-        !["t.me", "www.t.me", "telegram.me", "www.telegram.me"].includes(
-          hostname
-        )
+        ![
+          "t.me",
+          "www.t.me",
+          "telegram.me",
+          "www.telegram.me",
+        ].includes(hostname)
       ) {
         throw new Error("لطفاً لینک کانال تلگرام را وارد کن.");
       }
@@ -199,6 +204,11 @@ function createFeaturesHandler({
 
   function getScheduledAt(choice) {
     const now = new Date();
+
+    if (choice === "⚡ به‌محض آماده‌شدن") {
+      return now;
+    }
+
     const scheduledAt = new Date(now);
 
     const hours = {
@@ -410,12 +420,13 @@ function createFeaturesHandler({
 
   bot.hears("📅 انتشار زمان‌بندی‌شده", async (ctx) => {
     setState(ctx, {
-      step: "instagram_url",
+      step: "source_url",
     });
 
     await ctx.reply(
       "📅 انتشار زمان‌بندی‌شده\n\n" +
-        "لینک عمومی پست یا ریلز اینستاگرام را بفرست.",
+        "لینک عمومی محتوایی را که می‌خواهی منتشر شود بفرست.\n\n" +
+        "لینک باید متعلق به یکی از پلتفرم‌های شناسایی‌شده توسط زکا باشد.",
       featuresMenu
     );
   });
@@ -570,11 +581,13 @@ function createFeaturesHandler({
       return;
     }
 
-    if (state.step === "instagram_url") {
-      if (!isInstagramUrl(text)) {
+    if (state.step === "source_url") {
+      const parsedUrl = parseUrl(text);
+
+      if (!isSupportedMediaUrl(text)) {
         await ctx.reply(
-          "❌ لینک معتبر اینستاگرام نیست.\n" +
-            "لطفاً لینک کامل یک پست یا ریلز عمومی را بفرست."
+          "❌ لینک معتبر نیست یا پلتفرم آن شناسایی نمی‌شود.\n" +
+            "لطفاً لینک محتوای موردنظر را دوباره بفرست."
         );
 
         return;
@@ -683,13 +696,21 @@ function createFeaturesHandler({
 
         clearState(ctx);
 
+        const isImmediate = text === "⚡ به‌محض آماده‌شدن";
+
         await ctx.reply(
-          "✅ انتشار زمان‌بندی شد.\n\n" +
+          "✅ انتشار " +
+            (isImmediate ? "در صف آماده‌سازی قرار گرفت." : "زمان‌بندی شد.") +
+            "\n\n" +
             `🆔 شماره برنامه: ${post.id}\n` +
             `📢 کانال: ${state.channelTitle || state.telegramChatId}\n` +
-            `🕒 زمان انتشار: ${scheduledAt.toLocaleString("fa-IR", {
-              timeZone: "Asia/Tehran",
-            })}\n\n` +
+            `🕒 زمان انتشار: ${
+              isImmediate
+                ? "به‌محض رسیدن نوبت پردازش"
+                : scheduledAt.toLocaleString("fa-IR", {
+                    timeZone: "Asia/Tehran",
+                  })
+            }\n\n` +
             "برنامه انتشار به حساب خودت متصل است.",
           mainMenu
         );
