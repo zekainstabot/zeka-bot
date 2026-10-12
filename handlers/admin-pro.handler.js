@@ -485,6 +485,109 @@ async function showProPurchaseRequests(ctx) {
   }
 }
 
+async function reviewProPurchaseFromPanel(ctx, decision) {
+  if (!(await requireAccess(ctx))) {
+    await ctx.answerCbQuery();
+    return;
+  }
+
+  const data = ctx.callbackQuery?.data || "";
+  const match = data.match(
+    /^admin_pro_purchase_(approve|reject):(\d+)$/
+  );
+
+  if (!match) {
+    await ctx.answerCbQuery("درخواست نامعتبر است.");
+    return;
+  }
+
+  const requestId = match[2];
+
+  try {
+    const result =
+      await proPurchaseService.reviewPurchaseRequest({
+        requestId,
+        reviewerTelegramUserId: ctx.from.id,
+        decision,
+      });
+
+    if (!result.success) {
+      await ctx.answerCbQuery(
+        result.reason === "NOT_FOUND"
+          ? "درخواست پیدا نشد."
+          : "این درخواست قبلاً بررسی شده یا رسید ندارد.",
+        { show_alert: true }
+      );
+      return;
+    }
+
+    const request = result.request;
+
+    try {
+      await ctx.editMessageReplyMarkup({
+        inline_keyboard: [],
+      });
+    } catch (error) {
+      console.error(
+        "Removing admin Pro purchase buttons failed:",
+        error.message
+      );
+    }
+
+    if (decision === "APPROVED") {
+      await ctx.answerCbQuery("پرداخت تأیید شد.");
+
+      await ctx.reply(
+        `✅ درخواست ${request.id} تأیید شد و Pro فعال شد.`
+      );
+
+      try {
+        await ctx.telegram.sendMessage(
+          request.telegram_user_id,
+          "🎉 پرداخت زکا پرو تأیید شد!\n\n" +
+            "اشتراک پرو با موفقیت فعال شد.\n" +
+            `⏳ مدت اشتراک: ${request.duration_months} ماه`
+        );
+      } catch (error) {
+        console.error(
+          "Admin panel Pro approval notification failed:",
+          error.message
+        );
+      }
+    } else {
+      await ctx.answerCbQuery("رسید رد شد.");
+
+      await ctx.reply(
+        `❌ رسید درخواست ${request.id} رد شد.`
+      );
+
+      try {
+        await ctx.telegram.sendMessage(
+          request.telegram_user_id,
+          "❌ رسید پرداخت زکا پرو تأیید نشد.\n\n" +
+            `🆔 شماره درخواست: ${request.id}\n` +
+            "لطفاً برای بررسی علت با پشتیبانی تماس بگیر."
+        );
+      } catch (error) {
+        console.error(
+          "Admin panel Pro rejection notification failed:",
+          error.message
+        );
+      }
+    }
+  } catch (error) {
+    console.error(
+      "Admin panel Pro purchase review failed:",
+      error
+    );
+
+    await ctx.answerCbQuery(
+      "بررسی درخواست ناموفق بود.",
+      { show_alert: true }
+    );
+  }
+}
+
 function createAdminProHandler(bot) {
   bot.hears(
     "⭐ فعال‌سازی Pro",
