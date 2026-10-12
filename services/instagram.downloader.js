@@ -872,89 +872,65 @@ async function downloadInstagramMedia({
     return makeResult(files[0]);
   }
   
-  let instagramCaption = "";
-  let primaryCookiePath = null;
-
-  try {
-    try {
-      primaryCookiePath = await createInstagramCookieFile(
-        jobDirectory
-      );
-    } catch (cookieError) {
-      console.error(
-        "Instagram primary cookie preparation failed:",
-        cookieError?.message || String(cookieError)
-      );
-    }
-
-    const downloadOptions = {
-  output: outputTemplate,
-  format,
-  noPlaylist: true,
-  noSimulate: true,
-  verbose: true,
-  retries: 3,
-  extractorRetries: 3,
-  fragmentRetries: 3,
-  socketTimeout: 30,
-  print: "description",
-};
-
-    if (primaryCookiePath) {
-      downloadOptions.cookies = primaryCookiePath;
-    }
-
-    const downloadResult = await ytdlp(
-      normalizedUrl,
-      downloadOptions
-    );
-
-    instagramCaption = String(
-      downloadResult?.stdout || ""
-    ).trim();
-
-    console.log(
-      "Instagram yt-dlp diagnostic:",
-      JSON.stringify({
-        stdout: instagramCaption,
-        stderr: downloadResult?.stderr || "",
-        cookieProvided: Boolean(primaryCookiePath),
-        jobDirectory,
-        outputTemplate,
-        files: getDownloadedFiles().map(
-          (file) => path.basename(file)
-        ),
-      })
-    );
   
-  } catch (error) {
-    console.error("Instagram yt-dlp download failed:", {
-      message: error?.message || String(error),
-      code: error?.code || null,
-      stderr: error?.stderr || null,
-      stdout: error?.stdout || null,
-      shortMessage: error?.shortMessage || null,
-      command: error?.command || null,
-    });
+let instagramCaption = "";
 
-    if (isRateLimitError(error)) {
-      console.error(
-        "Instagram rate limit detected on initial yt-dlp attempt."
-      );
-    }
-  } finally {
+try {
+  const downloadOptions = {
+    output: outputTemplate,
+    format,
+    noPlaylist: true,
+    noSimulate: true,
+    verbose: true,
+    retries: 3,
+    extractorRetries: 3,
+    fragmentRetries: 3,
+    socketTimeout: 30,
+    print: "description",
+  };
 
-    if (primaryCookiePath) {
-      try {
-        fs.unlinkSync(primaryCookiePath);
-      } catch (cleanupError) {
-        console.error(
-          "Instagram primary cookie cleanup failed:",
-          cleanupError?.message || String(cleanupError)
-        );
-      }
-    }
+  console.log(
+    "Instagram yt-dlp primary attempt without cookies."
+  );
+
+  const downloadResult = await ytdlp(
+    normalizedUrl,
+    downloadOptions
+  );
+
+  instagramCaption = String(
+    downloadResult?.stdout || ""
+  ).trim();
+
+  console.log(
+    "Instagram yt-dlp diagnostic:",
+    JSON.stringify({
+      stdout: instagramCaption,
+      stderr: downloadResult?.stderr || "",
+      cookieProvided: false,
+      jobDirectory,
+      outputTemplate,
+      files: getDownloadedFiles().map(
+        (file) => path.basename(file)
+      ),
+    })
+  );
+} catch (error) {
+  console.error("Instagram yt-dlp download failed:", {
+    message: error?.message || String(error),
+    code: error?.code || null,
+    stderr: error?.stderr || null,
+    stdout: error?.stdout || null,
+    shortMessage: error?.shortMessage || null,
+    command: error?.command || null,
+  });
+
+  if (isRateLimitError(error)) {
+    console.error(
+      "Instagram rate limit detected on initial yt-dlp attempt."
+    );
   }
+}
 
   let files = sortMediaFiles(getDownloadedFiles());
 
