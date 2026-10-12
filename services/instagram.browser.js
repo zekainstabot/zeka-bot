@@ -489,7 +489,7 @@ async function downloadInstagramWithBrowser({
     if (shouldTryVideo && media.videos.length) {
       let lastVideoError = null;
 
-      for (const candidate of media.videos.slice(0, 5)) {
+      for (const candidate of media.videos.slice(0, 15)) {
         try {
           console.log(
             "Trying Instagram browser video candidate:",
