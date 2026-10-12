@@ -77,6 +77,41 @@ async function getProManagers() {
     .getActiveAdminsWithPermission("pro");
 }
 
+async function getPurchaseRequests({ status = null, limit = 20 } = {}) {
+  const allowedStatuses = [
+    ...OPEN_STATUSES,
+    "APPROVED",
+    "REJECTED",
+    "CANCELLED",
+  ];
+
+  if (status !== null && !allowedStatuses.includes(status)) {
+    throw new Error("INVALID_PURCHASE_STATUS");
+  }
+
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM pro_purchase_requests
+      WHERE ($1::varchar IS NULL OR status = $1)
+      ORDER BY
+        CASE
+          WHEN status = 'RECEIPT_SUBMITTED' THEN 0
+          WHEN status = 'PENDING' THEN 1
+          WHEN status = 'WAITING_RECEIPT' THEN 2
+          ELSE 3
+        END,
+        created_at DESC
+      LIMIT $2
+    `,
+    [status, Math.max(1, Math.min(Number(limit) || 20, 100))]
+  );
+
+  return result.rows;
+}
+
 async function getPurchaseRequestById(requestId) {
   const db = getClient();
 
