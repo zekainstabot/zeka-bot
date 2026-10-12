@@ -140,6 +140,37 @@ async function setPaymentCardNumber({
   return result.rows[0] || null;
 }
 
+
+async function cancelPurchaseRequest(telegramUserId) {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      WITH target AS (
+        SELECT id
+        FROM pro_purchase_requests
+        WHERE telegram_user_id = $1
+          AND status = ANY($2::varchar[])
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
+      )
+      UPDATE pro_purchase_requests
+      SET
+        status = 'CANCELLED',
+        updated_at = NOW()
+      WHERE id = (SELECT id FROM target)
+        AND telegram_user_id = $1
+        AND status = ANY($2::varchar[])
+      RETURNING *
+    `,
+    [String(telegramUserId), OPEN_STATUSES]
+  );
+
+  return result.rows[0] || null;
+}
+
+
 async function submitPurchaseReceipt({
   requestId,
   telegramUserId,
