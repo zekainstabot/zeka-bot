@@ -398,6 +398,7 @@ module.exports = {
   getProManagers,
   getPurchaseRequestById,
   getLatestOpenPurchaseRequest,
+  cancelPurchaseRequest,
   setPaymentCardNumber,
   submitPurchaseReceipt,
   reviewPurchaseRequest,
