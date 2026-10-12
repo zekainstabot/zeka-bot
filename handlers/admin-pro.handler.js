@@ -9,6 +9,10 @@ const adminProService = require(
   "../services/admin-pro.service"
 );
 
+const proPurchaseService = require(
+  "../services/pro-purchase.service"
+);
+
 const adminProStates = new Map();
 
 const CANCEL_TEXT = "❌ لغو";
