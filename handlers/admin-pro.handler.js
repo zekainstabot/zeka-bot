@@ -43,15 +43,16 @@ async function buildAdminProMenu(telegramUserId) {
     admin.role_key === "super_admin";
 
   return Markup.keyboard([
-    ["⭐ فعال‌سازی Pro", "⏳ تمدید Pro"],
-    ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
-    ["❌ لغو Pro"],
-    [
-      isSuperAdmin
-        ? "🔙 پنل Super Admin"
-        : "🔙 پنل ادمین",
-    ],
-  ]).resize();
+  ["⭐ فعال‌سازی Pro", "⏳ تمدید Pro"],
+  ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
+  ["📋 درخواست‌های خرید Pro"],
+  ["❌ لغو Pro"],
+  [
+    isSuperAdmin
+      ? "🔙 پنل Super Admin"
+      : "🔙 پنل ادمین",
+  ],
+]).resize();
 }
 
 function durationMenu() {
