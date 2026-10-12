@@ -492,6 +492,11 @@ function createAdminProHandler(bot) {
   );
 
   bot.hears(
+  "📋 درخواست‌های خرید Pro",
+  showProPurchaseRequests
+);
+
+  bot.hears(
     "⏳ تمدید Pro",
     (ctx) => startDurationFlow(ctx, "renew")
   );
