@@ -1033,6 +1033,10 @@ async function handleText(
     return;
   }
 
+  if (text.startsWith("/")) {
+  return next();
+}
+
   if (
     text === CANCEL_TEXT ||
     text === "/cancel"
