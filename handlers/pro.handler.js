@@ -155,6 +155,7 @@ async function notifyManagersAboutReceipt(ctx, request) {
   return notified;
 }
 
+
 async function handleAdminCardReply(ctx) {
   const requestId = getRequestIdFromAdminReply(ctx.message);
 
@@ -168,10 +169,14 @@ async function handleAdminCardReply(ctx) {
     return false;
   }
 
-  const cardNumber = String(ctx.message.text || "").trim();
+  const paymentDetails = String(
+    ctx.message.text || ""
+  ).trim();
 
-  if (!cardNumber || cardNumber.length > 200) {
-    await ctx.reply("❌ شماره کارت معتبر نیست.");
+  if (!paymentDetails || paymentDetails.length > 3500) {
+    await ctx.reply(
+      "❌ متن اطلاعات پرداخت خالی است یا بیش از حد طولانی است. حداکثر ۳۵۰۰ کاراکتر ارسال کن."
+    );
     return true;
   }
 
@@ -182,17 +187,55 @@ async function handleAdminCardReply(ctx) {
     return true;
   }
 
+  if (request.status !== "PENDING") {
+    await ctx.reply(
+      "⚠️ این درخواست دیگر در انتظار اعلام اطلاعات پرداخت نیست."
+    );
+    return true;
+  }
+
   const updated = await setPaymentCardNumber({
     requestId,
-    cardNumber,
+    cardNumber: paymentDetails,
   });
 
   if (!updated) {
     await ctx.reply(
-      "⚠️ این درخواست دیگر در مرحلهٔ انتظار برای شماره کارت نیست."
+      "⚠️ وضعیت درخواست تغییر کرده است. اطلاعات پرداخت ارسال نشد."
     );
     return true;
   }
+
+  try {
+    await ctx.telegram.sendMessage(
+      request.telegram_user_id,
+      "💎 اطلاعات خرید زکا پرو\n\n" +
+        `🆔 شماره درخواست: ${request.id}\n` +
+        `⏳ مدت اشتراک: ${request.duration_months} ماه\n\n` +
+        "📋 توضیحات و اطلاعات پرداخت:\n\n" +
+        paymentDetails +
+        "\n\n" +
+        "پس از پرداخت، تصویر رسید را به همین ربات بفرست. " +
+        "اگر تصویر نداری، اطلاعات رسید را به‌صورت متن ارسال کن."
+    );
+
+    await ctx.reply(
+      `✅ اطلاعات پرداخت برای کاربر درخواست ${request.id} ارسال شد.`
+    );
+  } catch (error) {
+    console.error(
+      "Sending Pro payment details failed:",
+      error.message
+    );
+
+    await ctx.reply(
+      "⚠️ اطلاعات پرداخت در درخواست ثبت شد، اما ارسال پیام به کاربر ناموفق بود. ممکن است کاربر هنوز ربات را باز نکرده باشد."
+    );
+  }
+
+  return true;
+}
+
 
   try {
     await ctx.telegram.sendMessage(
