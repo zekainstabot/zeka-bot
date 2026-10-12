@@ -3,6 +3,7 @@ const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
 
+
 const {
   createPurchaseRequest,
   getProManagers,
@@ -12,9 +13,8 @@ const {
   submitPurchaseReceipt,
   reviewPurchaseRequest,
   ALLOWED_DURATIONS,
+  cancelPurchaseRequest,
 } = require("../services/pro-purchase.service");
-
-cancelPurchaseRequest,
 
 const purchaseFlow = new Map();
 
