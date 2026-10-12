@@ -429,6 +429,7 @@ async function reviewPurchaseRequest({
 }
 
 module.exports = {
+  getPurchaseRequests,
   createPurchaseRequest,
   getProManagers,
   getPurchaseRequestById,
