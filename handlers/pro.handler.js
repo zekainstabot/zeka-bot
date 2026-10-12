@@ -236,34 +236,6 @@ async function handleAdminCardReply(ctx) {
   return true;
 }
 
-
-  try {
-    await ctx.telegram.sendMessage(
-      request.telegram_user_id,
-      "💳 اطلاعات پرداخت زکا پرو\n\n" +
-        `🆔 شماره درخواست: ${request.id}\n` +
-        `⏳ مدت اشتراک: ${request.duration_months} ماه\n\n` +
-        "شماره کارت برای پرداخت:\n" +
-        cardNumber +
-        "\n\n" +
-        "پس از پرداخت، تصویر رسید را به همین ربات بفرست. " +
-        "اگر تصویر نداری، اطلاعات رسید را به‌صورت متن ارسال کن."
-    );
-
-    await ctx.reply(
-      `✅ شماره کارت برای کاربر درخواست ${request.id} ارسال شد.`
-    );
-  } catch (error) {
-    console.error("Sending Pro payment card failed:", error);
-
-    await ctx.reply(
-      "⚠️ شماره کارت ثبت شد، اما ارسال آن به کاربر ناموفق بود. کاربر باید ربات را باز کرده باشد."
-    );
-  }
-
-  return true;
-}
-
 async function handleReceipt(ctx, receiptType, receiptText, receiptFileId) {
   const telegramUserId = ctx.from?.id;
 
