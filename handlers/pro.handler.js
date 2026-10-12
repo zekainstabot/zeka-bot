@@ -14,6 +14,8 @@ const {
   ALLOWED_DURATIONS,
 } = require("../services/pro-purchase.service");
 
+cancelPurchaseRequest,
+
 const purchaseFlow = new Map();
 
 const durationKeyboard = Markup.keyboard([
