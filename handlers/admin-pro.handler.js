@@ -430,6 +430,61 @@ async function handleAdminProText(ctx, next) {
   }
 }
 
+async function showProPurchaseRequests(ctx) {
+  if (!(await requireAccess(ctx))) {
+    return;
+  }
+
+  try {
+    const requests =
+      await proPurchaseService.getPurchaseRequests({
+        limit: 30,
+      });
+
+    if (!requests.length) {
+      await ctx.reply("📋 هیچ درخواست خرید Pro ثبت نشده است.");
+      return;
+    }
+
+    const statusLabels = {
+      PENDING: "در انتظار شماره کارت",
+      WAITING_RECEIPT: "در انتظار رسید",
+      RECEIPT_SUBMITTED: "رسید ارسال شده؛ منتظر بررسی",
+      APPROVED: "تأیید شده",
+      REJECTED: "رد شده",
+      CANCELLED: "لغو شده",
+    };
+
+    for (const request of requests) {
+      const status =
+        statusLabels[request.status] || request.status;
+
+      const username = request.username
+        ? `@${request.username}`
+        : "ندارد";
+
+      const displayName =
+        request.display_name || "ثبت نشده";
+
+      await ctx.reply(
+        `📋 درخواست خرید Pro\n\n` +
+          `🆔 شماره درخواست: ${request.id}\n` +
+          `👤 نام: ${displayName}\n` +
+          `🔗 نام کاربری: ${username}\n` +
+          `🆔 شناسه تلگرام: ${request.telegram_user_id}\n` +
+          `⏳ مدت: ${request.duration_months} ماه\n` +
+          `📌 وضعیت: ${status}`
+      );
+    }
+  } catch (error) {
+    console.error("Show Pro purchase requests failed:", error);
+
+    await ctx.reply(
+      "❌ دریافت درخواست‌های خرید Pro ناموفق بود. لاگ Render را بررسی کن."
+    );
+  }
+}
+
 function createAdminProHandler(bot) {
   bot.hears(
     "⭐ فعال‌سازی Pro",
