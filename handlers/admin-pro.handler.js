@@ -530,6 +530,7 @@ async function reviewProPurchaseFromPanel(ctx, decision) {
 
   try {
     const data = ctx.callbackQuery?.data || "";
+
     const match = data.match(
       /^admin_pro_purchase_(approve|reject):(\d+)$/
     );
@@ -574,4 +575,111 @@ async function reviewProPurchaseFromPanel(ctx, decision) {
       );
     }
 
-    if (decision === "APP
+    if (decision === "APPROVED") {
+      await ctx.answerCbQuery("پرداخت تأیید شد.");
+
+      await ctx.reply(
+        `✅ درخواست ${request.id} تأیید شد و Pro فعال شد.`
+      );
+
+      try {
+        await ctx.telegram.sendMessage(
+          request.telegram_user_id,
+          "🎉 پرداخت زکا پرو تأیید شد!\n\n" +
+            "اشتراک پرو با موفقیت فعال شد.\n" +
+            `⏳ مدت اشتراک: ${request.duration_months} ماه`
+        );
+      } catch (error) {
+        console.error(
+          "Admin panel Pro approval notification failed:",
+          error.message
+        );
+      }
+    } else {
+      await ctx.answerCbQuery("رسید رد شد.");
+
+      await ctx.reply(
+        `❌ رسید درخواست ${request.id} رد شد.`
+      );
+
+      try {
+        await ctx.telegram.sendMessage(
+          request.telegram_user_id,
+          "❌ رسید پرداخت زکا پرو تأیید نشد.\n\n" +
+            `🆔 شماره درخواست: ${request.id}\n` +
+            "لطفاً برای بررسی علت با پشتیبانی تماس بگیر."
+        );
+      } catch (error) {
+        console.error(
+          "Admin panel Pro rejection notification failed:",
+          error.message
+        );
+      }
+    }
+  } catch (error) {
+    console.error(
+      "Admin panel Pro purchase review failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "بررسی درخواست ناموفق بود.",
+        { show_alert: true }
+      );
+    } catch (answerError) {
+      console.error(
+        "Answering Pro review callback failed:",
+        answerError.message
+      );
+    }
+  }
+}
+
+function createAdminProHandler(bot) {
+  bot.hears(
+    "⭐ فعال‌سازی Pro",
+    (ctx) => startDurationFlow(ctx, "activate")
+  );
+
+  bot.hears(
+    "📋 درخواست‌های خرید Pro",
+    showProPurchaseRequests
+  );
+
+  bot.hears(
+    "⏳ تمدید Pro",
+    (ctx) => startDurationFlow(ctx, "renew")
+  );
+
+  bot.hears(
+    "🟢 روشن کردن Pro",
+    (ctx) => startSimpleFlow(ctx, "enable")
+  );
+
+  bot.hears(
+    "🔴 خاموش کردن Pro",
+    (ctx) => startSimpleFlow(ctx, "disable")
+  );
+
+  bot.hears(
+    "❌ لغو Pro",
+    (ctx) => startSimpleFlow(ctx, "cancel")
+  );
+
+  bot.action(
+    /^admin_pro_purchase_approve:\d+$/,
+    (ctx) => reviewProPurchaseFromPanel(ctx, "APPROVED")
+  );
+
+  bot.action(
+    /^admin_pro_purchase_reject:\d+$/,
+    (ctx) => reviewProPurchaseFromPanel(ctx, "REJECTED")
+  );
+
+  bot.on("text", handleAdminProText);
+}
+
+module.exports = {
+  createAdminProHandler,
+};
