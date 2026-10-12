@@ -408,16 +408,13 @@ function createProHandler({ bot, mainMenu }) {
       durationKeyboard
     );
   });
-
   
   bot.hears(
     ["🔙 بازگشت", "❌ لغو درخواست"],
     async (ctx, next) => {
-      if (!purchaseFlow.has(ctx.from.id)) {
-        return next();
-      }
+      const text = String(ctx.message?.text || "").trim();
 
-      if (ctx.message.text === "❌ لغو درخواست") {
+      if (text === "❌ لغو درخواست") {
         try {
           const cancelled = await cancelPurchaseRequest(ctx.from.id);
 
@@ -426,7 +423,9 @@ function createProHandler({ bot, mainMenu }) {
           await ctx.reply(
             cancelled
               ? `✅ درخواست خرید پرو شماره ${cancelled.id} لغو شد.`
-              : "ℹ️ درخواست بازی برای لغو وجود ندارد.",
+              : purchaseFlow.has(ctx.from.id)
+                ? "✅ فرایند خرید پرو لغو شد."
+                : "ℹ️ درخواست بازی برای لغو وجود ندارد.",
             mainMenu
           );
         } catch (error) {
@@ -438,6 +437,10 @@ function createProHandler({ bot, mainMenu }) {
         }
 
         return;
+      }
+
+      if (!purchaseFlow.has(ctx.from.id)) {
+        return next();
       }
 
       purchaseFlow.delete(ctx.from.id);
