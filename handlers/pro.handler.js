@@ -409,6 +409,7 @@ function createProHandler({ bot, mainMenu }) {
     );
   });
 
+  
   bot.hears(
     ["🔙 بازگشت", "❌ لغو درخواست"],
     async (ctx, next) => {
@@ -416,14 +417,34 @@ function createProHandler({ bot, mainMenu }) {
         return next();
       }
 
-      purchaseFlow.delete(ctx.from.id);
+      if (ctx.message.text === "❌ لغو درخواست") {
+        try {
+          const cancelled = await cancelPurchaseRequest(ctx.from.id);
 
-      await ctx.reply(
-        "درخواست خرید پرو لغو شد.",
-        mainMenu
-      );
+          purchaseFlow.delete(ctx.from.id);
+
+          await ctx.reply(
+            cancelled
+              ? `✅ درخواست خرید پرو شماره ${cancelled.id} لغو شد.`
+              : "ℹ️ درخواست بازی برای لغو وجود ندارد.",
+            mainMenu
+          );
+        } catch (error) {
+          console.error("Pro purchase cancellation failed:", error);
+          await ctx.reply(
+            "❌ لغو درخواست با خطا مواجه شد. دوباره تلاش کن.",
+            mainMenu
+          );
+        }
+
+        return;
+      }
+
+      purchaseFlow.delete(ctx.from.id);
+      await ctx.reply("به منوی اصلی برگشتی.", mainMenu);
     }
   );
+
 
   bot.hears(
     /^(۱|۲|۳|۶|۱۲|1|2|3|6|12) ماهه$/,
