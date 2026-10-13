@@ -169,6 +169,7 @@ async function start() {
 
     stopDailyCreditScheduler();
     bugReportCleanupService.stop();
+    stopZekaMediaExpirationService();
 
     try {
       await close();
