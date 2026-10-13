@@ -388,25 +388,53 @@ function createFeaturesHandler({ bot, mainMenu }) {
     return lines.join("\n");
   }
 
-  function getPostActionsKeyboard(post) {
+    function getPostActionsKeyboard(post) {
     const keyboard = [];
 
+    if (["pending", "failed"].includes(post.status)) {
+      keyboard.push([
+        {
+          text: "⚡ هم‌اکنون ارسال شود",
+          callback_data: `scheduled_send_now:${post.id}`,
+        },
+      ]);
+    }
+
     if (post.status === "pending") {
-      keyboard.push([`🚫 لغو انتشار #${post.id}`]);
+      keyboard.push([
+        {
+          text: "🚫 لغو انتشار",
+          callback_data: `scheduled_cancel:${post.id}`,
+        },
+      ]);
     }
 
     if (post.status === "failed") {
-      keyboard.push([`🔄 تلاش مجدد #${post.id}`]);
+      keyboard.push([
+        {
+          text: "🔄 تلاش مجدد",
+          callback_data: `scheduled_retry:${post.id}`,
+        },
+      ]);
     }
 
-    keyboard.push(["📊 پیگیری انتشارها"]);
-    keyboard.push(["🔙 بازگشت"]);
+    keyboard.push([
+      {
+        text: "📊 پیگیری انتشارها",
+        callback_data: "scheduled_list",
+      },
+    ]);
+
+    keyboard.push([
+      {
+        text: "🔙 بازگشت",
+        callback_data: "scheduled_back",
+      },
+    ]);
 
     return {
       reply_markup: {
-        keyboard,
-        resize_keyboard: true,
-        persistent: true,
+        inline_keyboard: keyboard,
       },
     };
   }
