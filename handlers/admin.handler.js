@@ -338,6 +338,7 @@ function createAdminHandler(bot) {
   createAdminMonitoringHandler(bot);
   createAdminBugReportsHandler(bot);
   createAdminReportsHandler(bot);
+  createZekaMediaHandler(bot);
 
   for (
     const button of UNIMPLEMENTED_BUTTONS
