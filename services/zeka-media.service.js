@@ -1,5 +1,9 @@
+
 const fs = require("fs");
+const path = require("path");
+
 const adminService = require("./admin.service");
+const adminRepository = require("../repositories/admin.repository");
 const mediaRepository = require("../repositories/zeka-media.repository");
 
 const PERMISSION = "zeka_media";
@@ -11,50 +15,55 @@ function setBot(bot) {
 }
 
 async function getReviewAdmins() {
-  const db = require("../database/client").getClient();
+  const admins = await adminRepository.getAdmins();
+  const reviewers = [];
 
-  const result = await db.query(`
-    SELECT
-      u.telegram_user_id,
-      a.user_id
-    FROM admins a
-    JOIN users u
-      ON u.id = a.user_id
-    JOIN admin_permissions p
-      ON p.permission_key = $1
-    WHERE a.is_active = TRUE
-      AND u.telegram_user_id IS NOT NULL
-      AND (
-        a.role_id IN (
-          SELECT id
-          FROM admin_roles
-          WHERE role_key = 'super_admin'
-        )
-        OR EXISTS (
-          SELECT 1
-          FROM admin_user_permission_overrides ov
-          WHERE ov.admin_id = a.id
-            AND ov.permission_id = p.id
-            AND ov.is_enabled = TRUE
-        )
-        OR (
-          NOT EXISTS (
-            SELECT 1
-            FROM admin_user_permission_overrides ov
-            WHERE ov.admin_id = a.id
-              AND ov.permission_id = p.id
-          )
-          AND EXISTS (
-            SELECT 1
-            FROM admin_user_permissions aup
-            WHERE aup.admin_id = a.id
-              AND aup.permission_id = p.id
-          )
-        )
-      )
-  `, [PERMISSION]);
+  for (const admin of admins) {
+    if (
+      !admin.is_active ||
+      !admin.user_id ||
+      !admin.telegram_user_id
+    ) {
+      continue;
+    }
 
-  return result.rows;
+    const allowed = await adminService.hasPermission(
+      admin.user_id,
+      PERMISSION
+    );
+
+    if (allowed) {
+      reviewers.push(admin);
+    }
+  }
+
+  return reviewers;
+}
+
+function getMediaMethod(queueItem) {
+  const contentType = String(
+    queueItem.content_type || ""
+  ).toUpperCase();
+
+  const extension = path.extname(
+    queueItem.file_path || ""
+  ).toLowerCase();
+
+  if (
+    contentType === "PHOTO" ||
+    [".jpg", ".jpeg", ".png", ".webp"].includes(extension)
+  ) {
+    return "sendPhoto";
+  }
+
+  if (
+    contentType === "VIDEO" ||
+    [".mp4", ".mov", ".webm"].includes(extension)
+  ) {
+    return "sendVideo";
+  }
+
+  return "sendDocument";
 }
 
 async function sendReviewMedia({
@@ -65,14 +74,21 @@ async function sendReviewMedia({
     throw new Error("Zeka Media bot is not initialized");
   }
 
-  if (!queueItem?.file_path || !fs.existsSync(queueItem.file_path)) {
+  if (
+    !queueItem ||
+    !queueItem.id ||
+    !queueItem.file_path ||
+    !fs.existsSync(queueItem.file_path)
+  ) {
     throw new Error("Review file does not exist");
   }
 
   const admins = await getReviewAdmins();
 
   if (!admins.length) {
-    throw new Error("No active admin has zeka_media permission");
+    throw new Error(
+      "No active admin has zeka_media permission"
+    );
   }
 
   const keyboard = {
@@ -88,14 +104,22 @@ async function sendReviewMedia({
     ]],
   };
 
-  const messageText =
-    "📺 محتوای جدید برای بررسی زکا مدیا\n\n" +
-    `شناسه: ${queueItem.id}\n` +
-    `نوع فایل: ${queueItem.content_type || "UNKNOWN"}\n` +
-    (caption ? `توضیحات: ${caption.slice(0, 700)}\n\n` : "\n") +
-    "برای انتشار یا حذف، یکی از گزینه‌های زیر را انتخاب کنید.";
+  const messageText = [
+    "📺 محتوای جدید برای بررسی زکا مدیا",
+    "",
+    `شناسه: ${queueItem.id}`,
+    `نوع فایل: ${queueItem.content_type || "UNKNOWN"}`,
+    caption
+      ? `توضیحات: ${String(caption).slice(0, 700)}`
+      : null,
+    "",
+    "برای انتشار یا حذف، یکی از گزینه‌های زیر را انتخاب کن.",
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
 
   const sent = [];
+  const mediaMethod = getMediaMethod(queueItem);
 
   for (const admin of admins) {
     const chatId = admin.telegram_user_id;
@@ -104,36 +128,26 @@ async function sendReviewMedia({
       await botInstance.telegram.sendMessage(
         chatId,
         messageText,
-        { reply_markup: keyboard }
+        {
+          reply_markup: keyboard,
+        }
       );
 
-      const contentType = String(
-        queueItem.content_type || ""
-      ).toUpperCase();
+      const stream = fs.createReadStream(
+        queueItem.file_path
+      );
 
-      const stream = fs.createReadStream(queueItem.file_path);
-
-      if (contentType === "PHOTO" || /\.(jpe?g|png|webp|avif)$/i.test(queueItem.file_path)) {
-        await botInstance.telegram.sendPhoto(
+      try {
+        await botInstance.telegram[mediaMethod](
           chatId,
           { source: stream },
-          { caption: "📺 فایل در انتظار بررسی است." }
+          {
+            caption: "📺 فایل در انتظار بررسی است.",
+          }
         );
-      } else if (
-        contentType === "VIDEO" ||
-        /\.(mp4|mov|webm|mkv)$/i.test(queueItem.file_path)
-      ) {
-        await botInstance.telegram.sendVideo(
-          chatId,
-          { source: stream },
-          { caption: "📺 فایل در انتظار بررسی است." }
-        );
-      } else {
-        await botInstance.telegram.sendDocument(
-          chatId,
-          { source: stream },
-          { caption: "📺 فایل در انتظار بررسی است." }
-        );
+      } catch (error) {
+        stream.destroy();
+        throw error;
       }
 
       sent.push(chatId);
@@ -146,7 +160,9 @@ async function sendReviewMedia({
   }
 
   if (!sent.length) {
-    throw new Error("Could not deliver review notification to any authorized admin");
+    throw new Error(
+      "Could not deliver review notification to any authorized admin"
+    );
   }
 
   return sent;
@@ -159,15 +175,34 @@ async function enqueueForReview({
   originalUrl,
   caption,
 }) {
+  const numericJobId = Number(jobId);
+
+  if (
+    !Number.isSafeInteger(numericJobId) ||
+    numericJobId <= 0
+  ) {
+    throw new Error(
+      "A valid numeric database job ID is required"
+    );
+  }
+
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error(
+      "Cannot queue a missing media file"
+    );
+  }
+
   const queueItem = await mediaRepository.createPending({
-    jobId,
+    jobId: numericJobId,
     filePath,
     contentType,
     originalUrl,
   });
 
   if (!queueItem) {
-    throw new Error("Could not create Zeka Media queue item");
+    throw new Error(
+      "Could not create Zeka Media queue item"
+    );
   }
 
   if (queueItem.status !== "PENDING") {
