@@ -388,10 +388,15 @@ function createFeaturesHandler({ bot, mainMenu }) {
       } catch (error) {
         lastError = error;
 
-        console.error("Scheduled preview upload attempt failed:", {
+                console.error("Scheduled preview upload attempt failed:", {
           attempt,
           label,
           message: error?.message || String(error),
+          code: error?.code || error?.cause?.code || null,
+          errno: error?.errno || error?.cause?.errno || null,
+          syscall: error?.syscall || error?.cause?.syscall || null,
+          cause: error?.cause?.message || null,
+          stack: error?.stack || null,
         });
 
         if (attempt < 2) {
