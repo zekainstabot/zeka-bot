@@ -1,7 +1,7 @@
 const http = require("http");
 
 const { initializeDatabase } = require("./database/bootstrap");
-const { getClient } = require("./database/client");
+const { getClient, close } = require("./database/client");
 const { startBot } = require("./bot");
 
 const bugReportCleanupService = require(
@@ -14,14 +14,27 @@ const {
 
 const PORT = Number(process.env.PORT) || 10000;
 
+let isReady = false;
+let startupError = null;
+
 function startHealthServer() {
   const server = http.createServer((req, res) => {
     if (req.url === "/health" || req.url === "/") {
-      res.writeHead(200, {
+      const healthy = isReady && !startupError;
+
+      res.writeHead(healthy ? 200 : 503, {
         "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
       });
 
-      res.end("Zeka Bot is running");
+      res.end(
+        healthy
+          ? "Zeka Bot is running"
+          : startupError
+            ? "Zeka Bot startup failed"
+            : "Zeka Bot is starting"
+      );
+
       return;
     }
 
@@ -87,9 +100,7 @@ async function setupSuperAdmin() {
   const role = roleResult.rows[0];
 
   if (!role) {
-    throw new Error(
-      "super_admin role does not exist"
-    );
+    throw new Error("super_admin role does not exist");
   }
 
   await db.query(
@@ -115,25 +126,53 @@ async function setupSuperAdmin() {
 async function start() {
   console.log("Zeka Bot starting...");
 
-  try {
-    startHealthServer();
+  const server = startHealthServer();
 
+  try {
     await initializeDatabase();
 
-    startTempFileCleanupService();
-
     console.log("Zeka Bot database initialized.");
+
+    startTempFileCleanupService();
 
     await bugReportCleanupService.start();
 
     await setupSuperAdmin();
 
     await startBot();
+
+    startupError = null;
+    isReady = true;
+
+    console.log("Zeka Bot is ready.");
   } catch (error) {
+    isReady = false;
+    startupError = error;
+
     console.error("Failed to start Zeka Bot.");
     console.error(error);
 
-    process.exitCode = 1;
+    bugReportCleanupService.stop();
+
+    try {
+      await close();
+    } catch (closeError) {
+      console.error(
+        "Failed to close database after startup error:",
+        closeError
+      );
+    }
+
+    await new Promise((resolve) => {
+      if (!server.listening) {
+        resolve();
+        return;
+      }
+
+      server.close(() => resolve());
+    });
+
+    process.exit(1);
   }
 }
 
