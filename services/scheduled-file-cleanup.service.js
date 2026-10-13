@@ -2,6 +2,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const { getClient } = require("../database/client");
 
 const TEMP_ROOT = os.tmpdir();
 
@@ -12,9 +13,7 @@ let cleanupRunning = false;
 let cleanupInterval = null;
 
 function formatBytes(bytes) {
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return "unknown";
-  }
+  if (!Number.isFinite(bytes) || bytes < 0) return "unknown";
 
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
@@ -37,9 +36,7 @@ function inspectPath(targetPath) {
     return null;
   }
 
-  if (stats.isSymbolicLink()) {
-    return null;
-  }
+  if (stats.isSymbolicLink()) return null;
 
   if (stats.isFile()) {
     return {
@@ -48,9 +45,7 @@ function inspectPath(targetPath) {
     };
   }
 
-  if (!stats.isDirectory()) {
-    return null;
-  }
+  if (!stats.isDirectory()) return null;
 
   let entries;
 
@@ -75,16 +70,10 @@ function inspectPath(targetPath) {
     if (!result) continue;
 
     size += result.size;
-    latestMtime = Math.max(
-      latestMtime,
-      result.latestMtime
-    );
+    latestMtime = Math.max(latestMtime, result.latestMtime);
   }
 
-  return {
-    size,
-    latestMtime,
-  };
+  return { size, latestMtime };
 }
 
 function getZekaTempItems() {
@@ -99,7 +88,6 @@ function getZekaTempItems() {
     if (!root.isDirectory() || root.isSymbolicLink()) continue;
 
     const rootPath = path.join(TEMP_ROOT, root.name);
-
     let children;
 
     try {
@@ -148,18 +136,66 @@ function getZekaTempItems() {
   return items;
 }
 
+async function getProtectedFilePaths() {
+  const db = getClient();
+
+  const result = await db.query(`
+    SELECT file_path
+    FROM zeka_media_queue
+    WHERE status IN ('PENDING', 'PUBLISHING')
+  `);
+
+  return result.rows
+    .map((row) => row.file_path)
+    .filter((filePath) => typeof filePath === "string" && filePath.length > 0)
+    .map((filePath) => path.resolve(filePath));
+}
+
+function containsProtectedFile(directoryPath, protectedPaths) {
+  const resolvedDirectory = path.resolve(directoryPath);
+
+  return protectedPaths.some((protectedPath) => {
+    const relative = path.relative(resolvedDirectory, protectedPath);
+
+    return (
+      relative === "" ||
+      (
+        relative !== ".." &&
+        !relative.startsWith(`..${path.sep}`) &&
+        !path.isAbsolute(relative)
+      )
+    );
+  });
+}
+
 async function cleanupOldTempFiles() {
   if (cleanupRunning) return;
 
   cleanupRunning = true;
 
   try {
+    let protectedPaths;
+
+    try {
+      protectedPaths = await getProtectedFilePaths();
+    } catch (error) {
+      console.error(
+        "Zeka temp cleanup skipped: could not read review queue.",
+        error.message
+      );
+
+      // Fail safely: if the database cannot be checked,
+      // do not risk deleting files awaiting review.
+      return;
+    }
+
     const items = getZekaTempItems();
     const cutoff = Date.now() - STALE_AFTER_MS;
 
     let totalBefore = 0;
     let removedItems = 0;
     let removedBytes = 0;
+    let protectedItems = 0;
 
     for (const item of items) {
       totalBefore += item.size;
@@ -173,12 +209,25 @@ async function cleanupOldTempFiles() {
     for (const item of items) {
       if (item.latestMtime > cutoff) continue;
 
+      if (containsProtectedFile(item.path, protectedPaths)) {
+        protectedItems += 1;
+
+        console.log(
+          "Preserved Zeka media awaiting review:",
+          item.path
+        );
+
+        continue;
+      }
+
       try {
         const current = inspectPath(item.path);
 
-        if (!current || current.latestMtime > cutoff) {
-          continue;
-        }
+        if (!current || current.latestMtime > cutoff) continue;
+
+        // Recheck the database-backed protected paths immediately
+        // before deletion using the latest snapshot from this run.
+        if (containsProtectedFile(item.path, protectedPaths)) continue;
 
         fs.rmSync(item.path, {
           recursive: true,
@@ -205,26 +254,22 @@ async function cleanupOldTempFiles() {
     }
 
     const remaining = getZekaTempItems();
-
-    let totalAfter = 0;
-
-    for (const item of remaining) {
-      totalAfter += item.size;
-    }
+    const totalAfter = remaining.reduce(
+      (sum, item) => sum + item.size,
+      0
+    );
 
     console.log(
       "Zeka temp cleanup finished:",
       JSON.stringify({
         removedItems,
+        protectedItems,
         removedBytes: formatBytes(removedBytes),
         remainingZekaTempBytes: formatBytes(totalAfter),
       })
     );
   } catch (error) {
-    console.error(
-      "Zeka temp cleanup failed:",
-      error.message
-    );
+    console.error("Zeka temp cleanup failed:", error.message);
   } finally {
     cleanupRunning = false;
   }
