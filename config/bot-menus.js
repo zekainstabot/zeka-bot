@@ -4,8 +4,7 @@ const { Markup } = require("telegraf");
 const mainMenu = Markup.keyboard([
   ["📥 دانلود", "👤 حساب من"],
   ["🎁 هدایا", "⭐ زکا پرو"],
-  ["🎮 مینی‌گیم‌ها", "🛠 امکانات ویژه"],
-  ["🔮 فال"],
+  ["🛠 امکانات ویژه"],
 ])
   .resize()
   .oneTime(false);
@@ -13,7 +12,7 @@ const mainMenu = Markup.keyboard([
 const downloadMenu = Markup.keyboard([
   ["🔙 بازگشت"],
 ])
-  .resize()
+  .resize();
 
 const accountMenu = Markup.keyboard([
   ["📊 اعتبار من", "🏆 سطح و XP"],
