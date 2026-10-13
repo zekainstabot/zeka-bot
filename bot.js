@@ -111,7 +111,9 @@ function createBot() {
     throw new Error("BOT_TOKEN is not configured");
   }
 
-  bot = new Telegraf(config.bot.token);
+  bot = new Telegraf(config.bot.token, {
+  handlerTimeout: 180_000,
+});
 
   bot.catch((error, ctx) => {
     console.error("Telegram update handler failed:", {
