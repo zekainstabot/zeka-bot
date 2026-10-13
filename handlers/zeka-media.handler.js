@@ -8,6 +8,8 @@ const { deleteFile } = require("../services/file.service");
 
 const PERMISSION = "zeka_media";
 const CHANNEL = "@zeka_media";
+const PANEL_BUTTON = "📺 مدیریت زکا مدیا";
+const PANEL_PAGE_SIZE = 5;
 
 const CHANNEL_CAPTION = [
   "ZEKA MEDIA",
@@ -67,8 +69,32 @@ function getChannelMediaMethod(queueItem) {
   return "sendDocument";
 }
 
+function buildReviewKeyboard(queueId) {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "✅ تأیید و انتشار",
+          callback_data: `zeka_media:approve:${queueId}`,
+        },
+        {
+          text: "❌ رد و حذف",
+          callback_data: `zeka_media:reject:${queueId}`,
+        },
+      ],
+    ],
+  };
+}
+
 async function publishToChannel(queueItem) {
-  if (!fs.existsSync(queueItem.file_path)) {
+  if (!botInstance) {
+    throw new Error("Zeka Media bot is not initialized");
+  }
+
+  if (
+    !queueItem?.file_path ||
+    !fs.existsSync(queueItem.file_path)
+  ) {
     throw new Error("Queued media file is missing");
   }
 
@@ -84,6 +110,98 @@ async function publishToChannel(queueItem) {
   } catch (error) {
     stream.destroy();
     throw error;
+  }
+}
+
+async function handlePanel(ctx) {
+  if (ctx.message?.text !== PANEL_BUTTON) {
+    return;
+  }
+
+  try {
+    const admin = await getAuthorizedAdmin(ctx.from?.id);
+
+    if (!admin) {
+      await ctx.reply(
+        "⛔ شما اجازه مدیریت زکا مدیا را ندارید."
+      );
+      return;
+    }
+
+    const items = await mediaRepository.listPending(
+      PANEL_PAGE_SIZE
+    );
+
+    if (!items.length) {
+      await ctx.reply(
+        "📺 مدیریت زکا مدیا\n\n" +
+        "در حال حاضر محتوایی برای بررسی وجود ندارد."
+      );
+      return;
+    }
+
+    await ctx.reply(
+      `📺 مدیریت زکا مدیا\n\n` +
+      `${items.length} محتوای در انتظار بررسی نمایش داده می‌شود.\n` +
+      `برای جلوگیری از شلوغی، هر بار حداکثر ${PANEL_PAGE_SIZE} مورد نمایش داده می‌شود.`
+    );
+
+    for (const item of items) {
+      const caption = [
+        "📺 محتوای در انتظار بررسی زکا مدیا",
+        "",
+        `شناسه: ${item.id}`,
+        `نوع فایل: ${item.content_type || "UNKNOWN"}`,
+        item.original_url
+          ? `لینک منبع: ${item.original_url}`
+          : null,
+        "",
+        "برای انتشار یا رد محتوا یکی از دکمه‌ها را بزن.",
+      ]
+        .filter((line) => line !== null)
+        .join("\n");
+
+      if (
+        !item.file_path ||
+        !fs.existsSync(item.file_path)
+      ) {
+        await ctx.reply(
+          `⚠️ فایل محتوای شماره ${item.id} پیدا نشد.`
+        );
+        continue;
+      }
+
+      const method = getChannelMediaMethod(item);
+      const stream = fs.createReadStream(item.file_path);
+
+      try {
+        await botInstance.telegram[method](
+          ctx.chat.id,
+          { source: stream },
+          {
+            caption,
+            reply_markup: buildReviewKeyboard(item.id),
+          }
+        );
+      } catch (error) {
+        stream.destroy();
+
+        console.error(
+          `Failed to display Zeka Media item ${item.id}:`,
+          error
+        );
+
+        await ctx.reply(
+          `❌ نمایش محتوای شماره ${item.id} ناموفق بود.`
+        );
+      }
+    }
+  } catch (error) {
+    console.error("Zeka Media panel failed:", error);
+
+    await ctx.reply(
+      "❌ باز کردن پنل زکا مدیا با خطا مواجه شد. لاگ Render را بررسی کن."
+    );
   }
 }
 
@@ -138,7 +256,14 @@ async function handleReviewAction(ctx) {
         return;
       }
 
-      await deleteFile(rejected.file_path);
+      try {
+        await deleteFile(rejected.file_path);
+      } catch (error) {
+        console.error(
+          `Failed to delete rejected media ${queueId}:`,
+          error
+        );
+      }
 
       try {
         await ctx.editMessageReplyMarkup({
@@ -152,7 +277,7 @@ async function handleReviewAction(ctx) {
       }
 
       await ctx.answerCbQuery(
-        "محتوا رد شد و حذف آن انجام شد."
+        "محتوا رد شد."
       );
 
       await ctx.reply(
@@ -203,7 +328,14 @@ async function handleReviewAction(ctx) {
         messageId
       );
 
-      await deleteFile(queueItem.file_path);
+      try {
+        await deleteFile(queueItem.file_path);
+      } catch (error) {
+        console.error(
+          `Failed to delete published media ${queueId}:`,
+          error
+        );
+      }
 
       try {
         await ctx.editMessageReplyMarkup({
@@ -220,14 +352,13 @@ async function handleReviewAction(ctx) {
         `✅ محتوای زکا مدیا با شناسه ${queueId} منتشر شد.`
       );
     } catch (error) {
-      // Keep PUBLISHING so the cleanup service protects the file.
       console.error(
         `Zeka Media publish failed for ${queueId}:`,
         error
       );
 
       await ctx.reply(
-        `⚠️ انتشار محتوای ${queueId} ناموفق بود. فایل حذف نشده و برای جلوگیری از حذف خودکار محافظت می‌شود.`
+        `⚠️ انتشار محتوای ${queueId} ناموفق بود. فایل حذف نشده است. برای جلوگیری از انتشار تکراری، وضعیت مورد را در پایگاه داده بررسی کن.`
       );
     }
   } catch (error) {
@@ -253,6 +384,8 @@ async function handleReviewAction(ctx) {
 
 function createZekaMediaHandler(bot) {
   setBot(bot);
+
+  bot.hears(PANEL_BUTTON, handlePanel);
 
   bot.action(
     /^zeka_media:(approve|reject):\d+$/,
