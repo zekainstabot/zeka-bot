@@ -1,9 +1,14 @@
+
 function createFeaturesHandler({ bot, mainMenu }) {
   const { getOrCreateUser } = require("../services/user.service");
   const { parseUrl } = require("../services/url.service");
 
   const {
     createScheduledPost,
+    listScheduledPosts,
+    getScheduledPostById,
+    cancelScheduledPost,
+    reschedulePost,
   } = require("../features/scheduled-publishing/publishing.repository");
 
   const {
@@ -18,9 +23,23 @@ function createFeaturesHandler({ bot, mainMenu }) {
   const featuresMenu = {
     reply_markup: {
       keyboard: [
+        ["📢 مدیریت انتشار محتوا"],
+        ["🎡 گردونه شانس", "🧩 آزمون و مسابقه"],
+        ["📜 فال حافظ"],
+        ["🔙 بازگشت"],
+      ],
+      resize_keyboard: true,
+      persistent: true,
+    },
+  };
+
+  const publishingMenu = {
+    reply_markup: {
+      keyboard: [
         ["📢 اتصال کانال من", "➕ ثبت کانال"],
         ["📋 کانال‌های من", "🗑 حذف کانال"],
         ["📅 انتشار زمان‌بندی‌شده"],
+        ["📊 پیگیری انتشارها"],
         ["🔙 بازگشت"],
       ],
       resize_keyboard: true,
@@ -275,13 +294,195 @@ function createFeaturesHandler({ bot, mainMenu }) {
     };
   }
 
+  function getPostStatusLabel(post) {
+    const stage = post.progress_stage;
+
+    if (post.status === "published" || stage === "sent") {
+      return "✅ منتشر شده";
+    }
+
+    if (post.status === "cancelled" || stage === "cancelled") {
+      return "🚫 لغو شده";
+    }
+
+    if (stage === "download_failed") {
+      return "❌ خطا در دانلود";
+    }
+
+    if (stage === "send_failed") {
+      return "❌ خطا در ارسال تلگرام";
+    }
+
+    if (post.status === "failed") {
+      return "❌ ناموفق";
+    }
+
+    if (stage === "sending") {
+      return "📤 در حال ارسال به تلگرام";
+    }
+
+    if (stage === "downloaded") {
+      return "📦 دانلود انجام شده";
+    }
+
+    if (stage === "downloading" || post.status === "processing") {
+      return "⏳ در حال دانلود";
+    }
+
+    return "🕒 در انتظار انتشار";
+  }
+
+  function getPostLabel(post) {
+    return `📄 انتشار #${post.id} — ${getPostStatusLabel(post)}`;
+  }
+
+  function getPostsKeyboard(posts) {
+    const keyboard = posts.map((post) => [getPostLabel(post)]);
+
+    keyboard.push(["🔄 تازه‌سازی فهرست"]);
+    keyboard.push(["🔙 بازگشت"]);
+
+    return {
+      reply_markup: {
+        keyboard,
+        resize_keyboard: true,
+        persistent: true,
+      },
+    };
+  }
+
+  function formatDate(value) {
+    if (!value) {
+      return "ثبت نشده";
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return "نامشخص";
+    }
+
+    return date.toLocaleString("fa-IR", {
+      timeZone: "Asia/Tehran",
+    });
+  }
+
+  function getPostDetailText(post) {
+    const lines = [
+      `📄 جزئیات انتشار #${post.id}`,
+      "",
+      `📢 کانال: ${post.channel_title || post.telegram_chat_id}`,
+      `🆔 شناسه کانال: ${post.telegram_chat_id}`,
+      `📌 وضعیت: ${getPostStatusLabel(post)}`,
+      `🕒 زمان برنامه‌ریزی‌شده: ${formatDate(post.scheduled_at)}`,
+      `📅 زمان ایجاد: ${formatDate(post.created_at)}`,
+      `📤 زمان انتشار: ${formatDate(post.published_at)}`,
+      `🔁 تعداد تلاش‌ها: ${post.attempts ?? 0}`,
+      "",
+      `🔗 لینک منبع: ${post.source_url}`,
+    ];
+
+    if (post.download_completed_at) {
+      lines.push(
+        `📥 پایان دانلود: ${formatDate(post.download_completed_at)}`
+      );
+    }
+
+    if (post.send_started_at) {
+      lines.push(
+        `📤 شروع ارسال: ${formatDate(post.send_started_at)}`
+      );
+    }
+
+    if (post.error_message) {
+      lines.push("", "⚠️ شرح خطا:", String(post.error_message).slice(0, 1200));
+    }
+
+    return lines.join("\n");
+  }
+
+  function getPostActionsKeyboard(post) {
+    const keyboard = [];
+
+    if (post.status === "pending") {
+      keyboard.push([`🚫 لغو انتشار #${post.id}`]);
+    }
+
+    if (post.status === "failed") {
+      keyboard.push([`🔄 تلاش مجدد #${post.id}`]);
+    }
+
+    keyboard.push(["📊 پیگیری انتشارها"]);
+    keyboard.push(["🔙 بازگشت"]);
+
+    return {
+      reply_markup: {
+        keyboard,
+        resize_keyboard: true,
+        persistent: true,
+      },
+    };
+  }
+
+  async function showScheduledPosts(ctx) {
+    clearState(ctx);
+
+    try {
+      const user = await getDatabaseUser(ctx);
+      const posts = await listScheduledPosts(user.id);
+
+      if (!posts.length) {
+        await ctx.reply(
+          "📊 هنوز برنامه انتشاری ثبت نکرده‌ای.\n\n" +
+            "برای شروع، گزینه «📅 انتشار زمان‌بندی‌شده» را انتخاب کن.",
+          publishingMenu
+        );
+
+        return;
+      }
+
+      const visiblePosts = posts.slice(-30).reverse();
+
+      setState(ctx, {
+        step: "scheduled_posts_list",
+        posts: visiblePosts,
+      });
+
+      await ctx.reply(
+        `📊 برنامه‌های انتشار حساب تو\n\nتعداد نمایش‌داده‌شده: ${visiblePosts.length}\n\n` +
+          "برای دیدن جزئیات، یکی از انتشارها را انتخاب کن.",
+        getPostsKeyboard(visiblePosts)
+      );
+    } catch (error) {
+      console.error(
+        "List scheduled posts failed:",
+        error?.message || error
+      );
+
+      await ctx.reply(
+        "❌ دریافت فهرست انتشارها انجام نشد. دوباره تلاش کن.",
+        publishingMenu
+      );
+    }
+  }
+
   bot.hears("🛠 امکانات ویژه", async (ctx) => {
     clearState(ctx);
 
     await ctx.reply(
       "🛠 امکانات ویژه\n\n" +
-        "مدیریت کانال و انتشار زمان‌بندی‌شده را انتخاب کن.",
+        "یکی از امکانات را انتخاب کن.",
       featuresMenu
+    );
+  });
+
+  bot.hears("📢 مدیریت انتشار محتوا", async (ctx) => {
+    clearState(ctx);
+
+    await ctx.reply(
+      "📢 مدیریت انتشار محتوا\n\n" +
+        "ثبت کانال، زمان‌بندی، پیگیری و مدیریت انتشارها از این بخش انجام می‌شود.",
+      publishingMenu
     );
   });
 
@@ -328,7 +529,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         "ربات باید در کانال ادمین باشد و اجازه انتشار پیام داشته باشد.\n\n" +
         "لینک دعوت خصوصی به‌تنهایی برای ثبت کانال کافی نیست.\n" +
         "برای لغو، «🔙 بازگشت» را بزن.",
-      featuresMenu
+      publishingMenu
     );
   });
 
@@ -343,7 +544,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         await ctx.reply(
           "📋 هنوز کانالی ثبت نکرده‌ای.\n\n" +
             "ابتدا گزینه «➕ ثبت کانال» را انتخاب کن.",
-          featuresMenu
+          publishingMenu
         );
 
         return;
@@ -365,7 +566,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
       await ctx.reply(
         "📋 کانال‌های ثبت‌شده حساب تو:\n\n" +
           lines.join("\n\n"),
-        featuresMenu
+        publishingMenu
       );
     } catch (error) {
       console.error(
@@ -375,7 +576,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
       await ctx.reply(
         "❌ دریافت فهرست کانال‌ها انجام نشد. دوباره تلاش کن.",
-        featuresMenu
+        publishingMenu
       );
     }
   });
@@ -390,7 +591,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
       if (!channels.length) {
         await ctx.reply(
           "کانالی برای حذف وجود ندارد.",
-          featuresMenu
+          publishingMenu
         );
 
         return;
@@ -413,12 +614,14 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
       await ctx.reply(
         "❌ دریافت کانال‌ها انجام نشد. دوباره تلاش کن.",
-        featuresMenu
+        publishingMenu
       );
     }
   });
 
   bot.hears("📅 انتشار زمان‌بندی‌شده", async (ctx) => {
+    clearState(ctx);
+
     setState(ctx, {
       step: "source_url",
     });
@@ -427,9 +630,12 @@ function createFeaturesHandler({ bot, mainMenu }) {
       "📅 انتشار زمان‌بندی‌شده\n\n" +
         "لینک عمومی محتوایی را که می‌خواهی منتشر شود بفرست.\n\n" +
         "لینک باید متعلق به یکی از پلتفرم‌های شناسایی‌شده توسط زکا باشد.",
-      featuresMenu
+      publishingMenu
     );
   });
+
+  bot.hears("📊 پیگیری انتشارها", showScheduledPosts);
+  bot.hears("🔄 تازه‌سازی فهرست", showScheduledPosts);
 
   bot.on("text", async (ctx, next) => {
     const state = getState(ctx);
@@ -453,7 +659,13 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
     if (text === "🔙 بازگشت") {
       clearState(ctx);
-      return next();
+
+      await ctx.reply(
+        "📢 مدیریت انتشار محتوا",
+        publishingMenu
+      );
+
+      return;
     }
 
     if (
@@ -465,11 +677,17 @@ function createFeaturesHandler({ bot, mainMenu }) {
         "🎮 مینی‌گیم‌ها",
         "🛠 امکانات ویژه",
         "🔮 فال",
+        "📜 فال حافظ",
+        "🎡 گردونه شانس",
+        "🧩 آزمون و مسابقه",
+        "📢 مدیریت انتشار محتوا",
         "📢 اتصال کانال من",
         "➕ ثبت کانال",
         "📋 کانال‌های من",
         "🗑 حذف کانال",
         "📅 انتشار زمان‌بندی‌شده",
+        "📊 پیگیری انتشارها",
+        "🔄 تازه‌سازی فهرست",
       ].includes(text)
     ) {
       clearState(ctx);
@@ -511,7 +729,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
             `📢 نام کانال: ${getChannelTitle(savedChannel)}\n` +
             `🆔 آیدی کانال: ${savedChannel.telegram_chat_id}\n\n` +
             "این کانال به حساب خودت متصل شد.",
-          featuresMenu
+          publishingMenu
         );
       } catch (error) {
         console.error(
@@ -521,7 +739,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
         await ctx.reply(
           "❌ ذخیره کانال در پایگاه داده انجام نشد. دوباره تلاش کن.",
-          featuresMenu
+          publishingMenu
         );
       }
 
@@ -555,7 +773,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         if (!removedChannel) {
           await ctx.reply(
             "این کانال در حساب تو ثبت نشده یا قبلاً حذف شده است.",
-            featuresMenu
+            publishingMenu
           );
 
           return;
@@ -564,7 +782,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         await ctx.reply(
           "✅ کانال از فهرست حساب تو حذف شد.\n\n" +
             "برنامه‌های انتشار قبلی به‌صورت خودکار حذف نمی‌شوند.",
-          featuresMenu
+          publishingMenu
         );
       } catch (error) {
         console.error(
@@ -574,7 +792,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
         await ctx.reply(
           "❌ حذف کانال انجام نشد. دوباره تلاش کن.",
-          featuresMenu
+          publishingMenu
         );
       }
 
@@ -602,11 +820,11 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
           await ctx.reply(
             "❌ هنوز کانالی ثبت نکرده‌ای.\n\n" +
-              "۱. از امکانات ویژه، «📢 اتصال کانال من» را باز کن.\n" +
+              "۱. از مدیریت انتشار محتوا، «📢 اتصال کانال من» را باز کن.\n" +
               "۲. ربات را در کانالت ادمین کن.\n" +
               "۳. گزینه «➕ ثبت کانال» را بزن.\n" +
               "۴. دوباره انتشار زمان‌بندی‌شده را شروع کن.",
-            featuresMenu
+            publishingMenu
           );
 
           return;
@@ -631,7 +849,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
         await ctx.reply(
           "❌ دریافت کانال‌ها انجام نشد. دوباره تلاش کن.",
-          featuresMenu
+          publishingMenu
         );
       }
 
@@ -710,9 +928,9 @@ function createFeaturesHandler({ bot, mainMenu }) {
                 : scheduledAt.toLocaleString("fa-IR", {
                     timeZone: "Asia/Tehran",
                   })
-            }\n\n` +
+            }\n\n" +
             "برنامه انتشار به حساب خودت متصل است.",
-          mainMenu
+          publishingMenu
         );
       } catch (error) {
         console.error(
@@ -724,6 +942,155 @@ function createFeaturesHandler({ bot, mainMenu }) {
           "❌ ثبت برنامه انتشار انجام نشد.\n" +
             "اطلاعات این مرحله پاک نشده است؛ دوباره زمان را انتخاب کن.",
           scheduleMenu
+        );
+      }
+
+      return;
+    }
+
+    if (state.step === "scheduled_posts_list") {
+      const selectedPost = state.posts.find(
+        (post) => getPostLabel(post) === text
+      );
+
+      if (!selectedPost) {
+        await ctx.reply(
+          "از دکمه‌های فهرست، یکی از انتشارها را انتخاب کن.",
+          getPostsKeyboard(state.posts)
+        );
+
+        return;
+      }
+
+      try {
+        const user = await getDatabaseUser(ctx);
+        const post = await getScheduledPostById(
+          selectedPost.id,
+          user.id
+        );
+
+        if (!post) {
+          await showScheduledPosts(ctx);
+          return;
+        }
+
+        setState(ctx, {
+          step: "scheduled_post_detail",
+          postId: post.id,
+        });
+
+        await ctx.reply(
+          getPostDetailText(post),
+          getPostActionsKeyboard(post)
+        );
+      } catch (error) {
+        console.error(
+          "Get scheduled post details failed:",
+          error?.message || error
+        );
+
+        await ctx.reply(
+          "❌ دریافت جزئیات انتشار انجام نشد.",
+          publishingMenu
+        );
+      }
+
+      return;
+    }
+
+    if (state.step === "scheduled_post_detail") {
+      const postId = state.postId;
+      const retryRequested = text === `🔄 تلاش مجدد #${postId}`;
+      const cancelRequested = text === `🚫 لغو انتشار #${postId}`;
+
+      if (!retryRequested && !cancelRequested) {
+        await ctx.reply(
+          "از گزینه‌های نمایش‌داده‌شده برای این انتشار استفاده کن."
+        );
+
+        return;
+      }
+
+      try {
+        const user = await getDatabaseUser(ctx);
+        const post = await getScheduledPostById(postId, user.id);
+
+        if (!post) {
+          clearState(ctx);
+
+          await ctx.reply(
+            "این برنامه انتشار پیدا نشد.",
+            publishingMenu
+          );
+
+          return;
+        }
+
+        if (cancelRequested) {
+          const cancelled = await cancelScheduledPost(
+            postId,
+            user.id
+          );
+
+          if (!cancelled) {
+            await ctx.reply(
+              "این انتشار دیگر در وضعیت قابل لغو نیست. فهرست را تازه کن."
+            );
+
+            return;
+          }
+
+          clearState(ctx);
+
+          await ctx.reply(
+            `✅ برنامه انتشار #${postId} لغو شد.`,
+            publishingMenu
+          );
+
+          return;
+        }
+
+        if (retryRequested) {
+          if (post.status !== "failed") {
+            await ctx.reply(
+              "فقط انتشارهای ناموفق را می‌توان دوباره به صف فرستاد."
+            );
+
+            return;
+          }
+
+          const retried = await reschedulePost(
+            postId,
+            user.id,
+            new Date(Date.now() + 5000).toISOString()
+          );
+
+          if (!retried) {
+            await ctx.reply(
+              "❌ ثبت تلاش مجدد انجام نشد. وضعیت انتشار را تازه کن."
+            );
+
+            return;
+          }
+
+          clearState(ctx);
+
+          await ctx.reply(
+            `🔄 انتشار #${postId} دوباره به صف ارسال شد.\n\n` +
+              "وضعیت آن را می‌توانی از بخش «📊 پیگیری انتشارها» بررسی کنی.",
+            publishingMenu
+          );
+
+          return;
+        }
+      } catch (error) {
+        console.error(
+          "Scheduled post action failed:",
+          error?.message || error
+        );
+
+        await ctx.reply(
+          "❌ انجام عملیات روی انتشار انجام نشد. دوباره تلاش کن."
         );
       }
 
