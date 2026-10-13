@@ -12,11 +12,12 @@ function createFeaturesHandler({ bot, mainMenu }) {
     detectFileContentType,
   } = require("../services/scheduled-media.downloader");
 
-  const {
+    const {
     createScheduledPost,
     listScheduledPosts,
     getScheduledPostById,
     cancelScheduledPost,
+    deleteFailedScheduledPost,
     reschedulePost,
   } = require("../features/scheduled-publishing/publishing.repository");
   
