@@ -1,17 +1,39 @@
-
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
 const TEMP_ROOT = os.tmpdir();
+const HOME_ROOT = os.homedir();
+const PROJECT_ROOT = process.cwd();
 
 const HIGH_WATERMARK_PERCENT = 50;
 const LOW_WATERMARK_PERCENT = 45;
 const STALE_AFTER_MS = 6 * 60 * 60 * 1000;
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
+const DIAGNOSTIC_MAX_DEPTH = 7;
+const DIAGNOSTIC_MAX_ENTRIES = 20000;
+
 let cleanupRunning = false;
 let cleanupInterval = null;
+let diagnosticsLogged = false;
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return "unknown";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(2)} ${units[unitIndex]}`;
+}
 
 function getDiskUsage() {
   if (typeof fs.statfsSync !== "function") {
@@ -75,8 +97,7 @@ function inspectPath(targetPath) {
   }
 
   for (const name of entries) {
-    const childPath = path.join(targetPath, name);
-    const child = inspectPath(childPath);
+    const child = inspectPath(path.join(targetPath, name));
 
     if (!child) continue;
 
@@ -85,6 +106,189 @@ function inspectPath(targetPath) {
   }
 
   return { size, latestMtime };
+}
+
+function inspectPathLimited(targetPath, state, depth = 0) {
+  if (state.entries >= DIAGNOSTIC_MAX_ENTRIES) {
+    return { size: 0, complete: false };
+  }
+
+  let stats;
+
+  try {
+    stats = fs.lstatSync(targetPath);
+  } catch {
+    return { size: 0, complete: true };
+  }
+
+  if (stats.isSymbolicLink()) {
+    return { size: 0, complete: true };
+  }
+
+  if (stats.isFile()) {
+    state.entries += 1;
+
+    return {
+      size: stats.size,
+      complete: true,
+    };
+  }
+
+  if (!stats.isDirectory()) {
+    return { size: 0, complete: true };
+  }
+
+  if (depth >= DIAGNOSTIC_MAX_DEPTH) {
+    return {
+      size: 0,
+      complete: false,
+    };
+  }
+
+  let entries;
+
+  try {
+    entries = fs.readdirSync(targetPath, {
+      withFileTypes: true,
+    });
+  } catch {
+    return { size: 0, complete: false };
+  }
+
+  let size = 0;
+  let complete = true;
+
+  for (const entry of entries) {
+    if (state.entries >= DIAGNOSTIC_MAX_ENTRIES) {
+      complete = false;
+      break;
+    }
+
+    if (entry.isSymbolicLink()) continue;
+    if (!entry.isDirectory() && !entry.isFile()) continue;
+
+    const result = inspectPathLimited(
+      path.join(targetPath, entry.name),
+      state,
+      depth + 1
+    );
+
+    size += result.size;
+
+    if (!result.complete) {
+      complete = false;
+    }
+  }
+
+  return { size, complete };
+}
+
+function logDirectoryInventory(directoryPath, label) {
+  let entries;
+
+  try {
+    entries = fs.readdirSync(directoryPath, {
+      withFileTypes: true,
+    });
+  } catch (error) {
+    console.log(
+      "Zeka disk diagnostic: directory unavailable",
+      JSON.stringify({
+        label,
+        path: directoryPath,
+        error: error.message,
+      })
+    );
+    return;
+  }
+
+  const results = [];
+  const state = { entries: 0 };
+
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    if (!entry.isDirectory() && !entry.isFile()) continue;
+
+    const targetPath = path.join(directoryPath, entry.name);
+
+    const result = inspectPathLimited(targetPath, state);
+
+    results.push({
+      name: entry.name,
+      path: targetPath,
+      size: result.size,
+      complete: result.complete,
+    });
+  }
+
+  results.sort((a, b) => b.size - a.size);
+
+  console.log(
+    `Zeka disk diagnostic: ${label}`,
+    JSON.stringify({
+      path: directoryPath,
+      scannedEntries: state.entries,
+      scanLimit: DIAGNOSTIC_MAX_ENTRIES,
+      largestItems: results.slice(0, 15).map((item) => ({
+        name: item.name,
+        path: item.path,
+        size: formatBytes(item.size),
+        scanComplete: item.complete,
+      })),
+    })
+  );
+}
+
+function logStorageDiagnostics() {
+  if (diagnosticsLogged) return;
+
+  diagnosticsLogged = true;
+
+  console.log("Zeka disk diagnostic started.");
+
+  try {
+    const usage = getDiskUsage();
+
+    console.log(
+      "Zeka disk diagnostic: filesystem",
+      JSON.stringify({
+        tempRoot: TEMP_ROOT,
+        total: formatBytes(usage.totalBytes),
+        used: formatBytes(usage.usedBytes),
+        available: formatBytes(usage.availableBytes),
+        usedPercent: Number(usage.usedPercent.toFixed(2)),
+      })
+    );
+  } catch (error) {
+    console.error(
+      "Zeka disk diagnostic: filesystem check failed:",
+      error.message
+    );
+  }
+
+  logDirectoryInventory(TEMP_ROOT, "temporary directory");
+
+  logDirectoryInventory(
+    PROJECT_ROOT,
+    "project root"
+  );
+
+  logDirectoryInventory(
+    path.join(HOME_ROOT, ".cache"),
+    "home cache"
+  );
+
+  logDirectoryInventory(
+    path.join(HOME_ROOT, ".cache", "yt-dlp"),
+    "yt-dlp cache"
+  );
+
+  logDirectoryInventory(
+    path.join(HOME_ROOT, ".cache", "gallery-dl"),
+    "gallery-dl cache"
+  );
+
+  console.log("Zeka disk diagnostic finished.");
 }
 
 function getCleanupCandidates() {
@@ -215,7 +419,7 @@ async function cleanupOldTempFiles() {
       "Zeka temp cleanup finished:",
       JSON.stringify({
         removedItems,
-        removedBytes,
+        removedBytes: formatBytes(removedBytes),
         finalUsedPercent: Number(usage.usedPercent.toFixed(2)),
       })
     );
@@ -238,6 +442,8 @@ function startTempFileCleanupService() {
   console.log(
     "Zeka temp cleanup service started; checking every 5 minutes."
   );
+
+  logStorageDiagnostics();
 
   void cleanupOldTempFiles();
 
