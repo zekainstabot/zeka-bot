@@ -32,7 +32,7 @@ function validateSourceUrl(input) {
   return parsed;
 }
 
-function buildCaption(post, downloadedCaption) {
+function buildCaption(post, downloadedCaption, channelUsername = null) {
   const originalCaption = String(
     post.original_caption || downloadedCaption || ""
   ).trim();
