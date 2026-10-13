@@ -3,6 +3,10 @@ const os = require("os");
 const path = require("path");
 
 const {
+  sendFileToUser,
+} = require("../../services/delivery.service");
+
+const {
   downloadScheduledMedia,
   detectFileContentType,
 } = require("../../services/scheduled-media.downloader");
