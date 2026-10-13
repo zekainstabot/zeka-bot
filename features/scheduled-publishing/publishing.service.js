@@ -13,6 +13,7 @@ const {
 
 const {
   updatePostStatus,
+  updatePostProgress,
 } = require("./publishing.repository");
 
 function validateSourceUrl(input) {
@@ -70,6 +71,17 @@ function buildCaption(post, downloadedCaption) {
   return caption;
 }
 
+async function setProgress(postId, stage) {
+  try {
+    await updatePostProgress(postId, stage);
+  } catch (error) {
+    console.error(
+      `Could not update scheduled post progress: ${postId}`,
+      error?.message || error
+    );
+  }
+}
+
 async function sendMediaToChannel({
   bot,
   chatId,
@@ -106,11 +118,14 @@ async function publishScheduledPost(post, bot) {
 
   let downloaded = null;
   let jobId = null;
+  let stage = "downloading";
 
   try {
     const parsed = validateSourceUrl(post.source_url);
 
     jobId = `scheduled-${post.id}-${Date.now()}`;
+
+    await setProgress(post.id, "downloading");
 
     downloaded = await downloadScheduledMedia({
       url: parsed.url,
@@ -126,10 +141,16 @@ async function publishScheduledPost(post, bot) {
       throw new Error("دانلود رسانه با موفقیت انجام نشد.");
     }
 
+    stage = "downloaded";
+    await setProgress(post.id, "downloaded");
+
     const caption = buildCaption(
       post,
       downloaded.caption
     );
+
+    stage = "sending";
+    await setProgress(post.id, "sending");
 
     const message = await sendMediaToChannel({
       bot,
@@ -158,10 +179,17 @@ async function publishScheduledPost(post, bot) {
       error?.message || error
     ).slice(0, 2000);
 
+    const failedStage =
+      stage === "sending"
+        ? "send_failed"
+        : "download_failed";
+
     console.error(
-      `Scheduled post failed: ${post.id}`,
+      `Scheduled post failed during ${stage}: ${post.id}`,
       errorMessage
     );
+
+    await setProgress(post.id, failedStage);
 
     try {
       await updatePostStatus(post.id, "failed", {
@@ -177,6 +205,7 @@ async function publishScheduledPost(post, bot) {
     return {
       success: false,
       postId: post.id,
+      stage: failedStage,
       error: errorMessage,
     };
   } finally {
