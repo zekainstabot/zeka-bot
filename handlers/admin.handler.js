@@ -45,6 +45,11 @@ const {
 } = require("./admin-reports.handler");
 
 const PERMISSION_BUTTONS = [
+
+  {
+  permission: "zeka_media",
+  button: "📺 مدیریت زکا مدیا",
+},
   {
     permission: "users",
     button: "👥 مدیریت کاربران",
