@@ -6,6 +6,7 @@ const {
   accountMenu,
   gamesMenu,
 } = require("./config/bot-menus");
+
 const config = require("./config/app");
 
 const {
@@ -74,7 +75,6 @@ const {
   createSuperAdminHandler,
 } = require("./handlers/super-admin.handler");
 
-
 const {
   createInstagramCookieHandler,
 } = require("./handlers/instagram-cookie.handler");
@@ -108,16 +108,12 @@ function createBot() {
   }
 
   if (!config.bot.token) {
-    throw new Error(
-      "BOT_TOKEN is not configured"
-    );
+    throw new Error("BOT_TOKEN is not configured");
   }
 
-  bot = new Telegraf(
-    config.bot.token
-  );
+  bot = new Telegraf(config.bot.token);
 
-    bot.catch((error, ctx) => {
+  bot.catch((error, ctx) => {
     console.error("Telegram update handler failed:", {
       updateId: ctx?.update?.update_id,
       updateType: ctx?.updateType,
@@ -128,16 +124,16 @@ function createBot() {
   });
 
   bot.use(async (ctx, next) => {
-  console.log(
-    "TELEGRAM UPDATE RECEIVED:",
-    ctx.update?.update_id,
-    ctx.updateType,
-    ctx.from?.id,
-    ctx.message?.text || ""
-  );
+    console.log(
+      "TELEGRAM UPDATE RECEIVED:",
+      ctx.update?.update_id,
+      ctx.updateType,
+      ctx.from?.id,
+      ctx.message?.text || ""
+    );
 
-  return next();
-});
+    return next();
+  });
 
   setDeliveryBot(bot);
   setReportBot(bot);
@@ -148,11 +144,8 @@ function createBot() {
   });
 
   createAdminHandler(bot);
-
   createSuperAdminHandler(bot);
-
-  
-createInstagramCookieHandler(bot);
+  createInstagramCookieHandler(bot);
 
   createBasicHandler({
     bot,
@@ -189,15 +182,13 @@ createInstagramCookieHandler(bot);
     bot,
   });
 
-  createAdminFortuneHandler(
-    bot
-  );
+  createAdminFortuneHandler(bot);
 
-    createDownloadHandler({
-  bot,
-  mainMenu,
-  downloadMenu,
-});
+  createDownloadHandler({
+    bot,
+    mainMenu,
+    downloadMenu,
+  });
 
   createNavigationHandler({
     bot,
@@ -205,16 +196,14 @@ createInstagramCookieHandler(bot);
   });
 
   register(async () => {
-  stopScheduledPublishing();
+    stopScheduledPublishing();
 
-  cleanupQuizTimers();
+    cleanupQuizTimers();
 
-  if (bot) {
-    await bot.stop(
-      "shutdown"
-    );
-  }
-});
+    if (bot) {
+      await bot.stop("shutdown");
+    }
+  });
 
   register(async () => {
     await close();
@@ -223,51 +212,50 @@ createInstagramCookieHandler(bot);
   return bot;
 }
 
-process.once(
-  "SIGINT",
-  async () => {
-    await shutdown("SIGINT");
-  }
-);
+process.once("SIGINT", async () => {
+  await shutdown("SIGINT");
+});
 
-process.once(
-  "SIGTERM",
-  async () => {
-    await shutdown("SIGTERM");
-  }
-);
+process.once("SIGTERM", async () => {
+  await shutdown("SIGTERM");
+});
 
 async function startBot() {
-  const telegramBot =
-    createBot();
+  const telegramBot = createBot();
 
-  console.log(
-    "Starting delivery recovery..."
-  );
+  console.log("Starting delivery recovery...");
 
   await recoverDeliveredJobs();
 
-  console.log(
-    "Delivery recovery finished."
-  );
+  console.log("Delivery recovery finished.");
 
-  console.log(
-    "Starting queue recovery..."
-  );
+  console.log("Starting queue recovery...");
 
   await recoverJobs();
 
-  console.log(
-    "Queue recovery finished."
-  );
+  console.log("Queue recovery finished.");
 
- await telegramBot.launch();
+  startScheduledPublishing(telegramBot);
 
-console.log(
-  "Telegram bot started."
-);
+  try {
+    await telegramBot.launch();
 
-startScheduledPublishing(telegramBot);
+    console.log("Telegram bot started.");
+  } catch (error) {
+    const isPollingConflict =
+      error?.response?.error_code === 409 &&
+      String(error?.message || "").includes("getUpdates");
+
+    if (!isPollingConflict) {
+      stopScheduledPublishing();
+      throw error;
+    }
+
+    console.error(
+      "Telegram polling conflict detected. Scheduled publishing will continue in this process.",
+      error?.message || error
+    );
+  }
 }
 
 module.exports = {
