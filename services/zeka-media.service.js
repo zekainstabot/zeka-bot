@@ -1,4 +1,3 @@
-
 const fs = require("fs");
 const path = require("path");
 
@@ -211,10 +210,17 @@ async function enqueueForReview({
     );
   }
 
-  await sendReviewMedia({
-    queueItem,
-    caption,
-  });
+  try {
+    await sendReviewMedia({
+      queueItem,
+      caption,
+    });
+  } catch (error) {
+    console.error(
+      `Zeka Media item ${queueItem.id} was queued, but review notification failed:`,
+      error.message
+    );
+  }
 
   return queueItem;
 }
