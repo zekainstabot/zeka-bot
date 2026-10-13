@@ -158,6 +158,7 @@ async function handleProAdminMenu(ctx) {
     const buttons = [
       ["⭐ فعال‌سازی Pro", "⏳ تمدید Pro"],
       ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
+      ["📋 درخواست‌های خرید Pro"],
       ["❌ لغو Pro"],
       [
         isSuperAdmin
