@@ -96,21 +96,39 @@ async function sendMediaToChannel({
     throw new Error("فایل رسانه برای انتشار پیدا نشد.");
   }
 
+  if (!chatId) {
+    throw new Error("شناسه کانال برای انتشار تنظیم نشده است.");
+  }
+
   const fileType = detectFileContentType(filePath);
-  const options = caption ? { caption } : {};
-  const media = { source: filePath };
 
-  if (fileType === "PHOTO") {
-    return bot.telegram.sendPhoto(chatId, media, options);
+  const typeMap = {
+    PHOTO: "photo",
+    VIDEO: "video",
+    AUDIO: "audio",
+    DOCUMENT: "document",
+  };
+
+  const contentType =
+    typeMap[String(fileType).toUpperCase()] || "document";
+
+  const result = await sendFileToUser({
+    telegramChatId: chatId,
+    filePath,
+    caption,
+    contentType,
+  });
+
+  const message = result?.response?.result;
+
+  if (!result?.success || !message?.message_id) {
+    throw new Error(
+      "تلگرام فایل را ارسال کرد، اما شناسه پیام انتشار دریافت نشد."
+    );
   }
 
-  if (fileType === "VIDEO") {
-    return bot.telegram.sendVideo(chatId, media, options);
-  }
-
-  return bot.telegram.sendDocument(chatId, media, options);
+  return message;
 }
-
 async function publishScheduledPost(post, bot) {
   if (!post || !post.id) {
     throw new Error("اطلاعات پست زمان‌بندی‌شده ناقص است.");
