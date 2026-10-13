@@ -12,6 +12,18 @@ const ALLOWED_CAPTION_ORDERS = new Set([
   "custom_first",
 ]);
 
+const ALLOWED_PROGRESS_STAGES = new Set([
+  "queued",
+  "downloading",
+  "downloaded",
+  "sending",
+  "sent",
+  "download_failed",
+  "send_failed",
+  "failed",
+  "cancelled",
+]);
+
 async function createScheduledPost({
   userId,
   telegramChatId,
@@ -157,6 +169,8 @@ async function cancelScheduledPost(postId, userId) {
       UPDATE scheduled_posts
       SET
         status = 'cancelled',
+        progress_stage = 'cancelled',
+        last_stage_updated_at = NOW(),
         updated_at = NOW()
       WHERE id = $1
         AND user_id = $2
@@ -184,7 +198,9 @@ async function reschedulePost(postId, userId, scheduledAt) {
       SET
         scheduled_at = $3,
         status = 'pending',
+        progress_stage = 'queued',
         error_message = NULL,
+        last_stage_updated_at = NOW(),
         updated_at = NOW()
       WHERE id = $1
         AND user_id = $2
@@ -192,6 +208,35 @@ async function reschedulePost(postId, userId, scheduledAt) {
       RETURNING *
     `,
     [postId, userId, scheduledAt]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function updatePostProgress(postId, stage) {
+  if (!postId || !ALLOWED_PROGRESS_STAGES.has(stage)) {
+    throw new Error("Invalid post ID or progress stage");
+  }
+
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      UPDATE scheduled_posts
+      SET
+        progress_stage = $2,
+        download_completed_at =
+          CASE WHEN $2 = 'downloaded' THEN NOW()
+               ELSE download_completed_at END,
+        send_started_at =
+          CASE WHEN $2 = 'sending' THEN NOW()
+               ELSE send_started_at END,
+        last_stage_updated_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `,
+    [postId, stage]
   );
 
   return result.rows[0] || null;
@@ -226,6 +271,18 @@ async function updatePostStatus(
         status = $2,
         telegram_message_id = COALESCE($3, telegram_message_id),
         error_message = $4,
+        progress_stage = CASE
+          WHEN $2 = 'published' THEN 'sent'
+          WHEN $2 = 'cancelled' THEN 'cancelled'
+          WHEN $2 = 'failed'
+            AND progress_stage NOT IN ('download_failed', 'send_failed')
+            THEN 'failed'
+          ELSE progress_stage
+        END,
+        last_stage_updated_at = CASE
+          WHEN $2 IN ('published', 'failed', 'cancelled') THEN NOW()
+          ELSE last_stage_updated_at
+        END,
         attempts = attempts +
           CASE WHEN $2 = 'processing' THEN 1 ELSE 0 END,
         published_at =
@@ -249,7 +306,9 @@ async function recoverStuckScheduledPosts() {
       UPDATE scheduled_posts
       SET
         status = 'pending',
+        progress_stage = 'queued',
         error_message = 'Publication was interrupted; the post was returned to the queue.',
+        last_stage_updated_at = NOW(),
         updated_at = NOW()
       WHERE status = 'processing'
         AND updated_at < NOW() - INTERVAL '30 minutes'
@@ -282,6 +341,8 @@ async function claimDueScheduledPosts(limit = 5) {
       UPDATE scheduled_posts AS posts
       SET
         status = 'processing',
+        progress_stage = 'downloading',
+        last_stage_updated_at = NOW(),
         attempts = posts.attempts + 1,
         updated_at = NOW()
       FROM due_posts
@@ -302,5 +363,6 @@ module.exports = {
   listScheduledPosts,
   cancelScheduledPost,
   reschedulePost,
+  updatePostProgress,
   updatePostStatus,
 };
