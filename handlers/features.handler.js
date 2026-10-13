@@ -19,6 +19,10 @@ function createFeaturesHandler({ bot, mainMenu }) {
     cancelScheduledPost,
     reschedulePost,
   } = require("../features/scheduled-publishing/publishing.repository");
+  
+  const {
+  sendFileToUser,
+} = require("../services/delivery.service");
 
   const {
     addUserChannel,
