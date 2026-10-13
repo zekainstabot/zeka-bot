@@ -184,6 +184,27 @@ async function cancelScheduledPost(postId, userId) {
   return result.rows[0] || null;
 }
 
+async function deleteFailedScheduledPost(postId, userId) {
+  if (!postId || !userId) {
+    throw new Error("Post ID and user ID are required");
+  }
+
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      DELETE FROM scheduled_posts
+      WHERE id = $1
+        AND user_id = $2
+        AND status = 'failed'
+      RETURNING id
+    `,
+    [postId, userId]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function reschedulePost(postId, userId, scheduledAt) {
   if (!postId || !userId || !scheduledAt) {
     throw new Error(
