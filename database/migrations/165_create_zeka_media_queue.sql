@@ -1,8 +1,7 @@
 CREATE TABLE IF NOT EXISTS zeka_media_queue (
     id BIGSERIAL PRIMARY KEY,
 
-    job_id BIGINT NOT NULL UNIQUE
-        REFERENCES jobs(id) ON DELETE CASCADE,
+    job_id BIGINT NOT NULL UNIQUE,
 
     file_path TEXT NOT NULL,
     content_type VARCHAR(30) NOT NULL,
@@ -12,6 +11,7 @@ CREATE TABLE IF NOT EXISTS zeka_media_queue (
         CHECK (
             status IN (
                 'PENDING',
+                'PUBLISHING',
                 'APPROVED',
                 'REJECTED',
                 'PUBLISHED',
