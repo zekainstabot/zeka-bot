@@ -32,19 +32,10 @@ async function createPending({
       DO NOTHING
       RETURNING *
     `,
-    [
-      jobId,
-      filePath,
-      contentType || "UNKNOWN",
-      originalUrl,
-    ]
+    [jobId, filePath, contentType || "UNKNOWN", originalUrl]
   );
 
-  if (result.rows[0]) {
-    return result.rows[0];
-  }
-
-  return findByJobId(jobId);
+  return result.rows[0] || findByJobId(jobId);
 }
 
 async function findById(id) {
@@ -172,6 +163,26 @@ async function markFailed(id) {
   return result.rows[0] || null;
 }
 
+async function restoreToPending(id) {
+  const result = await db.query(
+    `
+      UPDATE zeka_media_queue
+      SET
+        status = 'PENDING',
+        reviewed_by = NULL,
+        reviewed_at = NULL,
+        updated_at = NOW()
+      WHERE id = $1
+        AND status = 'PUBLISHING'
+        AND expires_at > NOW()
+      RETURNING *
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
 async function expirePending() {
   const result = await db.query(
     `
@@ -197,5 +208,6 @@ module.exports = {
   reject,
   markPublished,
   markFailed,
+  restoreToPending,
   expirePending,
 };
