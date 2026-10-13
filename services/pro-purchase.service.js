@@ -91,11 +91,15 @@ async function getPurchaseRequests({ status = null, limit = 20 } = {}) {
 
   const db = getClient();
 
+  const statuses = status
+    ? [status]
+    : OPEN_STATUSES;
+
   const result = await db.query(
     `
       SELECT *
       FROM pro_purchase_requests
-      WHERE ($1::varchar IS NULL OR status = $1)
+      WHERE status = ANY($1::varchar[])
       ORDER BY
         CASE
           WHEN status = 'RECEIPT_SUBMITTED' THEN 0
@@ -106,7 +110,10 @@ async function getPurchaseRequests({ status = null, limit = 20 } = {}) {
         created_at DESC
       LIMIT $2
     `,
-    [status, Math.max(1, Math.min(Number(limit) || 20, 100))]
+    [
+      statuses,
+      Math.max(1, Math.min(Number(limit) || 20, 100)),
+    ]
   );
 
   return result.rows;
