@@ -14,6 +14,11 @@ const PERMISSION_VIEW = "admins";
 const PERMISSION_MANAGE = "admins";
 
 const PERMISSION_ORDER = [
+
+  {
+  key: "zeka_media",
+  name: "زکا مدیا",
+},
   {
     key: "users",
     name: "کاربران",
