@@ -325,8 +325,7 @@ async function sendFileToUser({
   const bot = getBot();
 
   const token = bot.telegram.token;
-  const chatId = String(telegramUserId);
-
+  const chatId = String(destinationChatId);
   const uploadConfig =
     getTelegramUploadConfig(contentType);
 
