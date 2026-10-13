@@ -90,11 +90,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
   function isSupportedMediaUrl(value) {
     const parsed = parseUrl(value);
 
-    return Boolean(
-      parsed.valid &&
-      parsed.url &&
-      parsed.platform
-    );
+    return Boolean(parsed.valid && parsed.url && parsed.platform);
   }
 
   async function verifyChannel(ctx, text) {
@@ -113,9 +109,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
       try {
         url = new URL(
-          /^https?:\/\//i.test(input)
-            ? input
-            : `https://${input}`
+          /^https?:\/\//i.test(input) ? input : `https://${input}`
         );
       } catch {
         throw new Error("لینک واردشده معتبر نیست.");
@@ -161,13 +155,9 @@ function createFeaturesHandler({ bot, mainMenu }) {
           "این لینک قابل شناسایی نیست. لینک عمومی یا آیدی عددی کانال را بفرست."
         );
       }
-    } else if (
-      /^@[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(input)
-    ) {
+    } else if (/^@[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(input)) {
       chatId = input;
-    } else if (
-      /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(input)
-    ) {
+    } else if (/^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(input)) {
       chatId = `@${input}`;
     } else if (/^-100\d+$/.test(input)) {
       chatId = input;
@@ -195,14 +185,10 @@ function createFeaturesHandler({ bot, mainMenu }) {
     }
 
     const botInfo = await ctx.telegram.getMe();
-
     let member;
 
     try {
-      member = await ctx.telegram.getChatMember(
-        channel.id,
-        botInfo.id
-      );
+      member = await ctx.telegram.getChatMember(channel.id, botInfo.id);
     } catch {
       throw new Error(
         "دریافت دسترسی ربات ممکن نشد. ربات را به کانال اضافه کن و دوباره امتحان کن."
@@ -252,10 +238,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
     };
 
     if (days[choice]) {
-      scheduledAt.setDate(
-        scheduledAt.getDate() + days[choice]
-      );
-
+      scheduledAt.setDate(scheduledAt.getDate() + days[choice]);
       return scheduledAt;
     }
 
@@ -395,7 +378,11 @@ function createFeaturesHandler({ bot, mainMenu }) {
     }
 
     if (post.error_message) {
-      lines.push("", "⚠️ شرح خطا:", String(post.error_message).slice(0, 1200));
+      lines.push(
+        "",
+        "⚠️ شرح خطا:",
+        String(post.error_message).slice(0, 1200)
+      );
     }
 
     return lines.join("\n");
@@ -470,8 +457,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
     clearState(ctx);
 
     await ctx.reply(
-      "🛠 امکانات ویژه\n\n" +
-        "یکی از امکانات را انتخاب کن.",
+      "🛠 امکانات ویژه\n\nیکی از امکانات را انتخاب کن.",
       featuresMenu
     );
   });
@@ -564,8 +550,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
       });
 
       await ctx.reply(
-        "📋 کانال‌های ثبت‌شده حساب تو:\n\n" +
-          lines.join("\n\n"),
+        "📋 کانال‌های ثبت‌شده حساب تو:\n\n" + lines.join("\n\n"),
         publishingMenu
       );
     } catch (error) {
@@ -589,11 +574,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
       const channels = await listUserChannels(user.id);
 
       if (!channels.length) {
-        await ctx.reply(
-          "کانالی برای حذف وجود ندارد.",
-          publishingMenu
-        );
-
+        await ctx.reply("کانالی برای حذف وجود ندارد.", publishingMenu);
         return;
       }
 
@@ -660,11 +641,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
     if (text === "🔙 بازگشت") {
       clearState(ctx);
 
-      await ctx.reply(
-        "📢 مدیریت انتشار محتوا",
-        publishingMenu
-      );
-
+      await ctx.reply("📢 مدیریت انتشار محتوا", publishingMenu);
       return;
     }
 
@@ -918,7 +895,9 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
         await ctx.reply(
           "✅ انتشار " +
-            (isImmediate ? "در صف آماده‌سازی قرار گرفت." : "زمان‌بندی شد.") +
+            (isImmediate
+              ? "در صف آماده‌سازی قرار گرفت."
+              : "زمان‌بندی شد.") +
             "\n\n" +
             `🆔 شماره برنامه: ${post.id}\n` +
             `📢 کانال: ${state.channelTitle || state.telegramChatId}\n` +
@@ -928,7 +907,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
                 : scheduledAt.toLocaleString("fa-IR", {
                     timeZone: "Asia/Tehran",
                   })
-            }\n\n" +
+            }\n\n` +
             "برنامه انتشار به حساب خودت متصل است.",
           publishingMenu
         );
@@ -964,10 +943,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
       try {
         const user = await getDatabaseUser(ctx);
-        const post = await getScheduledPostById(
-          selectedPost.id,
-          user.id
-        );
+        const post = await getScheduledPostById(selectedPost.id, user.id);
 
         if (!post) {
           await showScheduledPosts(ctx);
@@ -1027,10 +1003,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         }
 
         if (cancelRequested) {
-          const cancelled = await cancelScheduledPost(
-            postId,
-            user.id
-          );
+          const cancelled = await cancelScheduledPost(postId, user.id);
 
           if (!cancelled) {
             await ctx.reply(
