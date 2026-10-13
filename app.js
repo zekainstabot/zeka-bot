@@ -146,6 +146,8 @@ async function start() {
 
     startTempFileCleanupService();
 
+    startZekaMediaExpirationService();
+
     await bugReportCleanupService.start();
 
     await setupSuperAdmin();
