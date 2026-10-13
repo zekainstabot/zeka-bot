@@ -451,7 +451,7 @@ async function showProPurchaseRequests(ctx) {
   try {
     const requests =
       await proPurchaseService.getPurchaseRequests({
-        limit: 30,
+        limit: 5,
       });
 
     if (!requests.length) {
