@@ -1,4 +1,3 @@
-
 const crypto = require("crypto");
 
 const { getClient } = require("../database/client");
@@ -77,7 +76,11 @@ async function getProManagers() {
     .getActiveAdminsWithPermission("pro");
 }
 
-async function getPurchaseRequests({ status = null, limit = 20 } = {}) {
+async function getPurchaseRequests({
+  status = null,
+  limit = 5,
+  offset = 0,
+} = {}) {
   const allowedStatuses = [
     ...OPEN_STATUSES,
     "APPROVED",
@@ -95,6 +98,16 @@ async function getPurchaseRequests({ status = null, limit = 20 } = {}) {
     ? [status]
     : OPEN_STATUSES;
 
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 5, 100)
+  );
+
+  const safeOffset = Math.max(
+    0,
+    Math.floor(Number(offset) || 0)
+  );
+
   const result = await db.query(
     `
       SELECT *
@@ -109,10 +122,12 @@ async function getPurchaseRequests({ status = null, limit = 20 } = {}) {
         END,
         created_at DESC
       LIMIT $2
+      OFFSET $3
     `,
     [
       statuses,
-      Math.max(1, Math.min(Number(limit) || 20, 100)),
+      safeLimit,
+      safeOffset,
     ]
   );
 
@@ -182,7 +197,6 @@ async function setPaymentCardNumber({
   return result.rows[0] || null;
 }
 
-
 async function cancelPurchaseRequest(telegramUserId) {
   const db = getClient();
 
@@ -211,7 +225,6 @@ async function cancelPurchaseRequest(telegramUserId) {
 
   return result.rows[0] || null;
 }
-
 
 async function submitPurchaseReceipt({
   requestId,
@@ -303,12 +316,18 @@ async function reviewPurchaseRequest({
 
     if (!request) {
       await client.query("ROLLBACK");
-      return { success: false, reason: "NOT_FOUND" };
+      return {
+        success: false,
+        reason: "NOT_FOUND",
+      };
     }
 
     if (request.status !== "RECEIPT_SUBMITTED") {
       await client.query("ROLLBACK");
-      return { success: false, reason: "ALREADY_REVIEWED" };
+      return {
+        success: false,
+        reason: "ALREADY_REVIEWED",
+      };
     }
 
     if (decision === "APPROVED") {
@@ -329,6 +348,7 @@ async function reviewPurchaseRequest({
       }
 
       const now = new Date();
+
       const currentExpiry = user.pro_expires_at
         ? new Date(user.pro_expires_at)
         : null;
