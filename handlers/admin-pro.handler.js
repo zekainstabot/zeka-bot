@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -8,6 +7,7 @@ const proPurchaseService = require("../services/pro-purchase.service");
 const adminProStates = new Map();
 
 const CANCEL_TEXT = "❌ لغو";
+const PURCHASE_PAGE_SIZE = 5;
 
 const cancelMenu = Markup.keyboard([
   [CANCEL_TEXT],
@@ -445,19 +445,60 @@ async function handleAdminProText(ctx, next) {
   }
 }
 
-async function showProPurchaseRequests(ctx) {
-  if (!(await requireAccess(ctx))) return;
+function buildPurchasePaginationKeyboard(page, hasNext) {
+  const buttons = [];
+
+  if (page > 0) {
+    buttons.push(
+      Markup.button.callback(
+        "⬅️ صفحه قبل",
+        `admin_pro_purchase_page:${page - 1}`
+      )
+    );
+  }
+
+  if (hasNext) {
+    buttons.push(
+      Markup.button.callback(
+        "صفحه بعد ➡️",
+        `admin_pro_purchase_page:${page + 1}`
+      )
+    );
+  }
+
+  if (!buttons.length) return undefined;
+
+  return Markup.inlineKeyboard([buttons]);
+}
+
+async function showProPurchaseRequests(ctx, page = 0, isCallback = false) {
+  if (!(await requireAccess(ctx))) {
+    if (isCallback) await ctx.answerCbQuery();
+    return;
+  }
+
+  const safePage = Math.max(0, Number(page) || 0);
 
   try {
     const requests =
       await proPurchaseService.getPurchaseRequests({
-        limit: 5,
+        limit: PURCHASE_PAGE_SIZE + 1,
+        offset: safePage * PURCHASE_PAGE_SIZE,
       });
 
-    if (!requests.length) {
-      await ctx.reply(
-        "📋 هیچ درخواست خرید Pro ثبت نشده است."
-      );
+    const hasNext = requests.length > PURCHASE_PAGE_SIZE;
+    const visibleRequests = requests.slice(0, PURCHASE_PAGE_SIZE);
+
+    if (isCallback) {
+      await ctx.answerCbQuery();
+    }
+
+    if (!visibleRequests.length) {
+      if (safePage > 0) {
+        await ctx.reply("📋 درخواست دیگری در این صفحه وجود ندارد.");
+      } else {
+        await ctx.reply("📋 هیچ درخواست باز خرید Pro ثبت نشده است.");
+      }
       return;
     }
 
@@ -465,12 +506,9 @@ async function showProPurchaseRequests(ctx) {
       PENDING: "در انتظار اطلاعات پرداخت",
       WAITING_RECEIPT: "در انتظار رسید",
       RECEIPT_SUBMITTED: "رسید ارسال شده؛ منتظر بررسی",
-      APPROVED: "تأیید شده",
-      REJECTED: "رد شده",
-      CANCELLED: "لغو شده",
     };
 
-    for (const request of requests) {
+    for (const request of visibleRequests) {
       const status =
         statusLabels[request.status] || request.status;
 
@@ -538,16 +576,49 @@ async function showProPurchaseRequests(ctx) {
         await ctx.reply(details);
       }
     }
+
+    const paginationKeyboard =
+      buildPurchasePaginationKeyboard(safePage, hasNext);
+
+    if (paginationKeyboard) {
+      await ctx.reply(
+        `📄 صفحه ${safePage + 1}`,
+        paginationKeyboard
+      );
+    }
   } catch (error) {
     console.error(
       "Show Pro purchase requests failed:",
       error
     );
 
-    await ctx.reply(
-      "❌ دریافت درخواست‌های خرید Pro ناموفق بود. لاگ Render را بررسی کن."
-    );
+    if (isCallback) {
+      try {
+        await ctx.answerCbQuery(
+          "دریافت درخواست‌ها ناموفق بود.",
+          { show_alert: true }
+        );
+      } catch (_) {}
+    } else {
+      await ctx.reply(
+        "❌ دریافت درخواست‌های خرید Pro ناموفق بود. لاگ Render را بررسی کن."
+      );
+    }
   }
+}
+
+async function handlePurchasePageCallback(ctx) {
+  const data = String(ctx.callbackQuery?.data || "");
+  const match = data.match(/^admin_pro_purchase_page:(\d+)$/);
+
+  if (!match) {
+    await ctx.answerCbQuery("صفحه نامعتبر است.", {
+      show_alert: true,
+    });
+    return;
+  }
+
+  await showProPurchaseRequests(ctx, Number(match[1]), true);
 }
 
 async function startPaymentDetailsFlow(ctx) {
@@ -732,7 +803,7 @@ function createAdminProHandler(bot) {
 
   bot.hears(
     "📋 درخواست‌های خرید Pro",
-    showProPurchaseRequests
+    (ctx) => showProPurchaseRequests(ctx, 0, false)
   );
 
   bot.hears(
@@ -753,6 +824,11 @@ function createAdminProHandler(bot) {
   bot.hears(
     "❌ لغو Pro",
     (ctx) => startSimpleFlow(ctx, "cancel")
+  );
+
+  bot.action(
+    /^admin_pro_purchase_page:\d+$/,
+    handlePurchasePageCallback
   );
 
   bot.action(
