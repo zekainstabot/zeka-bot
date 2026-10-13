@@ -142,7 +142,8 @@ function createBot() {
   });
 
   setDeliveryBot(bot);
-  setReportBot(bot);
+setReportBot(bot);
+setZekaMediaBot(bot);
 
   createQuizHandler({
     bot,
