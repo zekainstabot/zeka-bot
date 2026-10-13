@@ -178,11 +178,26 @@ async function publishScheduledPost(post, bot) {
     stage = "downloaded";
     await setProgress(post.id, "downloaded");
 
-    const caption = buildCaption(
-      post,
-      downloaded.caption
-    );
+    let channelUsername = null;
 
+try {
+  const channelInfo = await bot.telegram.getChat(
+    post.telegram_chat_id
+  );
+
+  channelUsername = channelInfo?.username || null;
+} catch (error) {
+  console.warn(
+    `Could not fetch channel username for post ${post.id}:`,
+    error?.message || error
+  );
+}
+
+const caption = buildCaption(
+  post,
+  downloaded.caption,
+  channelUsername
+);
     stage = "sending";
     await setProgress(post.id, "sending");
 
