@@ -1,7 +1,16 @@
 
 function createFeaturesHandler({ bot, mainMenu }) {
+  const fs = require("fs");
+  const os = require("os");
+  const path = require("path");
+
   const { getOrCreateUser } = require("../services/user.service");
   const { parseUrl } = require("../services/url.service");
+
+  const {
+    downloadScheduledMedia,
+    detectFileContentType,
+  } = require("../services/scheduled-media.downloader");
 
   const {
     createScheduledPost,
@@ -89,7 +98,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
   function isSupportedMediaUrl(value) {
     const parsed = parseUrl(value);
-
     return Boolean(parsed.valid && parsed.url && parsed.platform);
   }
 
@@ -227,7 +235,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
       scheduledAt.setTime(
         now.getTime() + hours[choice] * 60 * 60 * 1000
       );
-
       return scheduledAt;
     }
 
@@ -350,6 +357,65 @@ function createFeaturesHandler({ bot, mainMenu }) {
     });
   }
 
+  async function sendPreviewMedia(ctx, filePath, contentType) {
+    if (!fs.existsSync(filePath)) {
+      throw new Error("فایل دانلودشده برای پیش‌نمایش پیدا نشد.");
+    }
+
+    const type = contentType || detectFileContentType(filePath);
+    const caption =
+      "👀 پیش‌نمایش فایل دانلودشده\n\n" +
+      "این فایل هنوز در کانال منتشر نشده است.";
+
+    if (type === "PHOTO") {
+      return ctx.replyWithPhoto(
+        { source: filePath },
+        { caption }
+      );
+    }
+
+    if (type === "VIDEO") {
+      return ctx.replyWithVideo(
+        { source: filePath },
+        { caption }
+      );
+    }
+
+    if (type === "AUDIO") {
+      return ctx.replyWithAudio(
+        { source: filePath },
+        { caption }
+      );
+    }
+
+    return ctx.replyWithDocument(
+      { source: filePath },
+      { caption }
+    );
+  }
+
+  function cleanupPreviewFiles(jobId) {
+    const directories = [
+      path.join(os.tmpdir(), "zeka-instagram", jobId),
+      path.join(os.tmpdir(), "zeka-tiktok", jobId),
+      path.join(os.tmpdir(), "zeka-scheduled-media", jobId),
+    ];
+
+    for (const directory of directories) {
+      try {
+        fs.rmSync(directory, {
+          recursive: true,
+          force: true,
+        });
+      } catch (error) {
+        console.error(
+          "Scheduled preview cleanup failed:",
+          error?.message || error
+        );
+      }
+    }
+  }
+
   function getPostDetailText(post) {
     const lines = [
       `📄 جزئیات انتشار #${post.id}`,
@@ -388,7 +454,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
     return lines.join("\n");
   }
 
-    function getPostActionsKeyboard(post) {
+  function getPostActionsKeyboard(post) {
     const keyboard = [];
 
     if (["pending", "failed"].includes(post.status)) {
@@ -445,9 +511,9 @@ function createFeaturesHandler({ bot, mainMenu }) {
     try {
       const user = await getDatabaseUser(ctx);
       const posts = await listScheduledPosts(
-  user.id,
-  ["pending", "processing", "failed"]
-);
+        user.id,
+        ["pending", "processing", "failed"]
+      );
 
       if (!posts.length) {
         await ctx.reply(
@@ -455,17 +521,17 @@ function createFeaturesHandler({ bot, mainMenu }) {
             "برای شروع، گزینه «📅 انتشار زمان‌بندی‌شده» را انتخاب کن.",
           publishingMenu
         );
-
         return;
       }
 
       const visiblePosts = posts
-  .sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() -
-      new Date(a.created_at).getTime()
-  )
-  .slice(0, 10);
+        .sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() -
+            new Date(a.created_at).getTime()
+        )
+        .slice(0, 10);
+
       setState(ctx, {
         step: "scheduled_posts_list",
         posts: visiblePosts,
@@ -503,7 +569,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
     await ctx.reply(
       "📢 مدیریت انتشار محتوا\n\n" +
-        "ثبت کانال، زمان‌بندی، پیگیری و مدیریت انتشارها از این بخش انجام می‌شود.",
+        "ثبت کانال، زمان‌بندی، پیش‌نمایش و پیگیری انتشارها از این بخش انجام می‌شود.",
       publishingMenu
     );
   });
@@ -568,7 +634,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             "ابتدا گزینه «➕ ثبت کانال» را انتخاب کن.",
           publishingMenu
         );
-
         return;
       }
 
@@ -646,7 +711,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
     await ctx.reply(
       "📅 انتشار زمان‌بندی‌شده\n\n" +
         "لینک عمومی محتوایی را که می‌خواهی منتشر شود بفرست.\n\n" +
-        "لینک باید متعلق به یکی از پلتفرم‌های شناسایی‌شده توسط زکا باشد.",
+        "ربات فایل را دانلود می‌کند و ابتدا پیش‌نمایش آن را برایت می‌فرستد. سپس می‌توانی زمان انتشار در کانال را انتخاب کنی.",
       publishingMenu
     );
   });
@@ -654,7 +719,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
   bot.hears("📊 پیگیری انتشارها", showScheduledPosts);
   bot.hears("🔄 تازه‌سازی فهرست", showScheduledPosts);
 
-    bot.action(
+  bot.action(
     /^scheduled_(send_now|cancel|retry):(\d+)$/,
     async (ctx) => {
       const action = ctx.match[1];
@@ -695,7 +760,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
               "پردازش و انتشار به زمان آماده‌شدن سیستم بستگی دارد.",
             publishingMenu
           );
-
           return;
         }
 
@@ -715,7 +779,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             `✅ انتشار شماره ${postId} لغو شد.`,
             publishingMenu
           );
-
           return;
         }
 
@@ -791,13 +854,11 @@ function createFeaturesHandler({ bot, mainMenu }) {
         "⏱ زمان این فرایند تمام شد. دوباره از امکانات ویژه شروع کن.",
         mainMenu
       );
-
       return;
     }
 
     if (text === "🔙 بازگشت") {
       clearState(ctx);
-
       await ctx.reply("📢 مدیریت انتشار محتوا", publishingMenu);
       return;
     }
@@ -842,7 +903,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             "آیدی کانال را بررسی کن و مطمئن شو ربات ادمین است و اجازه انتشار پیام دارد.\n\n" +
             "مثال کانال عمومی: @mychannel"
         );
-
         return;
       }
 
@@ -890,7 +950,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
           "از دکمه‌های فهرست، کانال موردنظر را انتخاب کن.",
           getChannelKeyboard(state.channels, getRemoveLabel)
         );
-
         return;
       }
 
@@ -909,7 +968,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             "این کانال در حساب تو ثبت نشده یا قبلاً حذف شده است.",
             publishingMenu
           );
-
           return;
         }
 
@@ -941,7 +999,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
           "❌ لینک معتبر نیست یا پلتفرم آن شناسایی نمی‌شود.\n" +
             "لطفاً لینک محتوای موردنظر را دوباره بفرست."
         );
-
         return;
       }
 
@@ -960,7 +1017,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
               "۴. دوباره انتشار زمان‌بندی‌شده را شروع کن.",
             publishingMenu
           );
-
           return;
         }
 
@@ -1000,24 +1056,85 @@ function createFeaturesHandler({ bot, mainMenu }) {
           "از دکمه‌های فهرست، کانال مقصد را انتخاب کن.",
           getChannelKeyboard(state.channels, getChannelLabel)
         );
-
         return;
       }
 
+      const sourceUrl = state.sourceUrl;
+      const telegramChatId = String(selectedChannel.telegram_chat_id);
+      const channelTitle = getChannelTitle(selectedChannel);
+      const jobId = `preview-${ctx.from.id}-${Date.now()}`;
+
       setState(ctx, {
-        step: "schedule",
-        sourceUrl: state.sourceUrl,
-        telegramChatId: String(selectedChannel.telegram_chat_id),
-        channelTitle: getChannelTitle(selectedChannel),
+        step: "preview_downloading",
+        sourceUrl,
+        telegramChatId,
+        channelTitle,
       });
 
       await ctx.reply(
-        "✅ کانال انتخاب شد.\n" +
-          `📢 مقصد: ${getChannelTitle(selectedChannel)}\n\n` +
-          "زمان انتشار را انتخاب کن:",
-        scheduleMenu
+        "⏳ لینک دریافت شد. دارم فایل را دانلود می‌کنم تا قبل از انتشار بررسی‌اش کنی..."
       );
 
+      try {
+        const downloaded = await downloadScheduledMedia({
+          url: sourceUrl,
+          jobId,
+        });
+
+        if (
+          !downloaded ||
+          !downloaded.success ||
+          !downloaded.filePath ||
+          !fs.existsSync(downloaded.filePath)
+        ) {
+          throw new Error("دانلود فایل کامل نشد یا فایل پیدا نشد.");
+        }
+
+        await sendPreviewMedia(
+          ctx,
+          downloaded.filePath,
+          downloaded.contentType ||
+            detectFileContentType(downloaded.filePath)
+        );
+
+        setState(ctx, {
+          step: "schedule",
+          sourceUrl,
+          telegramChatId,
+          channelTitle,
+        });
+
+        await ctx.reply(
+          "✅ پیش‌نمایش ارسال شد.\n" +
+            `📢 کانال مقصد: ${channelTitle}\n\n` +
+            "حالا زمان انتشار در کانال را انتخاب کن. فایل در زمان انتخاب‌شده دوباره از منبع دریافت و منتشر می‌شود.",
+          scheduleMenu
+        );
+      } catch (error) {
+        console.error(
+          "Scheduled publishing preview failed:",
+          error?.message || error
+        );
+
+        clearState(ctx);
+
+        await ctx.reply(
+          "❌ دانلود یا نمایش پیش‌نمایش انجام نشد.\n\n" +
+            `جزئیات: ${String(error?.message || error).slice(0, 700)}\n\n` +
+            "لینک را بررسی کن و دوباره از «📅 انتشار زمان‌بندی‌شده» شروع کن.",
+          publishingMenu
+        );
+      } finally {
+        cleanupPreviewFiles(jobId);
+      }
+
+      return;
+    }
+
+    if (state.step === "preview_downloading") {
+      await ctx.reply(
+        "⏳ هنوز فایل در حال آماده‌شدن است. بعد از نمایش پیش‌نمایش، زمان انتشار را انتخاب کن."
+      );
       return;
     }
 
@@ -1029,7 +1146,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
           "یکی از زمان‌های موجود در منو را انتخاب کن.",
           scheduleMenu
         );
-
         return;
       }
 
@@ -1094,7 +1210,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
           "از دکمه‌های فهرست، یکی از انتشارها را انتخاب کن.",
           getPostsKeyboard(state.posts)
         );
-
         return;
       }
 
@@ -1140,7 +1255,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
         await ctx.reply(
           "از گزینه‌های نمایش‌داده‌شده برای این انتشار استفاده کن."
         );
-
         return;
       }
 
@@ -1155,7 +1269,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             "این برنامه انتشار پیدا نشد.",
             publishingMenu
           );
-
           return;
         }
 
@@ -1166,7 +1279,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             await ctx.reply(
               "این انتشار دیگر در وضعیت قابل لغو نیست. فهرست را تازه کن."
             );
-
             return;
           }
 
@@ -1176,7 +1288,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             `✅ برنامه انتشار #${postId} لغو شد.`,
             publishingMenu
           );
-
           return;
         }
 
@@ -1185,7 +1296,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             await ctx.reply(
               "فقط انتشارهای ناموفق را می‌توان دوباره به صف فرستاد."
             );
-
             return;
           }
 
@@ -1199,7 +1309,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
             await ctx.reply(
               "❌ ثبت تلاش مجدد انجام نشد. وضعیت انتشار را تازه کن."
             );
-
             return;
           }
 
@@ -1210,7 +1319,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
               "وضعیت آن را می‌توانی از بخش «📊 پیگیری انتشارها» بررسی کنی.",
             publishingMenu
           );
-
           return;
         }
       } catch (error) {
