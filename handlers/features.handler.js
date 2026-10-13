@@ -796,6 +796,38 @@ function createFeaturesHandler({ bot, mainMenu }) {
           return;
         }
 
+                if (action === "delete") {
+          if (post.status !== "failed") {
+            await ctx.answerCbQuery(
+              "فقط انتشارهای ناموفق قابل حذف هستند."
+            );
+            return;
+          }
+
+          const deleted = await deleteFailedScheduledPost(
+            postId,
+            user.id
+          );
+
+          if (!deleted) {
+            await ctx.answerCbQuery(
+              "حذف انجام نشد؛ وضعیت انتشار را تازه کن."
+            );
+            return;
+          }
+
+          clearState(ctx);
+
+          await ctx.answerCbQuery("انتشار ناموفق حذف شد.");
+
+          await ctx.reply(
+            `🗑 انتشار ناموفق #${postId} حذف شد.`,
+            publishingMenu
+          );
+
+          return;
+        }
+
         if (action === "retry") {
           if (post.status !== "failed") {
             await ctx.answerCbQuery(
