@@ -14,6 +14,11 @@ const {
 } = require("./services/scheduled-file-cleanup.service");
 
 const {
+  startZekaMediaExpirationService,
+  stopZekaMediaExpirationService,
+} = require("./services/zeka-media-expiration.service");
+
+const {
   startDailyCreditScheduler,
   stopDailyCreditScheduler,
 } = require("./scheduler/daily-credit.scheduler");
