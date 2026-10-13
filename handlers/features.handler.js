@@ -358,41 +358,104 @@ function createFeaturesHandler({ bot, mainMenu }) {
   }
 
   async function sendPreviewMedia(ctx, filePath, contentType) {
-    if (!fs.existsSync(filePath)) {
-      throw new Error("فایل دانلودشده برای پیش‌نمایش پیدا نشد.");
+  if (!fs.existsSync(filePath)) {
+    throw new Error("فایل دانلودشده برای پیش‌نمایش پیدا نشد.");
+  }
+
+  const type = contentType || detectFileContentType(filePath);
+  const fileSize = fs.statSync(filePath).size;
+  const caption =
+    "👀 پیش‌نمایش فایل دانلودشده\n\n" +
+    "این فایل هنوز در کانال منتشر نشده است.";
+
+  console.log("Scheduled preview upload started:", {
+    type,
+    fileSize,
+    filePath,
+    chatId: ctx.chat?.id,
+  });
+
+  async function retryUpload(upload, label) {
+    let lastError;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(
+          `Scheduled preview upload attempt ${attempt}/2: ${label}`
+        );
+
+        return await upload();
+      } catch (error) {
+        lastError = error;
+
+        console.error("Scheduled preview upload attempt failed:", {
+          attempt,
+          label,
+          message: error?.message || String(error),
+        });
+
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
     }
 
-    const type = contentType || detectFileContentType(filePath);
-    const caption =
-      "👀 پیش‌نمایش فایل دانلودشده\n\n" +
-      "این فایل هنوز در کانال منتشر نشده است.";
+    throw lastError;
+  }
 
-    if (type === "PHOTO") {
-      return ctx.replyWithPhoto(
+  if (type === "PHOTO") {
+    return retryUpload(
+      () => ctx.replyWithPhoto(
         { source: filePath },
         { caption }
-      );
-    }
-
-    if (type === "VIDEO") {
-      return ctx.replyWithVideo(
-        { source: filePath },
-        { caption }
-      );
-    }
-
-    if (type === "AUDIO") {
-      return ctx.replyWithAudio(
-        { source: filePath },
-        { caption }
-      );
-    }
-
-    return ctx.replyWithDocument(
-      { source: filePath },
-      { caption }
+      ),
+      "photo"
     );
   }
+
+  if (type === "AUDIO") {
+    return retryUpload(
+      () => ctx.replyWithAudio(
+        { source: filePath },
+        { caption }
+      ),
+      "audio"
+    );
+  }
+
+  if (type === "VIDEO") {
+    try {
+      return await retryUpload(
+        () => ctx.replyWithVideo(
+          { source: filePath },
+          { caption }
+        ),
+        "video"
+      );
+    } catch (videoError) {
+      console.error(
+        "Video preview failed; trying document upload:",
+        videoError?.message || videoError
+      );
+
+      return retryUpload(
+        () => ctx.replyWithDocument(
+          { source: filePath },
+          { caption }
+        ),
+        "document-fallback"
+      );
+    }
+  }
+
+  return retryUpload(
+    () => ctx.replyWithDocument(
+      { source: filePath },
+      { caption }
+    ),
+    "document"
+  );
+}
 
   function cleanupPreviewFiles(jobId) {
     const directories = [
