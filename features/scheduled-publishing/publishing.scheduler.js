@@ -1,39 +1,52 @@
+
 const {
   claimDueScheduledPosts,
   recoverStuckScheduledPosts,
 } = require("./publishing.repository");
+
 const {
   publishScheduledPost,
 } = require("./publishing.service");
 
 const POLL_INTERVAL_MS = 15_000;
+const HEARTBEAT_INTERVAL_MS = 60_000;
 const BATCH_SIZE = 5;
 
 let schedulerTimer = null;
+let heartbeatTimer = null;
 let isRunning = false;
+let botInstance = null;
+let lastCheckAt = null;
 
-async function processDuePosts(bot) {
+async function processDuePosts() {
   if (isRunning) {
     return;
   }
 
   isRunning = true;
+  lastCheckAt = new Date().toISOString();
 
   try {
-    const posts = await claimDueScheduledPosts(
-      BATCH_SIZE
-    );
+    const posts = await claimDueScheduledPosts(BATCH_SIZE);
 
-    if (!posts.length) {
-      return;
-    }
+    if (posts.length > 0) {
+      console.log(
+        `Scheduled publishing: ${posts.length} post(s) claimed.`
+      );
 
-    console.log(
-      `Scheduled publishing: ${posts.length} post(s) claimed.`
-    );
-
-    for (const post of posts) {
-      await publishScheduledPost(post, bot);
+      for (const post of posts) {
+        try {
+          await publishScheduledPost(post, botInstance);
+        } catch (error) {
+          console.error(
+            "Scheduled publishing post handler failed:",
+            {
+              postId: post.id,
+              message: error?.message || String(error),
+            }
+          );
+        }
+      }
     }
   } catch (error) {
     console.error(
@@ -53,41 +66,53 @@ function startScheduledPublishing(bot) {
   }
 
   if (schedulerTimer) {
+    console.log("Scheduled publishing scheduler already running.");
     return;
   }
 
+  botInstance = bot;
+
   console.log(
-    "Scheduled publishing scheduler started."
+    `Scheduled publishing scheduler started. Poll interval: ${POLL_INTERVAL_MS}ms; batch size: ${BATCH_SIZE}.`
   );
 
-    recoverStuckScheduledPosts()
+  recoverStuckScheduledPosts()
     .then((count) => {
       if (count > 0) {
         console.log(
-          `Recovered ${count} interrupted scheduled post(s).`
+          `Scheduled publishing recovered ${count} interrupted post(s).`
+        );
+      } else {
+        console.log(
+          "Scheduled publishing recovery finished; no interrupted posts found."
         );
       }
-
-      return processDuePosts(bot);
     })
     .catch((error) => {
       console.error(
         "Scheduled publishing recovery failed:",
         error?.message || error
       );
+    })
+    .finally(() => {
+      processDuePosts();
     });
+
   schedulerTimer = setInterval(() => {
-    processDuePosts(bot).catch((error) => {
-      console.error(
-        "Scheduled publishing check failed:",
-        error?.message || error
-      );
-    });
+    processDuePosts();
   }, POLL_INTERVAL_MS);
 
-  if (typeof schedulerTimer.unref === "function") {
-    schedulerTimer.unref();
-  }
+  heartbeatTimer = setInterval(() => {
+    console.log(
+      "Scheduled publishing scheduler heartbeat:",
+      {
+        running: Boolean(schedulerTimer),
+        processing: isRunning,
+        lastCheckAt,
+        pollIntervalMs: POLL_INTERVAL_MS,
+      }
+    );
+  }, HEARTBEAT_INTERVAL_MS);
 }
 
 function stopScheduledPublishing() {
@@ -96,9 +121,14 @@ function stopScheduledPublishing() {
     schedulerTimer = null;
   }
 
-  console.log(
-    "Scheduled publishing scheduler stopped."
-  );
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+
+  botInstance = null;
+
+  console.log("Scheduled publishing scheduler stopped.");
 }
 
 module.exports = {
