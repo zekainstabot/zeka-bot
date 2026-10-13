@@ -287,12 +287,15 @@ function createMultipartRequest({
 
 async function sendFileToUser({
   telegramUserId,
+  telegramChatId,
   filePath,
   caption = "",
   contentType = "video",
 }) {
-  if (!telegramUserId) {
-    throw new Error("Telegram user ID is required");
+  const destinationChatId = telegramChatId || telegramUserId;
+
+  if (!destinationChatId) {
+    throw new Error("Telegram destination chat ID is required");
   }
 
   if (!filePath) {
