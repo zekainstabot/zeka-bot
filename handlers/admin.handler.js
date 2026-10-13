@@ -44,6 +44,10 @@ const {
   createAdminReportsHandler,
 } = require("./admin-reports.handler");
 
+const {
+  createZekaMediaHandler,
+} = require("./zeka-media.handler");
+
 const PERMISSION_BUTTONS = [
 
   {
