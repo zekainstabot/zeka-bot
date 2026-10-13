@@ -483,15 +483,21 @@ function createFeaturesHandler({ bot, mainMenu }) {
       ]);
     }
 
-    if (post.status === "failed") {
+        if (post.status === "failed") {
       keyboard.push([
         {
           text: "🔄 تلاش مجدد",
           callback_data: `scheduled_retry:${post.id}`,
         },
       ]);
-    }
 
+      keyboard.push([
+        {
+          text: "🗑 حذف انتشار ناموفق",
+          callback_data: `scheduled_delete:${post.id}`,
+        },
+      ]);
+    }
     keyboard.push([
       {
         text: "📊 پیگیری انتشارها",
