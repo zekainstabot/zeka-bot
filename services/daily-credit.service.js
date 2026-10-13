@@ -9,25 +9,29 @@ const IRAN_TIMEZONE = "Asia/Tehran";
 function calculateRollover(remainingDaily) {
   const remaining = Number(remainingDaily || 0);
 
-  if (remaining <= 0) {
+  if (!Number.isFinite(remaining) || remaining <= 0) {
     return 0;
   }
 
-  const rollover = remaining / 6;
-
   return Math.min(
     ROLLOVER_CAP,
-    Number(rollover.toFixed(2))
+    Number((remaining / 6).toFixed(2))
   );
 }
 
 function getIranDateString(date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: IRAN_TIMEZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(date);
+  }).formatToParts(date);
+
+  const values = Object.fromEntries(
+    parts.map((part) => [part.type, part.value])
+  );
+
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 async function getBalanceInTransaction(userId, db) {
@@ -50,18 +54,12 @@ async function createDailyCreditsForUser(userId) {
     throw new Error("User ID is required");
   }
 
-  const db = getClient();
-
-  await db.query("BEGIN");
+  const pool = getClient();
+  const db = await pool.connect();
 
   try {
-    /*
-     * Lock the user row first.
-     *
-     * This prevents two simultaneous requests from both
-     * seeing "no Daily credit for today" and creating
-     * duplicate Daily credits.
-     */
+    await db.query("BEGIN");
+
     const userResult = await db.query(
       `
         SELECT id
@@ -93,119 +91,120 @@ async function createDailyCreditsForUser(userId) {
     const dailyAccounts = dailyResult.rows;
 
     const todayDaily = dailyAccounts.find((account) => {
-      const createdDate = getIranDateString(
-        new Date(account.created_at)
+      return (
+        getIranDateString(new Date(account.created_at)) === todayIran
       );
+    });
 
-      return createdDate === todayIran;
+    const previousAccounts = dailyAccounts.filter((account) => {
+      return (
+        getIranDateString(new Date(account.created_at)) !== todayIran
+      );
     });
 
     if (todayDaily) {
+      if (previousAccounts.length > 0) {
+        await db.query(
+          `
+            UPDATE credit_accounts
+            SET remaining_amount = 0,
+                updated_at = NOW()
+            WHERE user_id = $1
+              AND UPPER(source) = 'DAILY'
+              AND id = ANY($2::bigint[])
+          `,
+          [userId, previousAccounts.map((account) => account.id)]
+        );
+      }
+
       await db.query("COMMIT");
 
       return {
         created: false,
         reason: "DAILY_CREDIT_ALREADY_CREATED",
-        daily: Number(
-          todayDaily.remaining_amount || 0
-        ),
+        daily: Number(todayDaily.remaining_amount || 0),
         rollover: 0,
+        expiredAccounts: previousAccounts.length,
       };
     }
 
-    const previousDaily = dailyAccounts.find(
-      (account) =>
-        getIranDateString(
-          new Date(account.created_at)
-        ) !== todayIran
-    );
+    const latestPreviousDaily = previousAccounts[0] || null;
 
-    let rollover = 0;
+    const remainingDaily = latestPreviousDaily
+      ? Number(latestPreviousDaily.remaining_amount || 0)
+      : 0;
 
-    if (previousDaily) {
-      const remainingDaily = Number(
-        previousDaily.remaining_amount || 0
-      );
+    const rollover = calculateRollover(remainingDaily);
 
-      rollover = calculateRollover(
-        remainingDaily
-      );
-
+    if (previousAccounts.length > 0) {
       await db.query(
         `
           UPDATE credit_accounts
-          SET
-            remaining_amount = 0,
-            updated_at = NOW()
-          WHERE id = $1
+          SET remaining_amount = 0,
+              updated_at = NOW()
+          WHERE user_id = $1
+            AND UPPER(source) = 'DAILY'
+            AND id = ANY($2::bigint[])
         `,
-        [previousDaily.id]
+        [userId, previousAccounts.map((account) => account.id)]
       );
-
-      if (rollover > 0) {
-        const rolloverAccount =
-          await creditRepository.create(
-            {
-              userId,
-              creditType: "DOWNLOAD",
-              amount: rollover,
-              remainingAmount: rollover,
-              source: "ROLLOVER",
-              expiresAt: null,
-            },
-            db
-          );
-
-        const balanceAfterRollover =
-          await getBalanceInTransaction(
-            userId,
-            db
-          );
-
-        await creditLedgerRepository.create(
-          {
-            userId,
-            creditAccountId: rolloverAccount.id,
-            entryType: "CREDIT",
-            amount: rollover,
-            balanceBefore:
-              balanceAfterRollover - rollover,
-            balanceAfter:
-              balanceAfterRollover,
-            referenceType: "ROLLOVER",
-            referenceId: rolloverAccount.id,
-            description:
-              "Daily rollover credits",
-          },
-          db
-        );
-      }
     }
 
-    const balanceBeforeDaily =
-      await getBalanceInTransaction(
-        userId,
-        db
-      );
-
-    const dailyAccount =
-      await creditRepository.create(
+    if (rollover > 0) {
+      const rolloverAccount = await creditRepository.create(
         {
           userId,
           creditType: "DOWNLOAD",
-          amount: DAILY_CREDIT_AMOUNT,
-          remainingAmount: DAILY_CREDIT_AMOUNT,
-          source: "DAILY",
+          amount: rollover,
+          remainingAmount: rollover,
+          source: "ROLLOVER",
           expiresAt: null,
         },
         db
       );
 
-    const balanceAfterDaily =
-      await getBalanceInTransaction(
+      const balanceAfterRollover = await getBalanceInTransaction(
         userId,
         db
       );
+
+      await creditLedgerRepository.create(
+        {
+          userId,
+          creditAccountId: rolloverAccount.id,
+          entryType: "CREDIT",
+          amount: rollover,
+          balanceBefore: balanceAfterRollover - rollover,
+          balanceAfter: balanceAfterRollover,
+          referenceType: "ROLLOVER",
+          referenceId: rolloverAccount.id,
+          description: "Daily rollover credits",
+        },
+        db
+      );
+    }
+
+    const balanceBeforeDaily = await getBalanceInTransaction(
+      userId,
+      db
+    );
+
+    const dailyAccount = await creditRepository.create(
+      {
+        userId,
+        creditType: "DOWNLOAD",
+        amount: DAILY_CREDIT_AMOUNT,
+        remainingAmount: DAILY_CREDIT_AMOUNT,
+        source: "DAILY",
+        expiresAt: null,
+      },
+      db
+    );
+
+    const balanceAfterDaily = await getBalanceInTransaction(
+      userId,
+      db
+    );
 
     await creditLedgerRepository.create(
       {
@@ -217,8 +216,7 @@ async function createDailyCreditsForUser(userId) {
         balanceAfter: balanceAfterDaily,
         referenceType: "DAILY",
         referenceId: dailyAccount.id,
-        description:
-          "Daily download credits",
+        description: "Daily download credits",
       },
       db
     );
@@ -230,10 +228,21 @@ async function createDailyCreditsForUser(userId) {
       daily: DAILY_CREDIT_AMOUNT,
       rollover,
       accountId: dailyAccount.id,
+      expiredAccounts: previousAccounts.length,
     };
   } catch (error) {
-    await db.query("ROLLBACK");
+    try {
+      await db.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Daily credit transaction rollback failed:",
+        rollbackError
+      );
+    }
+
     throw error;
+  } finally {
+    db.release();
   }
 }
 
