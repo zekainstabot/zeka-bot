@@ -654,6 +654,127 @@ function createFeaturesHandler({ bot, mainMenu }) {
   bot.hears("📊 پیگیری انتشارها", showScheduledPosts);
   bot.hears("🔄 تازه‌سازی فهرست", showScheduledPosts);
 
+    bot.action(
+    /^scheduled_(send_now|cancel|retry):(\d+)$/,
+    async (ctx) => {
+      const action = ctx.match[1];
+      const postId = Number(ctx.match[2]);
+
+      try {
+        const user = await getDatabaseUser(ctx);
+        const post = await getScheduledPostById(postId, user.id);
+
+        if (!post) {
+          await ctx.answerCbQuery("این انتشار پیدا نشد.");
+          return;
+        }
+
+        if (action === "send_now") {
+          if (!["pending", "failed"].includes(post.status)) {
+            await ctx.answerCbQuery(
+              "این انتشار در وضعیت قابل ارسال مجدد نیست."
+            );
+            return;
+          }
+
+          const updated = await reschedulePost(
+            postId,
+            user.id,
+            new Date(Date.now() + 1000).toISOString()
+          );
+
+          if (!updated) {
+            await ctx.answerCbQuery("تغییر زمان انتشار انجام نشد.");
+            return;
+          }
+
+          await ctx.answerCbQuery("انتشار به صف ارسال فوری رفت.");
+
+          await ctx.reply(
+            `⚡ انتشار شماره ${postId} برای ارسال فوری در صف قرار گرفت.\n\n` +
+              "پردازش و انتشار به زمان آماده‌شدن سیستم بستگی دارد.",
+            publishingMenu
+          );
+
+          return;
+        }
+
+        if (action === "cancel") {
+          const cancelled = await cancelScheduledPost(postId, user.id);
+
+          if (!cancelled) {
+            await ctx.answerCbQuery(
+              "این انتشار دیگر قابل لغو نیست."
+            );
+            return;
+          }
+
+          await ctx.answerCbQuery("انتشار لغو شد.");
+
+          await ctx.reply(
+            `✅ انتشار شماره ${postId} لغو شد.`,
+            publishingMenu
+          );
+
+          return;
+        }
+
+        if (action === "retry") {
+          if (post.status !== "failed") {
+            await ctx.answerCbQuery(
+              "فقط انتشار ناموفق قابل تلاش مجدد است."
+            );
+            return;
+          }
+
+          const retried = await reschedulePost(
+            postId,
+            user.id,
+            new Date(Date.now() + 1000).toISOString()
+          );
+
+          if (!retried) {
+            await ctx.answerCbQuery("تلاش مجدد ثبت نشد.");
+            return;
+          }
+
+          await ctx.answerCbQuery("انتشار دوباره به صف رفت.");
+
+          await ctx.reply(
+            `🔄 انتشار شماره ${postId} دوباره به صف ارسال رفت.`,
+            publishingMenu
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Scheduled post inline action failed:",
+          error?.message || error
+        );
+
+        await ctx.answerCbQuery("خطا در انجام عملیات.");
+
+        await ctx.reply(
+          "❌ انجام عملیات ممکن نشد. دوباره تلاش کن."
+        );
+      }
+    }
+  );
+
+  bot.action("scheduled_list", async (ctx) => {
+    await ctx.answerCbQuery();
+    await showScheduledPosts(ctx);
+  });
+
+  bot.action("scheduled_back", async (ctx) => {
+    clearState(ctx);
+    await ctx.answerCbQuery();
+
+    await ctx.reply(
+      "📢 مدیریت انتشار محتوا",
+      publishingMenu
+    );
+  });
+
   bot.on("text", async (ctx, next) => {
     const state = getState(ctx);
 
