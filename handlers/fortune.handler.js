@@ -76,16 +76,16 @@ async function showFortune(
 function createFortuneHandler({
   bot,
 }) {
-  bot.hears(
-    "🔮 فال",
-    async (ctx) => {
-      await ctx.reply(
-        "🔮 فال\n\n" +
-          "نوع فال موردنظرت را انتخاب کن:",
-        fortuneMenu
-      );
-    }
-  );
+    const openFortuneMenu = async (ctx) => {
+    await ctx.reply(
+      "🔮 فال\n\n" +
+        "نوع فال موردنظرت را انتخاب کن:",
+      fortuneMenu
+    );
+  };
+
+  bot.hears("🔮 فال", openFortuneMenu);
+  bot.hears("📜 فال حافظ", openFortuneMenu);
 
   for (
     const [label, slug] of Object.entries(
