@@ -27,6 +27,10 @@ const {
 } = require("./services/report.service");
 
 const {
+  setBot: setZekaMediaBot,
+} = require("./services/zeka-media.service");
+
+const {
   createBasicHandler,
 } = require("./handlers/basic.handler");
 
