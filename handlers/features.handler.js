@@ -431,8 +431,13 @@ function createFeaturesHandler({ bot, mainMenu }) {
         return;
       }
 
-      const visiblePosts = posts.slice(-30).reverse();
-
+      const visiblePosts = posts
+  .sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() -
+      new Date(a.created_at).getTime()
+  )
+  .slice(0, 10);
       setState(ctx, {
         step: "scheduled_posts_list",
         posts: visiblePosts,
