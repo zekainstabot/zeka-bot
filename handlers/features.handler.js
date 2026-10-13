@@ -416,7 +416,10 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
     try {
       const user = await getDatabaseUser(ctx);
-      const posts = await listScheduledPosts(user.id);
+      const posts = await listScheduledPosts(
+  user.id,
+  ["pending", "processing", "failed"]
+);
 
       if (!posts.length) {
         await ctx.reply(
