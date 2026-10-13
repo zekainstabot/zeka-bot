@@ -1,3 +1,4 @@
+
 const http = require("http");
 
 const { initializeDatabase } = require("./database/bootstrap");
@@ -11,6 +12,11 @@ const bugReportCleanupService = require(
 const {
   startTempFileCleanupService,
 } = require("./services/scheduled-file-cleanup.service");
+
+const {
+  startDailyCreditScheduler,
+  stopDailyCreditScheduler,
+} = require("./scheduler/daily-credit.scheduler");
 
 const PORT = Number(process.env.PORT) || 10000;
 
@@ -141,6 +147,8 @@ async function start() {
 
     await startBot();
 
+    startDailyCreditScheduler();
+
     startupError = null;
     isReady = true;
 
@@ -152,6 +160,7 @@ async function start() {
     console.error("Failed to start Zeka Bot.");
     console.error(error);
 
+    stopDailyCreditScheduler();
     bugReportCleanupService.stop();
 
     try {
