@@ -366,106 +366,41 @@ function createFeaturesHandler({ bot, mainMenu }) {
     throw new Error("فایل دانلودشده برای پیش‌نمایش پیدا نشد.");
   }
 
-  const type = contentType || detectFileContentType(filePath);
-  const fileSize = fs.statSync(filePath).size;
+  if (!ctx.from?.id) {
+    throw new Error("شناسه کاربر برای ارسال پیش‌نمایش پیدا نشد.");
+  }
+
+  const detectedType =
+    contentType || detectFileContentType(filePath);
+
+  const typeMap = {
+    PHOTO: "photo",
+    VIDEO: "video",
+    AUDIO: "audio",
+    DOCUMENT: "document",
+  };
+
+  const uploadType =
+    typeMap[String(detectedType).toUpperCase()] || "document";
+
   const caption =
     "👀 پیش‌نمایش فایل دانلودشده\n\n" +
     "این فایل هنوز در کانال منتشر نشده است.";
 
   console.log("Scheduled preview upload started:", {
-    type,
-    fileSize,
+    type: uploadType,
+    fileSize: fs.statSync(filePath).size,
     filePath,
-    chatId: ctx.chat?.id,
+    chatId: ctx.from.id,
   });
 
-  async function retryUpload(upload, label) {
-    let lastError;
-
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        console.log(
-          `Scheduled preview upload attempt ${attempt}/2: ${label}`
-        );
-
-        return await upload();
-      } catch (error) {
-        lastError = error;
-
-                console.error("Scheduled preview upload attempt failed:", {
-          attempt,
-          label,
-          message: error?.message || String(error),
-          code: error?.code || error?.cause?.code || null,
-          errno: error?.errno || error?.cause?.errno || null,
-          syscall: error?.syscall || error?.cause?.syscall || null,
-          cause: error?.cause?.message || null,
-          stack: error?.stack || null,
-        });
-
-        if (attempt < 2) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-      }
-    }
-
-    throw lastError;
-  }
-
-  if (type === "PHOTO") {
-    return retryUpload(
-      () => ctx.replyWithPhoto(
-        { source: filePath },
-        { caption }
-      ),
-      "photo"
-    );
-  }
-
-  if (type === "AUDIO") {
-    return retryUpload(
-      () => ctx.replyWithAudio(
-        { source: filePath },
-        { caption }
-      ),
-      "audio"
-    );
-  }
-
-  if (type === "VIDEO") {
-    try {
-      return await retryUpload(
-        () => ctx.replyWithVideo(
-          { source: filePath },
-          { caption }
-        ),
-        "video"
-      );
-    } catch (videoError) {
-      console.error(
-        "Video preview failed; trying document upload:",
-        videoError?.message || videoError
-      );
-
-      return retryUpload(
-        () => ctx.replyWithDocument(
-          { source: filePath },
-          { caption }
-        ),
-        "document-fallback"
-      );
-    }
-  }
-
-  return retryUpload(
-    () => ctx.replyWithDocument(
-      { source: filePath },
-      { caption }
-    ),
-    "document"
-  );
+  return sendFileToUser({
+    telegramUserId: ctx.from.id,
+    filePath,
+    caption,
+    contentType: uploadType,
+  });
 }
-
   function cleanupPreviewFiles(jobId) {
     const directories = [
       path.join(os.tmpdir(), "zeka-instagram", jobId),
