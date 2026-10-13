@@ -68,9 +68,11 @@ function buildCaption(post, downloadedCaption, channelUsername = null) {
       break;
   }
 
-    const channelIdLine =
-    `🆔 آیدی کانال: ${post.telegram_chat_id}`;
+    const channelIdentifier = channelUsername
+  ? `@${channelUsername}`
+  : post.telegram_chat_id;
 
+const channelIdLine = `🆔 آیدی کانال: ${channelIdentifier}`;
   const separator = caption ? "\n\n" : "";
   const maxCaptionLength =
     1024 - separator.length - channelIdLine.length;
