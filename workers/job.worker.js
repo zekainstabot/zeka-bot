@@ -1,3 +1,4 @@
+
 const userRepository = require("../repositories/user.repository");
 
 const {
@@ -14,6 +15,13 @@ const {
 
 const deliveryRepository =
   require("../repositories/job.delivery.repository");
+
+const mediaRepository =
+  require("../repositories/zeka-media.repository");
+
+const {
+  enqueueForReview,
+} = require("../services/zeka-media.service");
 
 const {
   markSending,
@@ -35,96 +43,71 @@ async function processJob(job) {
     throw new Error("Valid job is required");
   }
 
-  const jobLabel =
-    job.job_id || job.id;
+  const jobLabel = job.job_id || job.id;
 
-  console.log(
-    `Worker started job: ${jobLabel}`
-  );
+  console.log(`Worker started job: ${jobLabel}`);
 
   let downloadedFilePath = null;
   let creditConsumed = false;
   let deliveryStarted = false;
   let deliveryConfirmed = false;
   let deliveryUnknown = false;
+  let preserveDownloadedFile = false;
 
-  const reservedCost =
-    Number(job.reserved_cost || 0);
+  const reservedCost = Number(job.reserved_cost || 0);
 
   const consumeCreditForJob =
-    Number.isFinite(reservedCost) &&
-    reservedCost > 0;
+    Number.isFinite(reservedCost) && reservedCost > 0;
 
   try {
     let result;
 
-        if (job.platform === "instagram") {
+    if (job.platform === "instagram") {
       result = await downloadInstagram(job);
     } else if (job.platform === "tiktok") {
       result = await downloadTikTok(job);
     } else {
-      throw new Error(
-        `Unsupported platform: ${job.platform}`
-      );
+      throw new Error(`Unsupported platform: ${job.platform}`);
     }
 
     if (!result?.success) {
-      throw new Error(
-        result?.reason ||
-          "Download failed"
-      );
+      throw new Error(result?.reason || "Download failed");
     }
 
-    downloadedFilePath =
-      result.filePath;
+    downloadedFilePath = result.filePath;
 
-    const user =
-      await userRepository.findById(
-        job.user_id
-      );
+    const user = await userRepository.findById(job.user_id);
 
     if (!user) {
-      throw new Error(
-        `User not found: ${job.user_id}`
-      );
+      throw new Error(`User not found: ${job.user_id}`);
     }
 
     await markSending(job.id);
 
     const caption =
-      result.caption &&
-      result.caption.trim()
+      result.caption && result.caption.trim()
         ? result.caption.trim()
         : "🤖 Zeka";
 
     await deliveryRepository.createPending({
       jobId: job.id,
-      telegramChatId:
-        user.telegram_user_id,
+      telegramChatId: user.telegram_user_id,
     });
 
     deliveryStarted = true;
 
-    const deliveryResult =
-      await sendFileToUser({
-        telegramUserId:
-          user.telegram_user_id,
-        filePath:
-          result.filePath,
-        caption,
-        contentType:
-          result.contentType,
-      });
+    const deliveryResult = await sendFileToUser({
+      telegramUserId: user.telegram_user_id,
+      filePath: result.filePath,
+      caption,
+      contentType: result.contentType,
+    });
 
     const telegramMessageId =
-      deliveryResult?.response?.result
-        ?.message_id ?? null;
+      deliveryResult?.response?.result?.message_id ?? null;
 
     if (!telegramMessageId) {
-      await deliveryRepository.markUnknown(
-        job.id
-      );
-
+      await deliveryRepository.markUnknown(job.id);
       deliveryUnknown = true;
 
       throw new Error(
@@ -140,36 +123,78 @@ async function processJob(job) {
     deliveryConfirmed = true;
 
     if (consumeCreditForJob) {
-      await consumeCredit(
-        job.id
-      );
-
+      await consumeCredit(job.id);
       creditConsumed = true;
     }
 
-    await markCompleted(
-      job.id,
-      {
-        finalCost:
-          consumeCreditForJob
-            ? (
-                result.finalCost ??
-                job.reserved_cost ??
-                null
-              )
-            : 0,
-      }
-    );
+    // ثبت فایل برای بررسی ادمین؛ خطای این بخش نباید
+    // دانلود موفق کاربر را به وضعیت FAILED تبدیل کند.
+    try {
+      const queueItem = await enqueueForReview({
+        jobId: job.id,
+        filePath: result.filePath,
+        contentType: result.contentType,
+        originalUrl:
+          result.sourceUrl ||
+          job.normalized_url ||
+          job.original_url ||
+          null,
+        caption: result.caption || "",
+      });
 
-    console.log(
-      `Worker completed job: ${jobLabel}`
-    );
+      if (
+        queueItem &&
+        ["PENDING", "PUBLISHING"].includes(queueItem.status) &&
+        queueItem.file_path === result.filePath
+      ) {
+        preserveDownloadedFile = true;
+      }
+    } catch (queueError) {
+      console.error(
+        `Failed to queue Zeka Media item for job ${jobLabel}:`,
+        queueError
+      );
+
+      // اگر صف قبلاً ثبت شده باشد، فایلِ در انتظار بررسی
+      // نباید به‌اشتباه پاک شود.
+      try {
+        const existingItem =
+          await mediaRepository.findByJobId(job.id);
+
+        if (
+          existingItem &&
+          ["PENDING", "PUBLISHING"].includes(
+            existingItem.status
+          ) &&
+          existingItem.file_path === result.filePath
+        ) {
+          preserveDownloadedFile = true;
+        }
+      } catch (lookupError) {
+        console.error(
+          `Could not verify Zeka Media queue item for job ${jobLabel}:`,
+          lookupError
+        );
+      }
+    }
+
+    await markCompleted(job.id, {
+      finalCost: consumeCreditForJob
+        ? (
+            result.finalCost ??
+            job.reserved_cost ??
+            null
+          )
+        : 0,
+    });
+
+    console.log(`Worker completed job: ${jobLabel}`);
 
     return {
       success: true,
       delivered: true,
-      creditConsumed:
-        consumeCreditForJob,
+      creditConsumed: consumeCreditForJob,
+      zekaMediaQueued: preserveDownloadedFile,
       jobId: jobLabel,
       telegramMessageId,
     };
@@ -185,14 +210,11 @@ async function processJob(job) {
       !deliveryUnknown
     ) {
       try {
-        await deliveryRepository.markUnknown(
-          job.id
-        );
-
+        await deliveryRepository.markUnknown(job.id);
         deliveryUnknown = true;
       } catch (deliveryError) {
         console.error(
-          `Failed to mark delivery as UNKNOWN for job: ${jobLabel}`,
+          `Failed to mark delivery as UNKNOWN for job ${jobLabel}`,
           deliveryError
         );
       }
@@ -200,7 +222,7 @@ async function processJob(job) {
 
     if (deliveryUnknown) {
       console.error(
-        `Delivery state is UNKNOWN for job: ${jobLabel}. Credit will remain reserved and job will stay in SENDING.`
+        `Delivery state is UNKNOWN for job ${jobLabel}. Credit remains reserved and job stays in SENDING.`
       );
 
       return {
@@ -212,28 +234,19 @@ async function processJob(job) {
       };
     }
 
-    if (
-      consumeCreditForJob &&
-      !creditConsumed
-    ) {
+    if (consumeCreditForJob && !creditConsumed) {
       try {
-        await releaseCredit(
-          job.id
-        );
+        await releaseCredit(job.id);
       } catch (releaseError) {
         console.error(
-          `Failed to release credit for job: ${jobLabel}`,
+          `Failed to release credit for job ${jobLabel}`,
           releaseError
         );
       }
     }
 
     try {
-      await markFailed(
-        job.id,
-        error,
-        "WORKER_ERROR"
-      );
+      await markFailed(job.id, error, "WORKER_ERROR");
     } catch (markFailedError) {
       console.error(
         `Failed to mark job as FAILED: ${jobLabel}`,
@@ -243,17 +256,19 @@ async function processJob(job) {
 
     throw error;
   } finally {
-    if (downloadedFilePath) {
+    if (downloadedFilePath && !preserveDownloadedFile) {
       try {
-        await deleteFile(
-          downloadedFilePath
-        );
+        await deleteFile(downloadedFilePath);
       } catch (cleanupError) {
         console.error(
-          `Failed to cleanup downloaded file for job: ${jobLabel}`,
+          `Failed to cleanup downloaded file for job ${jobLabel}`,
           cleanupError
         );
       }
+    } else if (downloadedFilePath && preserveDownloadedFile) {
+      console.log(
+        `Zeka Media review file preserved for job ${jobLabel}: ${downloadedFilePath}`
+      );
     }
   }
 }
