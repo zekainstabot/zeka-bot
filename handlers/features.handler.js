@@ -733,8 +733,8 @@ function createFeaturesHandler({ bot, mainMenu }) {
   bot.hears("📊 پیگیری انتشارها", showScheduledPosts);
   bot.hears("🔄 تازه‌سازی فهرست", showScheduledPosts);
 
-  bot.action(
-    /^scheduled_(send_now|cancel|retry|delete):(\d+)$/
+    bot.action(
+    /^scheduled_(send_now|cancel|retry|delete):(\d+)$/,
     async (ctx) => {
       const action = ctx.match[1];
       const postId = Number(ctx.match[2]);
