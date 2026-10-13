@@ -24,7 +24,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
     reply_markup: {
       keyboard: [
         ["📢 مدیریت انتشار محتوا"],
-        ["🎡 گردونه شانس", "🧩 آزمون و مسابقه"],
+        ["🎡 گردونه شانس", "🧠 مسابقه"],
         ["📜 فال حافظ"],
         ["🔙 بازگشت"],
       ],
