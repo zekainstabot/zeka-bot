@@ -68,11 +68,21 @@ function buildCaption(post, downloadedCaption) {
       break;
   }
 
-  if (caption.length > 1024) {
-    caption = caption.slice(0, 1021) + "...";
+    const channelIdLine =
+    `🆔 آیدی کانال: ${post.telegram_chat_id}`;
+
+  const separator = caption ? "\n\n" : "";
+  const maxCaptionLength =
+    1024 - separator.length - channelIdLine.length;
+
+  if (caption.length > maxCaptionLength) {
+    caption =
+      caption.slice(0, Math.max(0, maxCaptionLength - 3)) + "...";
   }
 
-  return caption;
+  return caption
+    ? `${caption}${separator}${channelIdLine}`
+    : channelIdLine;
 }
 
 async function setProgress(postId, stage) {
