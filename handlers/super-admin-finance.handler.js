@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -24,6 +23,64 @@ const {
 } = require("./super-admin-finance-coupon-report.handler");
 
 const couponCreationFlow = new Map();
+
+const COUPON_FLOW_TTL_MS = 10 * 60 * 1000;
+const MAX_COUPON_USES = 2147483647;
+
+const COUPON_NAVIGATION_BUTTONS = [
+  "💰 مالی",
+  "💳 تراکنش‌ها",
+  "💳 مدیریت اعتبار",
+  "💎 مدیریت Pro",
+  "⭐ درآمد Pro",
+  "🔄 تازه‌سازی درآمد Pro",
+  "🏷️ تخفیف عمومی Pro",
+  "📊 مشاهده قیمت پلن‌ها",
+  "💰 تغییر قیمت پلن‌ها",
+  "✏️ تغییر تخفیف عمومی",
+  "🎟️ کدهای تخفیف",
+  "➕ ساخت کد تخفیف",
+  "📋 مشاهده کدهای تخفیف",
+  "🔄 تازه‌سازی کدها",
+  "🔙 مدیریت کدهای تخفیف",
+  "🔙 مشاهده کدهای تخفیف",
+  "💰 درآمدها",
+  "💸 هزینه‌ها",
+  "📊 گزارش مالی",
+  "🔙 بخش مالی",
+  "🔙 پنل Super Admin",
+  "👥 کاربران",
+  "🔙 پنل مدیریت",
+];
+
+function getCouponCreationState(telegramUserId) {
+  const state = couponCreationFlow.get(telegramUserId);
+
+  if (!state) {
+    return null;
+  }
+
+  if (
+    !state.updatedAt ||
+    Date.now() - state.updatedAt > COUPON_FLOW_TTL_MS
+  ) {
+    couponCreationFlow.delete(telegramUserId);
+    return null;
+  }
+
+  return state;
+}
+
+function updateCouponCreationState(telegramUserId, state) {
+  couponCreationFlow.set(telegramUserId, {
+    ...state,
+    updatedAt: Date.now(),
+  });
+}
+
+function clearCouponCreationState(telegramUserId) {
+  couponCreationFlow.delete(telegramUserId);
+}
 
 async function getSuperAdmin(ctx) {
   const telegramUserId = ctx.from?.id;
@@ -103,13 +160,69 @@ function formatDate(date) {
 }
 
 function normalizeDigits(value) {
-  return String(value || "")
+  return String(value ?? "")
     .replace(/[۰-۹]/g, (digit) =>
       String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit))
     )
     .replace(/[٠-٩]/g, (digit) =>
       String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))
     );
+}
+
+function parseIntegerInput(value) {
+  const normalized = normalizeDigits(value).trim();
+
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const number = Number(normalized);
+
+  if (!Number.isSafeInteger(number)) {
+    return null;
+  }
+
+  return number;
+}
+
+function parseCouponDate(dateText, endOfDay = false) {
+  const normalized = normalizeDigits(dateText).trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return null;
+  }
+
+  const [year, month, day] = normalized
+    .split("-")
+    .map(Number);
+
+  const calendarDate = new Date(
+    Date.UTC(year, month - 1, day)
+  );
+
+  if (
+    calendarDate.getUTCFullYear() !== year ||
+    calendarDate.getUTCMonth() !== month - 1 ||
+    calendarDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  const time = endOfDay
+    ? "23:59:59.999"
+    : "00:00:00.000";
+
+  const offset = "+03:30";
+
+  const result = new Date(
+    `${normalized}T${time}${offset}`
+  );
+
+  if (Number.isNaN(result.getTime())) {
+    return null;
+  }
+
+  return result;
 }
 
 function getStatusLabel(status) {
@@ -136,6 +249,10 @@ function getStatusLabel(status) {
   return labels[normalized] || `❔ ${status || "نامشخص"}`;
 }
 
+// --------------------------------------------------
+// Finance menu
+// --------------------------------------------------
+
 async function handleFinanceMenu(ctx) {
   const admin = await getSuperAdmin(ctx);
 
@@ -145,6 +262,8 @@ async function handleFinanceMenu(ctx) {
     );
     return;
   }
+
+  clearCouponCreationState(ctx.from.id);
 
   await ctx.reply(
     "💰 مدیریت مالی زکا\n\n" +
@@ -159,6 +278,10 @@ async function handleFinanceMenu(ctx) {
     buildFinanceMenu()
   );
 }
+
+// --------------------------------------------------
+// Transactions
+// --------------------------------------------------
 
 async function handleTransactions(ctx) {
   const admin = await getSuperAdmin(ctx);
@@ -238,6 +361,10 @@ async function handleTransactions(ctx) {
   }
 }
 
+// --------------------------------------------------
+// Pro revenue
+// --------------------------------------------------
+
 async function handleProRevenue(ctx) {
   const admin = await getSuperAdmin(ctx);
 
@@ -297,7 +424,9 @@ async function handleProRevenue(ctx) {
           ? `@${item.username}`
           : item.display_name || "بدون نام";
 
-        const duration = Number(item.duration_months || 0);
+        const duration = Number(
+          item.duration_months || 0
+        );
 
         return (
           `${index + 1}. ⭐ اشتراک Pro\n` +
@@ -339,6 +468,10 @@ async function handleProRevenue(ctx) {
   }
 }
 
+// --------------------------------------------------
+// Coupon menu
+// --------------------------------------------------
+
 async function handleCouponMenu(ctx) {
   const admin = await getSuperAdmin(ctx);
 
@@ -346,6 +479,8 @@ async function handleCouponMenu(ctx) {
     await ctx.reply("⛔ دسترسی غیرمجاز.");
     return;
   }
+
+  clearCouponCreationState(ctx.from.id);
 
   await ctx.reply(
     "🎟️ مدیریت کدهای تخفیف Pro\n\n" +
@@ -363,7 +498,7 @@ async function handleCreateCoupon(ctx) {
     return;
   }
 
-  couponCreationFlow.set(ctx.from.id, {
+  updateCouponCreationState(ctx.from.id, {
     step: "code",
     code: null,
     discountPercent: null,
@@ -385,6 +520,10 @@ async function handleCreateCoupon(ctx) {
   );
 }
 
+// --------------------------------------------------
+// Coupon list
+// --------------------------------------------------
+
 async function handleCouponList(ctx) {
   const admin = await getSuperAdmin(ctx);
 
@@ -392,6 +531,8 @@ async function handleCouponList(ctx) {
     await ctx.reply("⛔ دسترسی غیرمجاز.");
     return;
   }
+
+  clearCouponCreationState(ctx.from.id);
 
   try {
     const coupons = await couponService.listCoupons({
@@ -404,6 +545,7 @@ async function handleCouponList(ctx) {
         "📋 هنوز هیچ کد تخفیفی ساخته نشده است.",
         buildCouponMenu()
       );
+
       return;
     }
 
@@ -465,6 +607,10 @@ async function handleCouponList(ctx) {
   }
 }
 
+// --------------------------------------------------
+// Coupon activation / deactivation
+// --------------------------------------------------
+
 async function handleCouponToggle(ctx) {
   const admin = await getSuperAdmin(ctx);
 
@@ -498,6 +644,7 @@ async function handleCouponToggle(ctx) {
       await ctx.reply(
         "❌ کد تخفیف موردنظر پیدا نشد."
       );
+
       return;
     }
 
@@ -516,13 +663,22 @@ async function handleCouponToggle(ctx) {
   }
 }
 
+// --------------------------------------------------
+// Coupon creation flow
+// --------------------------------------------------
+
 async function handleCouponCreationText(ctx, text, state) {
+  const telegramUserId = ctx.from.id;
+
   if (state.step === "code") {
     try {
       state.code = couponService.validateCode(text);
       state.step = "discount";
 
-      couponCreationFlow.set(ctx.from.id, state);
+      updateCouponCreationState(
+        telegramUserId,
+        state
+      );
 
       await ctx.reply(
         "🏷️ درصد تخفیف را وارد کن.\n\n" +
@@ -540,25 +696,27 @@ async function handleCouponCreationText(ctx, text, state) {
   }
 
   if (state.step === "discount") {
-    const discount = Number(
-      normalizeDigits(text)
-    );
+    const discount = parseIntegerInput(text);
 
     if (
-      !Number.isInteger(discount) ||
+      discount === null ||
       discount < 1 ||
       discount > 90
     ) {
       await ctx.reply(
         "❌ درصد تخفیف باید عددی بین ۱ تا ۹۰ باشد."
       );
+
       return;
     }
 
     state.discountPercent = discount;
     state.step = "max_uses";
 
-    couponCreationFlow.set(ctx.from.id, state);
+    updateCouponCreationState(
+      telegramUserId,
+      state
+    );
 
     await ctx.reply(
       "📊 سقف تعداد استفاده از کد را وارد کن.\n\n" +
@@ -579,17 +737,17 @@ async function handleCouponCreationText(ctx, text, state) {
     if (text === "♾️ بدون محدودیت استفاده") {
       state.maxUses = null;
     } else {
-      const maxUses = Number(
-        normalizeDigits(text)
-      );
+      const maxUses = parseIntegerInput(text);
 
       if (
-        !Number.isInteger(maxUses) ||
-        maxUses < 1
+        maxUses === null ||
+        maxUses < 1 ||
+        maxUses > MAX_COUPON_USES
       ) {
         await ctx.reply(
-          "❌ سقف استفاده باید عدد صحیح بزرگ‌تر از صفر باشد."
+          "❌ سقف استفاده باید عدد صحیح بین ۱ تا ۲٬۱۴۷٬۴۸۳٬۶۴۷ باشد."
         );
+
         return;
       }
 
@@ -598,7 +756,10 @@ async function handleCouponCreationText(ctx, text, state) {
 
     state.step = "starts_at";
 
-    couponCreationFlow.set(ctx.from.id, state);
+    updateCouponCreationState(
+      telegramUserId,
+      state
+    );
 
     await ctx.reply(
       "📅 تاریخ شروع اعتبار کد را وارد کن.\n\n" +
@@ -620,43 +781,26 @@ async function handleCouponCreationText(ctx, text, state) {
     if (text === "🟢 شروع از همین الان") {
       state.startsAt = null;
     } else {
-      const dateText = normalizeDigits(text);
+      const date = parseCouponDate(text);
 
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+      if (!date) {
         await ctx.reply(
           "❌ تاریخ معتبر نیست.\n" +
             "از فرمت YYYY-MM-DD استفاده کن."
         );
+
         return;
       }
 
-      const [year, month, day] = dateText
-        .split("-")
-        .map(Number);
-
-      const calendarDate = new Date(
-        Date.UTC(year, month - 1, day)
-      );
-
-      if (
-        calendarDate.getUTCFullYear() !== year ||
-        calendarDate.getUTCMonth() !== month - 1 ||
-        calendarDate.getUTCDate() !== day
-      ) {
-        await ctx.reply(
-          "❌ تاریخ واردشده معتبر نیست."
-        );
-        return;
-      }
-
-      state.startsAt = new Date(
-        `${dateText}T00:00:00.000+03:30`
-      ).toISOString();
+      state.startsAt = date.toISOString();
     }
 
     state.step = "expires_at";
 
-    couponCreationFlow.set(ctx.from.id, state);
+    updateCouponCreationState(
+      telegramUserId,
+      state
+    );
 
     await ctx.reply(
       "⏰ تاریخ انقضای کد را وارد کن.\n\n" +
@@ -678,42 +822,21 @@ async function handleCouponCreationText(ctx, text, state) {
     if (text === "♾️ بدون تاریخ انقضا") {
       state.expiresAt = null;
     } else {
-      const dateText = normalizeDigits(text);
+      const date = parseCouponDate(text, true);
 
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+      if (!date) {
         await ctx.reply(
           "❌ تاریخ معتبر نیست. از فرمت YYYY-MM-DD استفاده کن."
         );
+
         return;
       }
-
-      const [year, month, day] = dateText
-        .split("-")
-        .map(Number);
-
-      const calendarDate = new Date(
-        Date.UTC(year, month - 1, day)
-      );
-
-      if (
-        calendarDate.getUTCFullYear() !== year ||
-        calendarDate.getUTCMonth() !== month - 1 ||
-        calendarDate.getUTCDate() !== day
-      ) {
-        await ctx.reply(
-          "❌ تاریخ واردشده معتبر نیست."
-        );
-        return;
-      }
-
-      const date = new Date(
-        `${dateText}T23:59:59.999+03:30`
-      );
 
       if (date <= new Date()) {
         await ctx.reply(
           "❌ تاریخ انقضا باید در آینده باشد."
         );
+
         return;
       }
 
@@ -729,6 +852,7 @@ async function handleCouponCreationText(ctx, text, state) {
       await ctx.reply(
         "❌ تاریخ انقضا باید بعد از تاریخ شروع باشد."
       );
+
       return;
     }
 
@@ -739,10 +863,10 @@ async function handleCouponCreationText(ctx, text, state) {
         maxUses: state.maxUses,
         startsAt: state.startsAt,
         expiresAt: state.expiresAt,
-        createdBy: ctx.from.id,
+        createdBy: telegramUserId,
       });
 
-      couponCreationFlow.delete(ctx.from.id);
+      clearCouponCreationState(telegramUserId);
 
       await ctx.reply(
         "✅ کد تخفیف با موفقیت ساخته شد.\n\n" +
@@ -761,17 +885,25 @@ async function handleCouponCreationText(ctx, text, state) {
     } catch (error) {
       console.error("Coupon creation failed:", error);
 
-      if (error.code === "COUPON_CODE_ALREADY_EXISTS") {
+      if (
+        error.code === "COUPON_CODE_ALREADY_EXISTS" ||
+        error.code === "23505"
+      ) {
         state.step = "code";
-        couponCreationFlow.set(ctx.from.id, state);
+
+        updateCouponCreationState(
+          telegramUserId,
+          state
+        );
 
         await ctx.reply(
           "❌ این کد قبلاً ساخته شده است.\n\nیک کد دیگر وارد کن."
         );
+
         return;
       }
 
-      couponCreationFlow.delete(ctx.from.id);
+      clearCouponCreationState(telegramUserId);
 
       await ctx.reply(
         "❌ ساخت کد تخفیف انجام نشد.",
@@ -781,6 +913,10 @@ async function handleCouponCreationText(ctx, text, state) {
   }
 }
 
+// --------------------------------------------------
+// Coupon flow middleware
+// --------------------------------------------------
+
 async function handleCouponCreationInput(ctx, next) {
   const telegramUserId = ctx.from?.id;
 
@@ -788,18 +924,12 @@ async function handleCouponCreationInput(ctx, next) {
     return next();
   }
 
-  const state = couponCreationFlow.get(telegramUserId);
+  const state = getCouponCreationState(
+    telegramUserId
+  );
 
   if (!state) {
     return next();
-  }
-
-  const admin = await getSuperAdmin(ctx);
-
-  if (!admin) {
-    couponCreationFlow.delete(telegramUserId);
-    await ctx.reply("⛔ دسترسی غیرمجاز.");
-    return;
   }
 
   const text = String(
@@ -807,7 +937,7 @@ async function handleCouponCreationInput(ctx, next) {
   ).trim();
 
   if (text === "❌ لغو ساخت کد") {
-    couponCreationFlow.delete(telegramUserId);
+    clearCouponCreationState(telegramUserId);
 
     await ctx.reply(
       "ساخت کد تخفیف لغو شد.",
@@ -818,23 +948,40 @@ async function handleCouponCreationInput(ctx, next) {
   }
 
   if (
-    text === "🎟️ کدهای تخفیف" ||
-    text === "🔙 بخش مالی" ||
-    text === "🔙 پنل Super Admin"
+    COUPON_NAVIGATION_BUTTONS.includes(text) ||
+    text.startsWith("🔴 غیرفعال‌کردن کد ") ||
+    text.startsWith("🟢 فعال‌کردن کد ") ||
+    text.startsWith("👥 کاربران کد ")
   ) {
-    couponCreationFlow.delete(telegramUserId);
+    clearCouponCreationState(telegramUserId);
     return next();
   }
 
+  const admin = await getSuperAdmin(ctx);
+
+  if (!admin) {
+    clearCouponCreationState(telegramUserId);
+
+    await ctx.reply(
+      "⛔ دسترسی غیرمجاز."
+    );
+
+    return;
+  }
+
   try {
-    await handleCouponCreationText(ctx, text, state);
+    await handleCouponCreationText(
+      ctx,
+      text,
+      state
+    );
   } catch (error) {
     console.error(
       "Coupon creation input failed:",
       error
     );
 
-    couponCreationFlow.delete(telegramUserId);
+    clearCouponCreationState(telegramUserId);
 
     await ctx.reply(
       "❌ خطا در ساخت کد تخفیف.",
@@ -842,6 +989,10 @@ async function handleCouponCreationInput(ctx, next) {
     );
   }
 }
+
+// --------------------------------------------------
+// Other finance sections
+// --------------------------------------------------
 
 async function handleUnimplementedFinanceSection(ctx) {
   const admin = await getSuperAdmin(ctx);
@@ -857,7 +1008,18 @@ async function handleUnimplementedFinanceSection(ctx) {
   );
 }
 
+// --------------------------------------------------
+// Register handlers
+// --------------------------------------------------
+
 function createSuperAdminFinanceHandler(bot) {
+  // ابتدا جریان ساخت کوپن ثبت می‌شود تا بتواند
+  // خروج از جریان را قبل از اجرای منوها تشخیص دهد.
+  bot.on(
+    "text",
+    handleCouponCreationInput
+  );
+
   createSuperAdminFinanceCreditHandler(bot);
   createSuperAdminFinancePricingHandler(bot);
   createSuperAdminFinanceCouponReportHandler(bot);
@@ -925,11 +1087,6 @@ function createSuperAdminFinanceHandler(bot) {
   bot.hears(
     /^(💰 درآمدها|💸 هزینه‌ها|📊 گزارش مالی)$/,
     handleUnimplementedFinanceSection
-  );
-
-  bot.on(
-    "text",
-    handleCouponCreationInput
   );
 }
 
