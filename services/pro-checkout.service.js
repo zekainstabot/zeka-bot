@@ -1,5 +1,10 @@
+
 const { getClient } = require("../database/client");
-const { getProPricing } = require("./pro-pricing.service");
+
+const {
+  getProPricing,
+  calculateFinalPrice,
+} = require("./pro-pricing.service");
 
 const OPEN_STATUSES = [
   "PENDING",
@@ -14,17 +19,6 @@ function normalizeCouponCode(code) {
     .replace(/\s+/g, "");
 }
 
-function calculatePrice(basePrice, discountPercent) {
-  return Math.max(
-    0,
-    Math.round(
-      Number(basePrice) *
-        (100 - Number(discountPercent)) /
-        100
-    )
-  );
-}
-
 async function getCheckoutQuote({
   durationMonths,
   telegramUserId,
@@ -35,7 +29,9 @@ async function getCheckoutQuote({
   let coupon = null;
 
   if (couponCode) {
-    const normalizedCode = normalizeCouponCode(couponCode);
+    const normalizedCode = normalizeCouponCode(
+      couponCode
+    );
 
     if (
       !normalizedCode ||
@@ -72,11 +68,17 @@ async function getCheckoutQuote({
     const row = result.rows[0];
 
     if (!row) {
-      return { valid: false, reason: "NOT_FOUND" };
+      return {
+        valid: false,
+        reason: "NOT_FOUND",
+      };
     }
 
     if (!row.is_active) {
-      return { valid: false, reason: "INACTIVE" };
+      return {
+        valid: false,
+        reason: "INACTIVE",
+      };
     }
 
     const now = new Date();
@@ -85,31 +87,46 @@ async function getCheckoutQuote({
       row.starts_at &&
       new Date(row.starts_at) > now
     ) {
-      return { valid: false, reason: "NOT_STARTED" };
+      return {
+        valid: false,
+        reason: "NOT_STARTED",
+      };
     }
 
     if (
       row.expires_at &&
       new Date(row.expires_at) <= now
     ) {
-      return { valid: false, reason: "EXPIRED" };
+      return {
+        valid: false,
+        reason: "EXPIRED",
+      };
     }
 
     if (
       row.max_uses !== null &&
-      Number(row.usage_count) >= Number(row.max_uses)
+      Number(row.usage_count) >=
+        Number(row.max_uses)
     ) {
-      return { valid: false, reason: "LIMIT_REACHED" };
+      return {
+        valid: false,
+        reason: "LIMIT_REACHED",
+      };
     }
 
     if (row.already_used) {
-      return { valid: false, reason: "ALREADY_USED" };
+      return {
+        valid: false,
+        reason: "ALREADY_USED",
+      };
     }
 
     coupon = {
       id: row.id,
       code: row.code,
-      discountPercent: Number(row.discount_percent),
+      discountPercent: Number(
+        row.discount_percent
+      ),
     };
   }
 
@@ -117,21 +134,31 @@ async function getCheckoutQuote({
     coupon?.discountPercent || 0;
 
   const appliedDiscountPercent = Math.max(
-    Number(pricing.planDiscountPercent || 0),
-    Number(pricing.extraDiscountPercent || 0),
+    pricing.planDiscountPercent,
+    pricing.extraDiscountPercent,
     couponDiscountPercent
   );
 
   return {
     valid: true,
+
     durationMonths: pricing.durationMonths,
+
     basePriceAmount: pricing.basePriceAmount,
-    planDiscountPercent: pricing.planDiscountPercent,
-    extraDiscountPercent: pricing.extraDiscountPercent,
+
+    planDiscountPercent:
+      pricing.planDiscountPercent,
+
+    extraDiscountPercent:
+      pricing.extraDiscountPercent,
+
     couponCode: coupon?.code || null,
+
     couponDiscountPercent,
+
     appliedDiscountPercent,
-    priceAmount: calculatePrice(
+
+    priceAmount: calculateFinalPrice(
       pricing.basePriceAmount,
       appliedDiscountPercent
     ),
@@ -152,12 +179,19 @@ async function createPricedPurchaseRequest({
   });
 
   if (!quote.valid) {
-    const error = new Error("INVALID_OR_UNAVAILABLE_COUPON");
+    const error = new Error(
+      "INVALID_OR_UNAVAILABLE_COUPON"
+    );
+
     error.code = quote.reason;
+
     throw error;
   }
 
-  const normalizedTelegramId = String(telegramUserId);
+  const normalizedTelegramId = String(
+    telegramUserId
+  );
+
   const db = getClient();
   const client = await db.connect();
 
@@ -184,7 +218,10 @@ async function createPricedPurchaseRequest({
           created_at DESC
         LIMIT 1
       `,
-      [normalizedTelegramId, OPEN_STATUSES]
+      [
+        normalizedTelegramId,
+        OPEN_STATUSES,
+      ]
     );
 
     if (existing.rows.length) {
@@ -216,16 +253,26 @@ async function createPricedPurchaseRequest({
       if (
         !couponRow ||
         !couponRow.is_active ||
-        (couponRow.starts_at &&
-          new Date(couponRow.starts_at) > now) ||
-        (couponRow.expires_at &&
-          new Date(couponRow.expires_at) <= now) ||
-        (couponRow.max_uses !== null &&
+        (
+          couponRow.starts_at &&
+          new Date(couponRow.starts_at) > now
+        ) ||
+        (
+          couponRow.expires_at &&
+          new Date(couponRow.expires_at) <= now
+        ) ||
+        (
+          couponRow.max_uses !== null &&
           Number(couponRow.usage_count) >=
-            Number(couponRow.max_uses))
+            Number(couponRow.max_uses)
+        )
       ) {
-        const error = new Error("COUPON_UNAVAILABLE");
+        const error = new Error(
+          "COUPON_UNAVAILABLE"
+        );
+
         error.code = "COUPON_UNAVAILABLE";
+
         throw error;
       }
 
@@ -237,25 +284,34 @@ async function createPricedPurchaseRequest({
             AND telegram_user_id = $2
           LIMIT 1
         `,
-        [couponRow.id, normalizedTelegramId]
+        [
+          couponRow.id,
+          normalizedTelegramId,
+        ]
       );
 
       if (alreadyUsed.rows.length) {
-        const error = new Error("COUPON_ALREADY_USED");
+        const error = new Error(
+          "COUPON_ALREADY_USED"
+        );
+
         error.code = "COUPON_ALREADY_USED";
+
         throw error;
       }
     }
 
+    const couponDiscountPercent = couponRow
+      ? Number(couponRow.discount_percent)
+      : 0;
+
     const appliedDiscountPercent = Math.max(
       Number(quote.planDiscountPercent || 0),
       Number(quote.extraDiscountPercent || 0),
-      couponRow
-        ? Number(couponRow.discount_percent)
-        : 0
+      couponDiscountPercent
     );
 
-    const finalPrice = calculatePrice(
+    const finalPrice = calculateFinalPrice(
       quote.basePriceAmount,
       appliedDiscountPercent
     );
@@ -267,13 +323,23 @@ async function createPricedPurchaseRequest({
           username,
           display_name,
           duration_months,
+
           base_price_amount,
+
           plan_discount_percent,
+          extra_discount_percent,
           coupon_code,
           coupon_discount_percent,
+
+          applied_discount_percent,
           price_amount
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES (
+          $1, $2, $3, $4,
+          $5,
+          $6, $7, $8, $9,
+          $10, $11
+        )
         RETURNING *
       `,
       [
@@ -281,12 +347,15 @@ async function createPricedPurchaseRequest({
         username || null,
         displayName || null,
         Number(durationMonths),
+
         quote.basePriceAmount,
+
         quote.planDiscountPercent,
+        quote.extraDiscountPercent,
         couponRow?.code || null,
-        couponRow
-          ? Number(couponRow.discount_percent)
-          : 0,
+        couponDiscountPercent,
+
+        appliedDiscountPercent,
         finalPrice,
       ]
     );
@@ -308,7 +377,7 @@ async function createPricedPurchaseRequest({
           couponRow.id,
           request.id,
           normalizedTelegramId,
-          Number(couponRow.discount_percent),
+          couponDiscountPercent,
         ]
       );
 
