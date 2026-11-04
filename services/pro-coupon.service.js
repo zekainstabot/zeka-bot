@@ -3,6 +3,7 @@ const { getPool } = require("../database/pool");
 const MIN_DISCOUNT = 1;
 const MAX_DISCOUNT = 90;
 const MAX_CODE_LENGTH = 50;
+const MAX_INTEGER = 2147483647;
 
 function normalizeCode(code) {
   return String(code || "")
@@ -23,6 +24,29 @@ function validateCode(code) {
   }
 
   return normalized;
+}
+
+function validateCouponId(couponId) {
+  const value = Number(couponId);
+
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 1
+  ) {
+    throw new Error("INVALID_COUPON_ID");
+  }
+
+  return value;
+}
+
+function validateTelegramUserId(telegramUserId) {
+  const value = String(telegramUserId ?? "").trim();
+
+  if (!/^\d{1,20}$/.test(value)) {
+    throw new Error("INVALID_TELEGRAM_USER_ID");
+  }
+
+  return value;
 }
 
 function validateDiscountPercent(percent) {
@@ -50,11 +74,69 @@ function validateMaxUses(maxUses) {
 
   const value = Number(maxUses);
 
-  if (!Number.isInteger(value) || value < 1) {
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > MAX_INTEGER
+  ) {
     throw new Error("INVALID_COUPON_MAX_USES");
   }
 
   return value;
+}
+
+function validateBoolean(value) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (value === 1 || value === "1" || value === "true") {
+    return true;
+  }
+
+  if (value === 0 || value === "0" || value === "false") {
+    return false;
+  }
+
+  throw new Error("INVALID_COUPON_ACTIVE_STATUS");
+}
+
+function parseOptionalDate(value, errorCode) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(errorCode);
+  }
+
+  return date;
+}
+
+function validatePagination(limit, offset) {
+  const parsedLimit = Number(limit);
+  const parsedOffset = Number(offset);
+
+  const safeLimit =
+    Number.isSafeInteger(parsedLimit)
+      ? Math.max(1, Math.min(parsedLimit, 100))
+      : 30;
+
+  const safeOffset =
+    Number.isSafeInteger(parsedOffset)
+      ? Math.max(0, parsedOffset)
+      : 0;
+
+  return {
+    limit: safeLimit,
+    offset: safeOffset,
+  };
 }
 
 async function createCoupon({
@@ -66,32 +148,22 @@ async function createCoupon({
   createdBy = null,
 }) {
   const normalizedCode = validateCode(code);
+
   const discount = validateDiscountPercent(
     discountPercent
   );
+
   const usageLimit = validateMaxUses(maxUses);
 
-  const startDate = startsAt
-    ? new Date(startsAt)
-    : null;
+  const startDate = parseOptionalDate(
+    startsAt,
+    "INVALID_COUPON_START_DATE"
+  );
 
-  const expiryDate = expiresAt
-    ? new Date(expiresAt)
-    : null;
-
-  if (
-    startDate &&
-    Number.isNaN(startDate.getTime())
-  ) {
-    throw new Error("INVALID_COUPON_START_DATE");
-  }
-
-  if (
-    expiryDate &&
-    Number.isNaN(expiryDate.getTime())
-  ) {
-    throw new Error("INVALID_COUPON_EXPIRY_DATE");
-  }
+  const expiryDate = parseOptionalDate(
+    expiresAt,
+    "INVALID_COUPON_EXPIRY_DATE"
+  );
 
   if (
     startDate &&
@@ -99,6 +171,16 @@ async function createCoupon({
     expiryDate <= startDate
   ) {
     throw new Error("INVALID_COUPON_DATE_RANGE");
+  }
+
+  let creatorId = null;
+
+  if (
+    createdBy !== null &&
+    createdBy !== undefined &&
+    createdBy !== ""
+  ) {
+    creatorId = validateTelegramUserId(createdBy);
   }
 
   const db = getPool();
@@ -123,7 +205,7 @@ async function createCoupon({
         usageLimit,
         startDate,
         expiryDate,
-        createdBy ? String(createdBy) : null,
+        creatorId,
       ]
     );
 
@@ -166,6 +248,10 @@ async function validateCoupon({
   telegramUserId,
 }) {
   const normalizedCode = validateCode(code);
+
+  const normalizedTelegramId =
+    validateTelegramUserId(telegramUserId);
+
   const db = getPool();
 
   const result = await db.query(
@@ -184,7 +270,7 @@ async function validateCoupon({
     `,
     [
       normalizedCode,
-      String(telegramUserId),
+      normalizedTelegramId,
     ]
   );
 
@@ -262,14 +348,9 @@ async function listCoupons({
 } = {}) {
   const db = getPool();
 
-  const safeLimit = Math.max(
-    1,
-    Math.min(Number(limit) || 30, 100)
-  );
-
-  const safeOffset = Math.max(
-    0,
-    Math.floor(Number(offset) || 0)
+  const pagination = validatePagination(
+    limit,
+    offset
   );
 
   const result = await db.query(
@@ -282,10 +363,15 @@ async function listCoupons({
           WHERE redemption.coupon_id = coupon.id
         ) AS actual_usage_count
       FROM pro_discount_coupons coupon
-      ORDER BY coupon.created_at DESC, coupon.id DESC
+      ORDER BY
+        coupon.created_at DESC,
+        coupon.id DESC
       LIMIT $1 OFFSET $2
     `,
-    [safeLimit, safeOffset]
+    [
+      pagination.limit,
+      pagination.offset,
+    ]
   );
 
   return result.rows;
@@ -295,6 +381,9 @@ async function setCouponActive({
   couponId,
   isActive,
 }) {
+  const safeCouponId = validateCouponId(couponId);
+  const active = validateBoolean(isActive);
+
   const db = getPool();
 
   const result = await db.query(
@@ -307,8 +396,8 @@ async function setCouponActive({
       RETURNING *
     `,
     [
-      couponId,
-      Boolean(isActive),
+      safeCouponId,
+      active,
     ]
   );
 
@@ -316,6 +405,8 @@ async function setCouponActive({
 }
 
 async function deleteCoupon(couponId) {
+  const safeCouponId = validateCouponId(couponId);
+
   const db = getPool();
 
   const result = await db.query(
@@ -325,11 +416,18 @@ async function deleteCoupon(couponId) {
         AND NOT EXISTS (
           SELECT 1
           FROM pro_discount_redemptions redemption
-          WHERE redemption.coupon_id = pro_discount_coupons.id
+          WHERE redemption.coupon_id =
+            pro_discount_coupons.id
+        )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM pro_purchase_requests request
+          WHERE request.coupon_code =
+            pro_discount_coupons.code
         )
       RETURNING *
     `,
-    [couponId]
+    [safeCouponId]
   );
 
   return result.rows[0] || null;
@@ -338,6 +436,10 @@ async function deleteCoupon(couponId) {
 module.exports = {
   normalizeCode,
   validateCode,
+  validateCouponId,
+  validateTelegramUserId,
+  validateDiscountPercent,
+  validateMaxUses,
   createCoupon,
   getCouponByCode,
   validateCoupon,
