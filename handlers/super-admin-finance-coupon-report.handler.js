@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -128,12 +127,12 @@ function buildSummaryMessage(report) {
   const summary = report.summary || {};
 
   return (
-    "📊 آمار استفاده از کد\n\n" +
-    `👥 کل رزروهای باقی‌مانده: ${report.total}\n` +
-    `✅ مصرف نهایی: ${Number(summary.approved || 0)}\n` +
-    `⏳ درخواست‌های در انتظار: ${Number(summary.pending || 0)}\n` +
-    `❌ درخواست‌های ردشده: ${Number(summary.rejected || 0)}\n` +
-    `🚫 درخواست‌های لغوشده: ${Number(summary.cancelled || 0)}\n\n`
+    "📊 آمار درخواست‌های استفاده از کد\n\n" +
+    `👥 کل درخواست‌ها: ${report.total}\n` +
+    `✅ تأییدشده: ${Number(summary.approved || 0)}\n` +
+    `⏳ در انتظار: ${Number(summary.pending || 0)}\n` +
+    `❌ ردشده: ${Number(summary.rejected || 0)}\n` +
+    `🚫 لغوشده: ${Number(summary.cancelled || 0)}\n\n`
   );
 }
 
@@ -228,7 +227,7 @@ async function showCouponUsageReport(
 
     if (!report.redemptions.length) {
       message +=
-        "هنوز هیچ رزرو فعالی برای این کد ثبت نشده است.";
+        "هنوز هیچ درخواستی با این کد تخفیف ثبت نشده است.";
     } else {
       const lines = report.redemptions.map(
         (item, index) => {
@@ -246,7 +245,7 @@ async function showCouponUsageReport(
             `🏷️ تخفیف ثبت‌شده: ${item.discount_percent}٪\n` +
             `💰 مبلغ نهایی: ${formatAmount(item.price_amount)}\n` +
             `📌 وضعیت خرید: ${getStatusLabel(item.purchase_status)}\n` +
-            `📅 زمان رزرو کد: ${formatDate(
+            `📅 زمان استفاده از کد: ${formatDate(
               item.redemption_created_at
             )}\n` +
             `📅 زمان ثبت درخواست: ${formatDate(
