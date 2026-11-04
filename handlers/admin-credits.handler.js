@@ -1,9 +1,11 @@
+
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
 const userRepository = require("../repositories/user.repository");
 const creditService = require("../services/credit.service");
 const adminCreditService = require("../services/admin-credit.service");
+const adminActionLogService = require("../services/admin-action-log.service");
 
 const states = new Map();
 
@@ -69,6 +71,17 @@ async function requirePermission(ctx) {
   }
 
   return admin;
+}
+
+async function logAdminAction(data) {
+  try {
+    await adminActionLogService.recordAction(data);
+  } catch (error) {
+    console.error(
+      "Admin action log failed:",
+      error
+    );
+  }
 }
 
 async function findUser(value) {
@@ -207,8 +220,7 @@ async function processUser(ctx, value) {
           ? "add_amount"
           : "remove_amount",
       userId: user.id,
-      telegramUserId:
-        user.telegram_user_id,
+      telegramUserId: user.telegram_user_id,
     });
 
     await ctx.reply(
@@ -223,12 +235,11 @@ async function processUser(ctx, value) {
     state.step === "add_amount" ||
     state.step === "remove_amount"
   ) {
-    const amount =
-      Number(
-        String(value)
-          .trim()
-          .replace(",", ".")
-      );
+    const amount = Number(
+      String(value)
+        .trim()
+        .replace(",", ".")
+    );
 
     if (
       !Number.isFinite(amount) ||
@@ -240,6 +251,14 @@ async function processUser(ctx, value) {
       return true;
     }
 
+    // بررسی مجدد دسترسی مدیر پیش از انجام عملیات
+    const admin = await requirePermission(ctx);
+
+    if (!admin) {
+      clearState(ctx.from.id);
+      return true;
+    }
+
     try {
       if (state.step === "add_amount") {
         const result =
@@ -248,12 +267,28 @@ async function processUser(ctx, value) {
             amount,
           });
 
+        // ثبت تاریخچه افزایش اعتبار
+        await logAdminAction({
+          adminUserId: admin.user_id,
+          adminTelegramUserId: ctx.from.id,
+          targetUserId: state.userId,
+          targetTelegramUserId: state.telegramUserId,
+          action: "CREDIT_ADD",
+          details: {
+            amount,
+            balanceBefore: result.balanceBefore,
+            balanceAfter: result.balanceAfter,
+            source: "admin_credits_panel",
+          },
+        });
+
         clearState(ctx.from.id);
 
         await ctx.reply(
           "✅ اعتبار با موفقیت اضافه شد.\n\n" +
             `👤 Telegram ID: ${state.telegramUserId}\n` +
             `➕ مقدار: ${amount}\n` +
+            `💳 موجودی قبلی: ${result.balanceBefore}\n` +
             `💳 موجودی جدید: ${result.balanceAfter}`,
           mainMenu()
         );
@@ -267,12 +302,28 @@ async function processUser(ctx, value) {
           amount,
         });
 
+      // ثبت تاریخچه کاهش اعتبار
+      await logAdminAction({
+        adminUserId: admin.user_id,
+        adminTelegramUserId: ctx.from.id,
+        targetUserId: state.userId,
+        targetTelegramUserId: state.telegramUserId,
+        action: "CREDIT_REMOVE",
+        details: {
+          amount,
+          balanceBefore: result.balanceBefore,
+          balanceAfter: result.balanceAfter,
+          source: "admin_credits_panel",
+        },
+      });
+
       clearState(ctx.from.id);
 
       await ctx.reply(
         "✅ اعتبار با موفقیت کم شد.\n\n" +
           `👤 Telegram ID: ${state.telegramUserId}\n` +
           `➖ مقدار: ${amount}\n` +
+          `💳 موجودی قبلی: ${result.balanceBefore}\n` +
           `💳 موجودی جدید: ${result.balanceAfter}`,
         mainMenu()
       );
@@ -327,9 +378,7 @@ async function handleText(ctx) {
     return true;
   }
 
-  if (
-    text === "🔙 مدیریت اعتبار"
-  ) {
+  if (text === "🔙 مدیریت اعتبار") {
     clearState(ctx.from.id);
 
     await ctx.reply(
