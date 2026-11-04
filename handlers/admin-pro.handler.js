@@ -878,10 +878,20 @@ async function reviewProPurchaseFromPanel(
       });
 
     if (!result.success) {
+      let message =
+        "این درخواست قبلاً بررسی شده یا رسید ندارد.";
+
+      if (result.reason === "NOT_FOUND") {
+        message = "درخواست پیدا نشد.";
+      }
+
+      if (result.reason === "INVALID_PRICE") {
+        message =
+          "مبلغ درخواست نامعتبر است. این درخواست قابل تأیید نیست.";
+      }
+
       await ctx.answerCbQuery(
-        result.reason === "NOT_FOUND"
-          ? "درخواست پیدا نشد."
-          : "این درخواست قبلاً بررسی شده یا رسید ندارد.",
+        message,
         { show_alert: true }
       );
 
