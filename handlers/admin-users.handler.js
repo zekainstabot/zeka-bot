@@ -46,14 +46,27 @@ function mainMenu(admin) {
   ]).resize();
 }
 
-function profileMenu() {
-  return Markup.keyboard([
+function profileMenu(user = null) {
+  const keyboard = [
     ["➕ افزایش اعتبار", "➖ کاهش اعتبار"],
     ["📜 تاریخچه اعتبار"],
     ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
+  ];
+
+  if (user) {
+    if (user.is_blocked) {
+      keyboard.push(["🔓 آزاد کردن کاربر"]);
+    } else {
+      keyboard.push(["🚫 مسدود کردن کاربر"]);
+    }
+  }
+
+  keyboard.push(
     ["🔎 جستجوی کاربر"],
-    ["🔙 منوی کاربران"],
-  ]).resize();
+    ["🔙 منوی کاربران"]
+  );
+
+  return Markup.keyboard(keyboard).resize();
 }
 
 function listMenu(page, totalPages) {
@@ -92,6 +105,12 @@ function amountMenu() {
   return Markup.keyboard([
     ["❌ لغو"],
     ["🔙 منوی کاربران"],
+  ]).resize();
+}
+
+function blockReasonMenu() {
+  return Markup.keyboard([
+    ["❌ لغو"],
   ]).resize();
 }
 
@@ -179,6 +198,11 @@ async function showUser(ctx, user, admin) {
       ? "🟢 فعال"
       : "🔴 غیرفعال";
 
+  const blockStatus =
+    user.is_blocked
+      ? "🚫 مسدود"
+      : "🟢 آزاد";
+
   const message =
     "👤 اطلاعات کاربر\n\n" +
     `🆔 شناسه داخلی: ${user.id}\n` +
@@ -187,6 +211,9 @@ async function showUser(ctx, user, admin) {
     `🔹 Username: ${username}\n` +
     `💳 اعتبار: ${balance}\n` +
     `💎 Pro: ${proStatus}\n` +
+    `🚦 وضعیت حساب: ${blockStatus}\n` +
+    `📝 دلیل مسدودی: ${user.blocked_reason || "ندارد"}\n` +
+    `📅 تاریخ مسدودی: ${formatDate(user.blocked_at)}\n` +
     `📅 انقضای Pro: ${formatDate(user.pro_expires_at)}\n` +
     `⭐ XP: ${user.xp || 0}\n` +
     `🏆 Level: ${user.level || 0}\n` +
@@ -203,7 +230,7 @@ async function showUser(ctx, user, admin) {
 
   await ctx.reply(
     message,
-    profileMenu()
+    profileMenu(user)
   );
 }
 
@@ -663,6 +690,259 @@ async function handleProfileProAction(ctx, action) {
   }
 }
 
+async function handleProfileBlockAction(ctx) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const state = getState(ctx.from.id);
+
+  if (
+    !state ||
+    state.step !== "userProfile" ||
+    !state.userId
+  ) {
+    await ctx.reply(
+      "ابتدا یک کاربر را جستجو کن."
+    );
+    return;
+  }
+
+  try {
+    const user =
+      await userRepository.findById(state.userId);
+
+    if (!user) {
+      clearState(ctx.from.id);
+
+      await ctx.reply(
+        "❌ کاربر پیدا نشد."
+      );
+      return;
+    }
+
+    if (user.is_blocked) {
+      await ctx.reply(
+        "این کاربر از قبل مسدود شده است.",
+        profileMenu(user)
+      );
+      return;
+    }
+
+    const targetAdmin =
+      await adminService.getAdminByTelegramId(
+        user.telegram_user_id
+      );
+
+    if (targetAdmin) {
+      await ctx.reply(
+        "⛔ امکان مسدودسازی حساب‌های مدیریتی وجود ندارد.",
+        profileMenu(user)
+      );
+      return;
+    }
+
+    setState(ctx.from.id, {
+      step: "blockReason",
+      userId: user.id,
+      telegramUserId: user.telegram_user_id,
+    });
+
+    await ctx.reply(
+      "🚫 مسدودسازی کاربر\n\n" +
+      "دلیل مسدودسازی این کاربر را ارسال کن:",
+      blockReasonMenu()
+    );
+  } catch (error) {
+    console.error(
+      "Admin block user start failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ شروع عملیات مسدودسازی انجام نشد."
+    );
+  }
+}
+
+async function handleBlockReason(ctx, reason, state) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const cleanReason = String(reason || "").trim();
+
+  if (!cleanReason) {
+    await ctx.reply(
+      "❌ دلیل مسدودسازی نمی‌تواند خالی باشد. دلیل را ارسال کن."
+    );
+    return;
+  }
+
+  if (cleanReason.length > 500) {
+    await ctx.reply(
+      "❌ دلیل مسدودسازی نباید بیشتر از ۵۰۰ کاراکتر باشد."
+    );
+    return;
+  }
+
+  try {
+    const user =
+      await userRepository.findById(state.userId);
+
+    if (!user) {
+      clearState(ctx.from.id);
+
+      await ctx.reply(
+        "❌ کاربر پیدا نشد."
+      );
+      return;
+    }
+
+    if (user.is_blocked) {
+      clearState(ctx.from.id);
+
+      await ctx.reply(
+        "این کاربر قبلاً مسدود شده است."
+      );
+
+      await showUser(ctx, user, admin);
+      return;
+    }
+
+    const targetAdmin =
+      await adminService.getAdminByTelegramId(
+        user.telegram_user_id
+      );
+
+    if (targetAdmin) {
+      clearState(ctx.from.id);
+
+      await ctx.reply(
+        "⛔ امکان مسدودسازی حساب‌های مدیریتی وجود ندارد."
+      );
+
+      await showUser(ctx, user, admin);
+      return;
+    }
+
+    const db = getClient();
+
+    const result = await db.query(
+      `
+        UPDATE users
+        SET
+          is_blocked = TRUE,
+          blocked_at = NOW(),
+          blocked_reason = $2,
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `,
+      [state.userId, cleanReason]
+    );
+
+    const updatedUser = result.rows[0];
+
+    if (!updatedUser) {
+      clearState(ctx.from.id);
+
+      await ctx.reply(
+        "❌ کاربر برای مسدودسازی پیدا نشد."
+      );
+      return;
+    }
+
+    clearState(ctx.from.id);
+
+    await ctx.reply(
+      "✅ کاربر با موفقیت مسدود شد."
+    );
+
+    await showUser(ctx, updatedUser, admin);
+  } catch (error) {
+    console.error(
+      "Admin block user failed:",
+      error
+    );
+
+    clearState(ctx.from.id);
+
+    await ctx.reply(
+      "❌ مسدودسازی کاربر انجام نشد."
+    );
+  }
+}
+
+async function handleProfileUnblockAction(ctx) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const state = getState(ctx.from.id);
+
+  if (
+    !state ||
+    state.step !== "userProfile" ||
+    !state.userId
+  ) {
+    await ctx.reply(
+      "ابتدا یک کاربر را جستجو کن."
+    );
+    return;
+  }
+
+  try {
+    const db = getClient();
+
+    const result = await db.query(
+      `
+        UPDATE users
+        SET
+          is_blocked = FALSE,
+          blocked_at = NULL,
+          blocked_reason = NULL,
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `,
+      [state.userId]
+    );
+
+    const updatedUser = result.rows[0];
+
+    if (!updatedUser) {
+      clearState(ctx.from.id);
+
+      await ctx.reply(
+        "❌ کاربر پیدا نشد."
+      );
+      return;
+    }
+
+    await ctx.reply(
+      "✅ محدودیت حساب کاربر برداشته شد."
+    );
+
+    await showUser(ctx, updatedUser, admin);
+  } catch (error) {
+    console.error(
+      "Admin unblock user failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ آزادسازی کاربر انجام نشد."
+    );
+  }
+}
+
 async function showCreditHistory(ctx) {
   const admin = await requirePermission(ctx);
 
@@ -688,9 +968,12 @@ async function showCreditHistory(ctx) {
       );
 
     if (!history.length) {
+      const user =
+        await userRepository.findById(state.userId);
+
       await ctx.reply(
         "📜 برای این کاربر سابقه اعتباری ثبت نشده است.",
-        profileMenu()
+        profileMenu(user)
       );
       return;
     }
@@ -709,10 +992,13 @@ async function showCreditHistory(ctx) {
       );
     });
 
+    const user =
+      await userRepository.findById(state.userId);
+
     await ctx.reply(
       "📜 تاریخچه اعتبار کاربر\n\n" +
       lines.join("\n\n"),
-      profileMenu()
+      profileMenu(user)
     );
   } catch (error) {
     console.error(
@@ -720,9 +1006,12 @@ async function showCreditHistory(ctx) {
       error
     );
 
+    const user =
+      await userRepository.findById(state.userId);
+
     await ctx.reply(
       "❌ دریافت تاریخچه اعتبار انجام نشد.",
-      profileMenu()
+      profileMenu(user)
     );
   }
 }
@@ -805,6 +1094,11 @@ async function handleText(ctx) {
     return true;
   }
 
+  if (state.step === "blockReason") {
+    await handleBlockReason(ctx, text, state);
+    return true;
+  }
+
   return false;
 }
 
@@ -868,6 +1162,16 @@ function createAdminUsersHandler(bot) {
   bot.hears(
     "🔴 خاموش کردن Pro",
     (ctx) => handleProfileProAction(ctx, "disable")
+  );
+
+  bot.hears(
+    "🚫 مسدود کردن کاربر",
+    handleProfileBlockAction
+  );
+
+  bot.hears(
+    "🔓 آزاد کردن کاربر",
+    handleProfileUnblockAction
   );
 
   bot.hears(
