@@ -1,12 +1,16 @@
 const { Markup } = require("telegraf");
 
 const {
-  createPurchaseRequest,
   getLatestOpenPurchaseRequest,
   submitPurchaseReceipt,
   ALLOWED_DURATIONS,
   cancelPurchaseRequest,
 } = require("../services/pro-purchase.service");
+
+const {
+  getCheckoutQuote,
+  createPricedPurchaseRequest,
+} = require("../services/pro-checkout.service");
 
 const purchaseFlow = new Map();
 
@@ -14,6 +18,14 @@ const durationKeyboard = Markup.keyboard([
   ["۱ ماهه", "۲ ماهه"],
   ["۳ ماهه", "۶ ماهه"],
   ["۱۲ ماهه"],
+  ["🔙 بازگشت", "❌ لغو درخواست"],
+])
+  .resize()
+  .persistent();
+
+const checkoutKeyboard = Markup.keyboard([
+  ["🎟️ وارد کردن کد تخفیف"],
+  ["✅ ثبت درخواست خرید"],
   ["🔙 بازگشت", "❌ لغو درخواست"],
 ])
   .resize()
@@ -37,9 +49,171 @@ function isMenuText(text) {
     "⭐ زکا پرو",
     "🔙 بازگشت",
     "❌ لغو درخواست",
+    "🎟️ وارد کردن کد تخفیف",
+    "✅ ثبت درخواست خرید",
     "/start",
     "/help",
   ].includes(String(text || "").trim());
+}
+
+function formatToman(amount) {
+  return (
+    new Intl.NumberFormat("fa-IR", {
+      maximumFractionDigits: 0,
+    }).format(Number(amount || 0)) +
+    " تومان"
+  );
+}
+
+function couponErrorMessage(reason) {
+  const messages = {
+    INVALID_FORMAT: "فرمت کد تخفیف معتبر نیست.",
+    NOT_FOUND: "این کد تخفیف وجود ندارد.",
+    INACTIVE: "این کد تخفیف غیرفعال شده است.",
+    NOT_STARTED: "زمان استفاده از این کد هنوز شروع نشده است.",
+    EXPIRED: "مهلت استفاده از این کد تمام شده است.",
+    LIMIT_REACHED: "ظرفیت استفاده از این کد تکمیل شده است.",
+    ALREADY_USED: "قبلاً از این کد تخفیف استفاده کرده‌ای.",
+  };
+
+  return messages[reason] || "این کد تخفیف قابل استفاده نیست.";
+}
+
+function buildQuoteMessage(quote) {
+  const lines = [
+    "💎 پیش‌فاکتور خرید زکا پرو",
+    "",
+    `⏳ مدت اشتراک: ${quote.durationMonths} ماه`,
+    `💰 قیمت پایه: ${formatToman(quote.basePriceAmount)}`,
+  ];
+
+  if (quote.planDiscountPercent > 0) {
+    lines.push(
+      `🎁 تخفیف مدت اشتراک: ${quote.planDiscountPercent}٪`
+    );
+  }
+
+  if (quote.extraDiscountPercent > 0) {
+    lines.push(
+      `⭐ تخفیف عمومی: ${quote.extraDiscountPercent}٪`
+    );
+  }
+
+  if (quote.couponCode) {
+    lines.push(
+      `🎟️ کد تخفیف: ${quote.couponCode}`,
+      `🏷️ تخفیف کد: ${quote.couponDiscountPercent}٪`
+    );
+  }
+
+  lines.push(
+    "",
+    `📉 تخفیف نهایی اعمال‌شده: ${quote.appliedDiscountPercent}٪`,
+    `💳 مبلغ نهایی: ${formatToman(quote.priceAmount)}`,
+    "",
+    "برای ادامه، ثبت درخواست خرید را انتخاب کن."
+  );
+
+  return lines.join("\n");
+}
+
+async function showCheckout(ctx, state) {
+  const quote = await getCheckoutQuote({
+    durationMonths: state.durationMonths,
+    telegramUserId: ctx.from.id,
+    couponCode: state.couponCode || null,
+  });
+
+  if (!quote.valid) {
+    state.couponCode = null;
+
+    await ctx.reply(
+      couponErrorMessage(quote.reason),
+      checkoutKeyboard
+    );
+
+    return;
+  }
+
+  state.step = "checkout";
+  state.quote = quote;
+
+  purchaseFlow.set(ctx.from.id, state);
+
+  await ctx.reply(
+    buildQuoteMessage(quote),
+    checkoutKeyboard
+  );
+}
+
+async function submitCheckout(ctx) {
+  const state = purchaseFlow.get(ctx.from.id);
+
+  if (!state || state.step !== "checkout") {
+    return;
+  }
+
+  try {
+    const result = await createPricedPurchaseRequest({
+      telegramUserId: ctx.from.id,
+      username: ctx.from.username,
+      displayName: [
+        ctx.from.first_name,
+        ctx.from.last_name,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      durationMonths: state.durationMonths,
+      couponCode: state.couponCode || null,
+    });
+
+    purchaseFlow.delete(ctx.from.id);
+
+    if (result.alreadyPending) {
+      await ctx.reply(
+        "⏳ یک درخواست خرید پرو از قبل ثبت شده و هنوز باز است.\n\n" +
+          `🆔 شماره درخواست: ${result.request.id}\n` +
+          "برای ادامه، منتظر بررسی درخواست قبلی بمان.",
+        ctx.telegram ? undefined : undefined
+      );
+      return;
+    }
+
+    const request = result.request;
+
+    await ctx.reply(
+      "✅ درخواست خرید پرو ثبت شد.\n\n" +
+        `🆔 شماره درخواست: ${request.id}\n` +
+        `⏳ مدت اشتراک: ${request.duration_months} ماه\n` +
+        `💰 مبلغ قابل پرداخت: ${formatToman(request.price_amount)}\n` +
+        (request.coupon_code
+          ? `🎟️ کد تخفیف: ${request.coupon_code}\n`
+          : "") +
+        "\nدرخواست از طریق پنل مدیریت بررسی می‌شود. پس از دریافت اطلاعات پرداخت، پرداخت را انجام بده و رسید را برای ربات بفرست."
+    );
+  } catch (error) {
+    console.error("Pro checkout submission failed:", error);
+
+    if (
+      error.code === "COUPON_UNAVAILABLE" ||
+      error.code === "COUPON_ALREADY_USED"
+    ) {
+      state.step = "checkout";
+      state.couponCode = null;
+      purchaseFlow.set(ctx.from.id, state);
+
+      await ctx.reply(
+        "⚠️ کد تخفیف هنگام ثبت درخواست دیگر قابل استفاده نبود.\n" +
+          "لطفاً بدون کد یا با کد دیگری ادامه بده.",
+        checkoutKeyboard
+      );
+      return;
+    }
+
+    await ctx.reply(
+      "❌ ثبت درخواست با خطا مواجه شد. کمی بعد دوباره تلاش کن."
+    );
+  }
 }
 
 async function handleReceipt(
@@ -104,7 +278,11 @@ async function handleReceipt(
 
 function createProHandler({ bot, mainMenu }) {
   bot.hears("⭐ زکا پرو", async (ctx) => {
-    purchaseFlow.set(ctx.from.id, true);
+    purchaseFlow.set(ctx.from.id, {
+      step: "duration",
+      durationMonths: null,
+      couponCode: null,
+    });
 
     await ctx.reply(
       "⭐ زکا پرو\n\n" +
@@ -118,11 +296,42 @@ function createProHandler({ bot, mainMenu }) {
   });
 
   bot.hears(
+    "🎟️ وارد کردن کد تخفیف",
+    async (ctx) => {
+      const state = purchaseFlow.get(ctx.from.id);
+
+      if (!state || state.step !== "checkout") {
+        return;
+      }
+
+      state.step = "coupon";
+      purchaseFlow.set(ctx.from.id, state);
+
+      await ctx.reply(
+        "🎟️ کد تخفیف را ارسال کن.\n\n" +
+          "برای لغو ورود کد، «🔙 بازگشت» را بزن.",
+        Markup.keyboard([
+          ["🔙 بازگشت", "❌ لغو درخواست"],
+        ])
+          .resize()
+          .persistent()
+      );
+    }
+  );
+
+  bot.hears(
+    "✅ ثبت درخواست خرید",
+    submitCheckout
+  );
+
+  bot.hears(
     ["🔙 بازگشت", "❌ لغو درخواست"],
     async (ctx, next) => {
       const text = String(
         ctx.message?.text || ""
       ).trim();
+
+      const state = purchaseFlow.get(ctx.from.id);
 
       if (text === "❌ لغو درخواست") {
         const wasInPurchaseFlow = purchaseFlow.has(
@@ -163,8 +372,29 @@ function createProHandler({ bot, mainMenu }) {
         return;
       }
 
-      if (!purchaseFlow.has(ctx.from.id)) {
+      if (!state) {
         return next();
+      }
+
+      if (state.step === "coupon") {
+        state.step = "checkout";
+        purchaseFlow.set(ctx.from.id, state);
+
+        await showCheckout(ctx, state);
+        return;
+      }
+
+      if (state.step === "checkout") {
+        state.step = "duration";
+        state.durationMonths = null;
+        state.couponCode = null;
+        purchaseFlow.set(ctx.from.id, state);
+
+        await ctx.reply(
+          "مدت اشتراک را دوباره انتخاب کن.",
+          durationKeyboard
+        );
+        return;
       }
 
       purchaseFlow.delete(ctx.from.id);
@@ -179,7 +409,9 @@ function createProHandler({ bot, mainMenu }) {
   bot.hears(
     /^(۱|۲|۳|۶|۱۲|1|2|3|6|12) ماهه$/,
     async (ctx) => {
-      if (!purchaseFlow.has(ctx.from.id)) {
+      const state = purchaseFlow.get(ctx.from.id);
+
+      if (!state || state.step !== "duration") {
         return;
       }
 
@@ -191,49 +423,16 @@ function createProHandler({ bot, mainMenu }) {
         return;
       }
 
-      purchaseFlow.delete(ctx.from.id);
+      state.durationMonths = duration;
+      state.couponCode = null;
 
       try {
-        const result = await createPurchaseRequest({
-          telegramUserId: ctx.from.id,
-          username: ctx.from.username,
-          displayName: [
-            ctx.from.first_name,
-            ctx.from.last_name,
-          ]
-            .filter(Boolean)
-            .join(" "),
-          durationMonths: duration,
-        });
-
-        if (result.alreadyPending) {
-          await ctx.reply(
-            "⏳ یک درخواست خرید پرو از قبل ثبت شده و هنوز باز است.\n\n" +
-              `🆔 شماره درخواست: ${result.request.id}\n` +
-              "برای ادامه، منتظر بررسی درخواست قبلی بمان.",
-            mainMenu
-          );
-          return;
-        }
-
-        const request = result.request;
-
-        await ctx.reply(
-          "✅ درخواست خرید پرو ثبت شد.\n\n" +
-            `🆔 شماره درخواست: ${request.id}\n` +
-            `⏳ مدت اشتراک: ${request.duration_months} ماه\n\n` +
-            "درخواست از طریق پنل مدیریت بررسی می‌شود. پس از دریافت اطلاعات پرداخت، می‌توانی پرداخت کنی و رسید را برای ربات بفرستی.",
-          mainMenu
-        );
+        await showCheckout(ctx, state);
       } catch (error) {
-        console.error(
-          "Pro purchase request failed:",
-          error
-        );
+        console.error("Pro quote generation failed:", error);
 
         await ctx.reply(
-          "❌ ثبت درخواست با خطا مواجه شد. لطفاً کمی بعد دوباره تلاش کن.",
-          mainMenu
+          "❌ دریافت قیمت اشتراک انجام نشد. کمی بعد دوباره تلاش کن."
         );
       }
     }
@@ -249,6 +448,43 @@ function createProHandler({ bot, mainMenu }) {
         return next();
       }
 
+      const state = purchaseFlow.get(ctx.from?.id);
+
+      if (state?.step === "coupon") {
+        try {
+          const quote = await getCheckoutQuote({
+            durationMonths: state.durationMonths,
+            telegramUserId: ctx.from.id,
+            couponCode: text,
+          });
+
+          if (!quote.valid) {
+            await ctx.reply(
+              couponErrorMessage(quote.reason)
+            );
+            return;
+          }
+
+          state.couponCode = text
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g, "");
+
+          state.step = "checkout";
+          purchaseFlow.set(ctx.from.id, state);
+
+          await showCheckout(ctx, state);
+        } catch (error) {
+          console.error("Pro coupon validation failed:", error);
+
+          await ctx.reply(
+            "❌ بررسی کد تخفیف انجام نشد. دوباره تلاش کن."
+          );
+        }
+
+        return;
+      }
+
       const handled = await handleReceipt(
         ctx,
         "TEXT",
@@ -260,10 +496,7 @@ function createProHandler({ bot, mainMenu }) {
         return;
       }
     } catch (error) {
-      console.error(
-        "Pro text handler failed:",
-        error
-      );
+      console.error("Pro text handler failed:", error);
     }
 
     return next();
@@ -289,10 +522,7 @@ function createProHandler({ bot, mainMenu }) {
         return;
       }
     } catch (error) {
-      console.error(
-        "Pro photo handler failed:",
-        error
-      );
+      console.error("Pro photo handler failed:", error);
     }
 
     return next();
