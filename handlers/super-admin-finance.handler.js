@@ -98,6 +98,16 @@ function formatDate(date) {
   });
 }
 
+function normalizeDigits(value) {
+  return String(value || "")
+    .replace(/[۰-۹]/g, (digit) =>
+      String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit))
+    )
+    .replace(/[٠-٩]/g, (digit) =>
+      String("٠١٢٣٤٥٦٧٨٩".indexOf(digit))
+    );
+}
+
 function getStatusLabel(status) {
   const labels = {
     SUCCESS: "🟢 موفق",
@@ -354,6 +364,7 @@ async function handleCreateCoupon(ctx) {
     code: null,
     discountPercent: null,
     maxUses: null,
+    startsAt: null,
     expiresAt: null,
   });
 
@@ -521,7 +532,9 @@ async function handleCouponCreationText(ctx, text, state) {
   }
 
   if (state.step === "discount") {
-    const discount = Number(text);
+    const discount = Number(
+      normalizeDigits(text)
+    );
 
     if (
       !Number.isInteger(discount) ||
@@ -558,7 +571,9 @@ async function handleCouponCreationText(ctx, text, state) {
     if (text === "♾️ بدون محدودیت استفاده") {
       state.maxUses = null;
     } else {
-      const maxUses = Number(text);
+      const maxUses = Number(
+        normalizeDigits(text)
+      );
 
       if (
         !Number.isInteger(maxUses) ||
@@ -573,16 +588,73 @@ async function handleCouponCreationText(ctx, text, state) {
       state.maxUses = maxUses;
     }
 
+    state.step = "starts_at";
+
+    couponCreationFlow.set(ctx.from.id, state);
+
+    await ctx.reply(
+      "📅 تاریخ شروع اعتبار کد را وارد کن.\n\n" +
+        "فرمت: YYYY-MM-DD\n" +
+        "مثال: 2026-12-01\n\n" +
+        "اگر کد از همین الان فعال باشد، گزینه زیر را بزن.",
+      Markup.keyboard([
+        ["🟢 شروع از همین الان"],
+        ["❌ لغو ساخت کد"],
+      ])
+        .resize()
+        .oneTime(false)
+    );
+
+    return;
+  }
+
+  if (state.step === "starts_at") {
+    if (text === "🟢 شروع از همین الان") {
+      state.startsAt = null;
+    } else {
+      const dateText = normalizeDigits(text);
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
+        await ctx.reply(
+          "❌ تاریخ معتبر نیست.\n" +
+            "از فرمت YYYY-MM-DD استفاده کن."
+        );
+        return;
+      }
+
+      const [year, month, day] = dateText
+        .split("-")
+        .map(Number);
+
+      const calendarDate = new Date(
+        Date.UTC(year, month - 1, day)
+      );
+
+      if (
+        calendarDate.getUTCFullYear() !== year ||
+        calendarDate.getUTCMonth() !== month - 1 ||
+        calendarDate.getUTCDate() !== day
+      ) {
+        await ctx.reply(
+          "❌ تاریخ واردشده معتبر نیست."
+        );
+        return;
+      }
+
+      state.startsAt = new Date(
+        `${dateText}T00:00:00.000+03:30`
+      ).toISOString();
+    }
+
     state.step = "expires_at";
 
     couponCreationFlow.set(ctx.from.id, state);
 
     await ctx.reply(
-      "📅 تاریخ انقضای کد را وارد کن.\n\n" +
-        "فرمت تاریخ:\n" +
-        "YYYY-MM-DD\n\n" +
+      "⏰ تاریخ انقضای کد را وارد کن.\n\n" +
+        "فرمت: YYYY-MM-DD\n" +
         "مثال: 2026-12-31\n\n" +
-        "اگر کد تاریخ انقضا ندارد، دکمه زیر را بزن.",
+        "اگر کد تاریخ انقضا ندارد، گزینه زیر را بزن.",
       Markup.keyboard([
         ["♾️ بدون تاریخ انقضا"],
         ["❌ لغو ساخت کد"],
@@ -598,26 +670,37 @@ async function handleCouponCreationText(ctx, text, state) {
     if (text === "♾️ بدون تاریخ انقضا") {
       state.expiresAt = null;
     } else {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      const dateText = normalizeDigits(text);
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) {
         await ctx.reply(
           "❌ تاریخ معتبر نیست. از فرمت YYYY-MM-DD استفاده کن."
         );
         return;
       }
 
-      const date = new Date(
-        `${text}T23:59:59.999+03:30`
+      const [year, month, day] = dateText
+        .split("-")
+        .map(Number);
+
+      const calendarDate = new Date(
+        Date.UTC(year, month - 1, day)
       );
 
       if (
-        Number.isNaN(date.getTime()) ||
-        date.toISOString().slice(0, 10) !== text
+        calendarDate.getUTCFullYear() !== year ||
+        calendarDate.getUTCMonth() !== month - 1 ||
+        calendarDate.getUTCDate() !== day
       ) {
         await ctx.reply(
           "❌ تاریخ واردشده معتبر نیست."
         );
         return;
       }
+
+      const date = new Date(
+        `${dateText}T23:59:59.999+03:30`
+      );
 
       if (date <= new Date()) {
         await ctx.reply(
@@ -629,11 +712,24 @@ async function handleCouponCreationText(ctx, text, state) {
       state.expiresAt = date.toISOString();
     }
 
+    if (
+      state.startsAt &&
+      state.expiresAt &&
+      new Date(state.expiresAt) <=
+        new Date(state.startsAt)
+    ) {
+      await ctx.reply(
+        "❌ تاریخ انقضا باید بعد از تاریخ شروع باشد."
+      );
+      return;
+    }
+
     try {
       const coupon = await couponService.createCoupon({
         code: state.code,
         discountPercent: state.discountPercent,
         maxUses: state.maxUses,
+        startsAt: state.startsAt,
         expiresAt: state.expiresAt,
         createdBy: ctx.from.id,
       });
@@ -649,6 +745,7 @@ async function handleCouponCreationText(ctx, text, state) {
               ? "نامحدود"
               : coupon.max_uses
           }\n` +
+          `📅 شروع اعتبار: ${formatDate(coupon.starts_at)}\n` +
           `⏰ انقضا: ${formatDate(coupon.expires_at)}\n` +
           "📌 وضعیت: 🟢 فعال",
         buildCouponMenu()
