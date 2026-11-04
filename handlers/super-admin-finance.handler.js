@@ -19,6 +19,10 @@ const {
   createSuperAdminFinancePricingHandler,
 } = require("./super-admin-finance-pricing.handler");
 
+const {
+  createSuperAdminFinanceCouponReportHandler,
+} = require("./super-admin-finance-coupon-report.handler");
+
 const couponCreationFlow = new Map();
 
 async function getSuperAdmin(ctx) {
@@ -432,6 +436,10 @@ async function handleCouponList(ctx) {
 
       buttons.push([
         `${active ? "🔴 غیرفعال‌کردن" : "🟢 فعال‌کردن"} کد ${coupon.id}`,
+      ]);
+
+      buttons.push([
+        `👥 کاربران کد ${coupon.id}`,
       ]);
     }
 
@@ -850,9 +858,9 @@ async function handleUnimplementedFinanceSection(ctx) {
 }
 
 function createSuperAdminFinanceHandler(bot) {
-  // این دو هندلر باید قبل از text handlerهای همین فایل ثبت شوند.
   createSuperAdminFinanceCreditHandler(bot);
   createSuperAdminFinancePricingHandler(bot);
+  createSuperAdminFinanceCouponReportHandler(bot);
 
   bot.hears(
     "💰 مالی",
@@ -892,6 +900,11 @@ function createSuperAdminFinanceHandler(bot) {
   bot.hears(
     "🔙 مدیریت کدهای تخفیف",
     handleCouponMenu
+  );
+
+  bot.hears(
+    "🔙 مشاهده کدهای تخفیف",
+    handleCouponList
   );
 
   bot.hears(
