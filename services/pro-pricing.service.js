@@ -12,6 +12,15 @@ const BASE_PRICES = Object.freeze({
   12: 192000,
 });
 
+// تخفیف ثابت مدت اشتراک
+const PLAN_DISCOUNTS = Object.freeze({
+  1: 0,
+  2: 5,
+  3: 10,
+  6: 15,
+  12: 20,
+});
+
 const ALLOWED_DURATIONS = Object.keys(BASE_PRICES).map(Number);
 
 const MAX_BASE_PRICE = 1000000000;
@@ -109,24 +118,14 @@ async function getExtraDiscountPercent() {
 async function getProPricing(durationMonths) {
   const duration = validateDuration(durationMonths);
 
-  const [basePrice, oneMonthPrice, extraDiscountPercent] =
+  const [basePrice, extraDiscountPercent] =
     await Promise.all([
       getBasePrice(duration),
-      getBasePrice(1),
       getExtraDiscountPercent(),
     ]);
 
-  const planDiscountPercent = duration === 1
-    ? 0
-    : Math.max(
-        0,
-        Math.min(
-          90,
-          Math.round(
-            (1 - basePrice / (oneMonthPrice * duration)) * 100
-          )
-        )
-      );
+  const planDiscountPercent =
+    PLAN_DISCOUNTS[duration];
 
   const effectiveDiscountPercent = Math.max(
     planDiscountPercent,
@@ -136,9 +135,12 @@ async function getProPricing(durationMonths) {
   return {
     durationMonths: duration,
     basePriceAmount: basePrice,
+
     planDiscountPercent,
     extraDiscountPercent,
+
     discountPercent: effectiveDiscountPercent,
+
     priceAmount: calculateFinalPrice(
       basePrice,
       effectiveDiscountPercent
@@ -150,7 +152,9 @@ async function getAllProPricing() {
   const results = [];
 
   for (const duration of ALLOWED_DURATIONS) {
-    results.push(await getProPricing(duration));
+    results.push(
+      await getProPricing(duration)
+    );
   }
 
   return results;
@@ -178,17 +182,25 @@ function formatToman(amount) {
 
 module.exports = {
   BASE_PRICES,
+  PLAN_DISCOUNTS,
   ALLOWED_DURATIONS,
+
   validateDuration,
   validateDiscountPercent,
   validateBasePrice,
+
   calculateFinalPrice,
+
   getBasePrice,
   getAllBasePrices,
   setBasePrice,
+
   getExtraDiscountPercent,
+
   getProPricing,
   getAllProPricing,
+
   setExtraDiscountPercent,
+
   formatToman,
 };
