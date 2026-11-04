@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -91,24 +90,28 @@ async function requireAccess(ctx) {
     await adminProService.requireProManagePermission(
       telegramUserId
     );
+
     return true;
   } catch (error) {
     if (error.code === "PERMISSION_DENIED") {
       await ctx.reply(
         "⛔ مجوز مدیریت Pro برای حساب شما فعال نیست."
       );
+
       return false;
     }
 
     await ctx.reply(
       "⛔ دسترسی به مدیریت Pro امکان‌پذیر نیست."
     );
+
     return false;
   }
 }
 
 async function replyWithProMenu(ctx, message) {
   const menu = await buildAdminProMenu(ctx.from.id);
+
   await ctx.reply(message, menu);
 }
 
@@ -173,6 +176,7 @@ async function handleAdminProText(ctx, next) {
       ctx,
       "❌ عملیات مدیریت Pro لغو شد."
     );
+
     return;
   }
 
@@ -184,6 +188,7 @@ async function handleAdminProText(ctx, next) {
             "❌ اطلاعات پرداخت نباید بیشتر از ۳۵۰۰ کاراکتر باشد.",
             cancelMenu
           );
+
           return;
         }
 
@@ -199,6 +204,7 @@ async function handleAdminProText(ctx, next) {
             ctx,
             "⚠️ این درخواست پیدا نشد یا دیگر منتظر اطلاعات پرداخت نیست."
           );
+
           return;
         }
 
@@ -215,6 +221,7 @@ async function handleAdminProText(ctx, next) {
             ctx,
             "⚠️ وضعیت درخواست تغییر کرده است. اطلاعات پرداخت ارسال نشد."
           );
+
           return;
         }
 
@@ -241,6 +248,7 @@ async function handleAdminProText(ctx, next) {
             ctx,
             "⚠️ اطلاعات پرداخت در درخواست ثبت شد، اما ارسال پیام به کاربر ناموفق بود."
           );
+
           return;
         }
 
@@ -250,6 +258,7 @@ async function handleAdminProText(ctx, next) {
           ctx,
           `✅ اطلاعات پرداخت برای درخواست ${request.id} ارسال شد.`
         );
+
         return;
       }
 
@@ -259,6 +268,7 @@ async function handleAdminProText(ctx, next) {
             "❌ شناسه تلگرام باید فقط عدد باشد.\n\nمثال: 123456789",
             cancelMenu
           );
+
           return;
         }
 
@@ -274,6 +284,7 @@ async function handleAdminProText(ctx, next) {
             "⏳ مدت Pro را انتخاب کنید:",
             durationMenu()
           );
+
           return;
         }
 
@@ -297,6 +308,7 @@ async function handleAdminProText(ctx, next) {
                 result.pro_expires_at
               )}`
           );
+
           return;
         }
 
@@ -320,6 +332,7 @@ async function handleAdminProText(ctx, next) {
                 result.pro_expires_at
               )}`
           );
+
           return;
         }
 
@@ -340,6 +353,7 @@ async function handleAdminProText(ctx, next) {
                   : result.telegram_user_id
               }`
           );
+
           return;
         }
 
@@ -349,6 +363,7 @@ async function handleAdminProText(ctx, next) {
           ctx,
           "❌ عملیات نامعتبر است."
         );
+
         return;
       }
 
@@ -360,6 +375,7 @@ async function handleAdminProText(ctx, next) {
             "❌ مدت نامعتبر است.\n\nیکی از گزینه‌های موجود را انتخاب کنید.",
             durationMenu()
           );
+
           return;
         }
 
@@ -389,6 +405,7 @@ async function handleAdminProText(ctx, next) {
             `📅 شروع: ${formatDate(result.startsAt)}\n` +
             `📅 انقضا: ${formatDate(result.expiresAt)}`
         );
+
         return;
       }
 
@@ -399,6 +416,7 @@ async function handleAdminProText(ctx, next) {
           ctx,
           "⚠️ وضعیت مدیریت Pro نامعتبر بود."
         );
+
         return;
       }
     }
@@ -413,6 +431,7 @@ async function handleAdminProText(ctx, next) {
         "❌ کاربری با این شناسه در دیتابیس پیدا نشد.\n\n" +
           "اول باید کاربر ربات را /start کرده باشد."
       );
+
       return;
     }
 
@@ -422,6 +441,7 @@ async function handleAdminProText(ctx, next) {
         "⚠️ اشتراک Pro این کاربر منقضی شده است.\n\n" +
           "برای فعال‌سازی مجدد، از «⭐ فعال‌سازی Pro» یا «⏳ تمدید Pro» استفاده کنید."
       );
+
       return;
     }
 
@@ -429,6 +449,7 @@ async function handleAdminProText(ctx, next) {
       await ctx.reply(
         "⛔ مجوز مدیریت Pro برای حساب شما فعال نیست."
       );
+
       return;
     }
 
@@ -436,6 +457,7 @@ async function handleAdminProText(ctx, next) {
       await ctx.reply(
         "⛔ حساب شما ادمین فعال نیست."
       );
+
       return;
     }
 
@@ -472,9 +494,14 @@ function buildPurchasePaginationKeyboard(page, hasNext) {
   return Markup.inlineKeyboard([buttons]);
 }
 
-async function showProPurchaseRequests(ctx, page = 0, isCallback = false) {
+async function showProPurchaseRequests(
+  ctx,
+  page = 0,
+  isCallback = false
+) {
   if (!(await requireAccess(ctx))) {
     if (isCallback) await ctx.answerCbQuery();
+
     return;
   }
 
@@ -488,7 +515,11 @@ async function showProPurchaseRequests(ctx, page = 0, isCallback = false) {
       });
 
     const hasNext = requests.length > PURCHASE_PAGE_SIZE;
-    const visibleRequests = requests.slice(0, PURCHASE_PAGE_SIZE);
+
+    const visibleRequests = requests.slice(
+      0,
+      PURCHASE_PAGE_SIZE
+    );
 
     if (isCallback) {
       await ctx.answerCbQuery();
@@ -496,10 +527,15 @@ async function showProPurchaseRequests(ctx, page = 0, isCallback = false) {
 
     if (!visibleRequests.length) {
       if (safePage > 0) {
-        await ctx.reply("📋 درخواست دیگری در این صفحه وجود ندارد.");
+        await ctx.reply(
+          "📋 درخواست دیگری در این صفحه وجود ندارد."
+        );
       } else {
-        await ctx.reply("📋 هیچ درخواست باز خرید Pro ثبت نشده است.");
+        await ctx.reply(
+          "📋 هیچ درخواست باز خرید Pro ثبت نشده است."
+        );
       }
+
       return;
     }
 
@@ -590,7 +626,10 @@ async function showProPurchaseRequests(ctx, page = 0, isCallback = false) {
     }
 
     const paginationKeyboard =
-      buildPurchasePaginationKeyboard(safePage, hasNext);
+      buildPurchasePaginationKeyboard(
+        safePage,
+        hasNext
+      );
 
     if (paginationKeyboard) {
       await ctx.reply(
@@ -620,34 +659,49 @@ async function showProPurchaseRequests(ctx, page = 0, isCallback = false) {
 }
 
 async function handlePurchasePageCallback(ctx) {
-  const data = String(ctx.callbackQuery?.data || "");
-  const match = data.match(/^admin_pro_purchase_page:(\d+)$/);
+  const data = String(
+    ctx.callbackQuery?.data || ""
+  );
+
+  const match = data.match(
+    /^admin_pro_purchase_page:(\d+)$/
+  );
 
   if (!match) {
-    await ctx.answerCbQuery("صفحه نامعتبر است.", {
-      show_alert: true,
-    });
+    await ctx.answerCbQuery(
+      "صفحه نامعتبر است.",
+      { show_alert: true }
+    );
+
     return;
   }
 
-  await showProPurchaseRequests(ctx, Number(match[1]), true);
+  await showProPurchaseRequests(
+    ctx,
+    Number(match[1]),
+    true
+  );
 }
 
 async function startPaymentDetailsFlow(ctx) {
   if (!(await requireAccess(ctx))) {
     await ctx.answerCbQuery();
+
     return;
   }
 
   const match = String(
     ctx.callbackQuery?.data || ""
-  ).match(/^admin_pro_purchase_payment:(\d+)$/);
+  ).match(
+    /^admin_pro_purchase_payment:(\d+)$/
+  );
 
   if (!match) {
     await ctx.answerCbQuery(
       "درخواست نامعتبر است.",
       { show_alert: true }
     );
+
     return;
   }
 
@@ -664,6 +718,7 @@ async function startPaymentDetailsFlow(ctx) {
         "این درخواست دیگر در انتظار اطلاعات پرداخت نیست.",
         { show_alert: true }
       );
+
       return;
     }
 
@@ -696,18 +751,22 @@ async function startPaymentDetailsFlow(ctx) {
 async function resendPaymentDetails(ctx) {
   if (!(await requireAccess(ctx))) {
     await ctx.answerCbQuery();
+
     return;
   }
 
   const match = String(
     ctx.callbackQuery?.data || ""
-  ).match(/^admin_pro_purchase_resend_payment:(\d+)$/);
+  ).match(
+    /^admin_pro_purchase_resend_payment:(\d+)$/
+  );
 
   if (!match) {
     await ctx.answerCbQuery(
       "درخواست نامعتبر است.",
       { show_alert: true }
     );
+
     return;
   }
 
@@ -728,6 +787,7 @@ async function resendPaymentDetails(ctx) {
         "اطلاعات پرداخت موجود نیست یا وضعیت درخواست تغییر کرده است.",
         { show_alert: true }
       );
+
       return;
     }
 
@@ -768,9 +828,13 @@ async function resendPaymentDetails(ctx) {
   }
 }
 
-async function reviewProPurchaseFromPanel(ctx, decision) {
+async function reviewProPurchaseFromPanel(
+  ctx,
+  decision
+) {
   if (!(await requireAccess(ctx))) {
     await ctx.answerCbQuery();
+
     return;
   }
 
@@ -786,6 +850,21 @@ async function reviewProPurchaseFromPanel(ctx, decision) {
         "درخواست نامعتبر است.",
         { show_alert: true }
       );
+
+      return;
+    }
+
+    const callbackDecision =
+      match[1] === "approve"
+        ? "APPROVED"
+        : "REJECTED";
+
+    if (callbackDecision !== decision) {
+      await ctx.answerCbQuery(
+        "عملیات نامعتبر است.",
+        { show_alert: true }
+      );
+
       return;
     }
 
@@ -805,6 +884,7 @@ async function reviewProPurchaseFromPanel(ctx, decision) {
           : "این درخواست قبلاً بررسی شده یا رسید ندارد.",
         { show_alert: true }
       );
+
       return;
     }
 
@@ -822,46 +902,26 @@ async function reviewProPurchaseFromPanel(ctx, decision) {
     }
 
     if (decision === "APPROVED") {
-      await ctx.answerCbQuery("پرداخت تأیید شد.");
-
-      await ctx.reply(
-        `✅ درخواست ${request.id} تأیید شد و Pro فعال شد.`
+      await ctx.answerCbQuery(
+        "پرداخت تأیید شد."
       );
 
-      try {
-        await ctx.telegram.sendMessage(
-          request.telegram_user_id,
-          "🎉 پرداخت زکا پرو تأیید شد!\n\n" +
-            "اشتراک پرو با موفقیت فعال شد.\n" +
-            `⏳ مدت اشتراک: ${request.duration_months} ماه`
-        );
-      } catch (error) {
-        console.error(
-          "Admin panel Pro approval notification failed:",
-          error.message
-        );
-      }
-    } else {
-      await ctx.answerCbQuery("رسید رد شد.");
-
       await ctx.reply(
-        `❌ رسید درخواست ${request.id} رد شد.`
+        `✅ درخواست ${request.id} تأیید شد و Pro فعال شد.\n\n` +
+          "📨 اعلان فعال‌سازی در صف ارسال قرار گرفت."
       );
 
-      try {
-        await ctx.telegram.sendMessage(
-          request.telegram_user_id,
-          "❌ رسید پرداخت زکا پرو تأیید نشد.\n\n" +
-            `🆔 شماره درخواست: ${request.id}\n` +
-            "لطفاً برای بررسی علت با پشتیبانی تماس بگیر."
-        );
-      } catch (error) {
-        console.error(
-          "Admin panel Pro rejection notification failed:",
-          error.message
-        );
-      }
+      return;
     }
+
+    await ctx.answerCbQuery(
+      "رسید رد شد."
+    );
+
+    await ctx.reply(
+      `❌ رسید درخواست ${request.id} رد شد.\n\n` +
+        "📨 اعلان رد رسید در صف ارسال قرار گرفت."
+    );
   } catch (error) {
     console.error(
       "Admin panel Pro purchase review failed:",
@@ -890,7 +950,11 @@ function createAdminProHandler(bot) {
 
   bot.hears(
     "📋 درخواست‌های خرید Pro",
-    (ctx) => showProPurchaseRequests(ctx, 0, false)
+    (ctx) => showProPurchaseRequests(
+      ctx,
+      0,
+      false
+    )
   );
 
   bot.hears(
@@ -930,15 +994,24 @@ function createAdminProHandler(bot) {
 
   bot.action(
     /^admin_pro_purchase_approve:\d+$/,
-    (ctx) => reviewProPurchaseFromPanel(ctx, "APPROVED")
+    (ctx) => reviewProPurchaseFromPanel(
+      ctx,
+      "APPROVED"
+    )
   );
 
   bot.action(
     /^admin_pro_purchase_reject:\d+$/,
-    (ctx) => reviewProPurchaseFromPanel(ctx, "REJECTED")
+    (ctx) => reviewProPurchaseFromPanel(
+      ctx,
+      "REJECTED"
+    )
   );
 
-  bot.on("text", handleAdminProText);
+  bot.on(
+    "text",
+    handleAdminProText
+  );
 }
 
 module.exports = {
