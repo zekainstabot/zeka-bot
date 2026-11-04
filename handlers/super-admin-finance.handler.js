@@ -96,11 +96,13 @@ function getStatusLabel(status) {
     PAID: "🟢 پرداخت‌شده",
     COMPLETED: "🟢 تکمیل‌شده",
     VERIFIED: "🟢 تأییدشده",
+    ACTIVE: "🟢 فعال",
     PENDING: "🟡 در انتظار",
     PROCESSING: "🟡 در حال پردازش",
     FAILED: "🔴 ناموفق",
     REJECTED: "🔴 ردشده",
     CANCELLED: "⚫ لغوشده",
+    EXPIRED: "⚫ منقضی‌شده",
     REFUNDED: "↩️ بازپرداخت‌شده",
   };
 
@@ -207,6 +209,107 @@ async function handleTransactions(ctx) {
 
     await ctx.reply(
       "❌ دریافت تراکنش‌ها انجام نشد. خطای دیتابیس را بررسی کن.",
+      buildFinanceMenu()
+    );
+  }
+}
+
+async function handleProRevenue(ctx) {
+  const admin = await getSuperAdmin(ctx);
+
+  if (!admin) {
+    await ctx.reply(
+      "⛔ فقط Super Admin به گزارش درآمد دسترسی دارد."
+    );
+    return;
+  }
+
+  try {
+    const [summary, sales] = await Promise.all([
+      financeService.getProRevenueSummary(),
+      financeService.getLatestProSales(10),
+    ]);
+
+    const totalRevenue = formatAmount(
+      summary.totalRevenue,
+      "تومان"
+    );
+
+    const todayRevenue = formatAmount(
+      summary.todayRevenue,
+      "تومان"
+    );
+
+    const monthRevenue = formatAmount(
+      summary.currentMonthRevenue,
+      "تومان"
+    );
+
+    let message =
+      "⭐ گزارش درآمد اشتراک Pro\n\n" +
+      "💰 درآمد کل: " + totalRevenue + "\n" +
+      "📅 درآمد امروز: " + todayRevenue + "\n" +
+      "🗓 درآمد ماه جاری: " + monthRevenue + "\n\n" +
+      "━━━━━━━━━━━━━━\n" +
+      "📊 آمار فروش\n\n" +
+      `🛒 تعداد کل فروش: ${summary.paidSubscriptionCount}\n` +
+      `📅 فروش امروز: ${summary.todaySubscriptionCount}\n` +
+      `🗓 فروش ماه جاری: ${summary.currentMonthSubscriptionCount}\n\n`;
+
+    if (summary.zeroPriceSubscriptionCount > 0) {
+      message +=
+        "ℹ️ اشتراک‌های بدون مبلغ ثبت‌شده: " +
+        `${summary.zeroPriceSubscriptionCount}\n\n`;
+    }
+
+    message += "━━━━━━━━━━━━━━\n";
+    message += "🧾 آخرین خریدهای Pro\n\n";
+
+    if (!sales.length) {
+      message += "هنوز خرید پولی Pro ثبت نشده است.";
+    } else {
+      const salesLines = sales.map((item, index) => {
+        const userName = item.username
+          ? `@${item.username}`
+          : item.display_name || "بدون نام";
+
+        const duration = Number(item.duration_months || 0);
+
+        return (
+          `${index + 1}. ⭐ اشتراک Pro\n` +
+          `👤 کاربر: ${userName}\n` +
+          `🆔 Telegram ID: ${item.telegram_user_id}\n` +
+          `📦 مدت اشتراک: ${duration} ماه\n` +
+          `💰 مبلغ: ${formatAmount(item.price, "تومان")}\n` +
+          `📌 وضعیت: ${getStatusLabel(item.status)}\n` +
+          `📅 زمان خرید: ${formatDate(item.created_at)}\n` +
+          `⏰ پایان اشتراک: ${formatDate(item.expires_at)}`
+        );
+      });
+
+      message += salesLines.join(
+        "\n\n━━━━━━━━━━━━━━\n\n"
+      );
+    }
+
+    await ctx.reply(
+      message,
+      Markup.keyboard([
+        ["🔄 تازه‌سازی درآمد Pro"],
+        ["🔙 بخش مالی"],
+      ])
+        .resize()
+        .oneTime(false)
+    );
+  } catch (error) {
+    console.error(
+      "Pro revenue report failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت گزارش درآمد Pro انجام نشد.\n\n" +
+        "خطای دیتابیس یا سرویس مالی را بررسی کن.",
       buildFinanceMenu()
     );
   }
@@ -371,7 +474,7 @@ async function handleCouponToggle(ctx) {
 
     await ctx.reply(
       `${isActive ? "🟢 کد فعال شد" : "🔴 کد غیرفعال شد"}\n\n` +
-        `🎟️ ${coupon.code}`,
+        `🎟️ ${coupon.code}`
     );
 
     await handleCouponList(ctx);
@@ -686,7 +789,17 @@ function createSuperAdminFinanceHandler(bot) {
   );
 
   bot.hears(
-    /^(⭐ درآمد Pro|💰 درآمدها|💸 هزینه‌ها|📊 گزارش مالی)$/,
+    "⭐ درآمد Pro",
+    handleProRevenue
+  );
+
+  bot.hears(
+    "🔄 تازه‌سازی درآمد Pro",
+    handleProRevenue
+  );
+
+  bot.hears(
+    /^(💰 درآمدها|💸 هزینه‌ها|📊 گزارش مالی)$/,
     handleUnimplementedFinanceSection
   );
 
