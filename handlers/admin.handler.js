@@ -25,6 +25,10 @@ const {
 } = require("./admin-users.handler");
 
 const {
+  createAdminBlockedUsersHandler,
+} = require("./admin-blocked-users.handler");
+
+const {
   createAdminCreditsHandler,
 } = require("./admin-credits.handler");
 
@@ -49,11 +53,10 @@ const {
 } = require("./zeka-media.handler");
 
 const PERMISSION_BUTTONS = [
-
   {
-  permission: "zeka_media",
-  button: "📺 مدیریت زکا مدیا",
-},
+    permission: "zeka_media",
+    button: "📺 مدیریت زکا مدیا",
+  },
   {
     permission: "users",
     button: "👥 مدیریت کاربران",
@@ -331,7 +334,10 @@ function createAdminHandler(bot) {
   createAdminQuizHandler(bot);
   createAdminProHandler(bot);
   createAdminFortuneHandler(bot);
+
   createAdminUsersHandler(bot);
+  createAdminBlockedUsersHandler(bot);
+
   createAdminCreditsHandler(bot);
   createAdminRewardsHandler(bot);
   createAdminRequestsHandler(bot);
