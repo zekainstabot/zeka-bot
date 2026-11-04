@@ -1,3 +1,4 @@
+
 const {
   getSetting,
   setSetting,
@@ -12,6 +13,8 @@ const BASE_PRICES = Object.freeze({
 });
 
 const ALLOWED_DURATIONS = Object.keys(BASE_PRICES).map(Number);
+
+const MAX_BASE_PRICE = 1000000000;
 
 function validateDuration(durationMonths) {
   const duration = Number(durationMonths);
@@ -37,6 +40,20 @@ function validateDiscountPercent(percent) {
   return value;
 }
 
+function validateBasePrice(price) {
+  const value = Number(price);
+
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 1 ||
+    value > MAX_BASE_PRICE
+  ) {
+    throw new Error("INVALID_PRO_BASE_PRICE");
+  }
+
+  return value;
+}
+
 function calculateFinalPrice(basePrice, discountPercent) {
   const price = Number(basePrice);
   const discount = Number(discountPercent);
@@ -45,6 +62,39 @@ function calculateFinalPrice(basePrice, discountPercent) {
     0,
     Math.round(price * (100 - discount) / 100)
   );
+}
+
+async function getBasePrice(durationMonths) {
+  const duration = validateDuration(durationMonths);
+
+  const value = await getSetting(
+    `pro.base_price.${duration}`,
+    BASE_PRICES[duration]
+  );
+
+  return validateBasePrice(value);
+}
+
+async function getAllBasePrices() {
+  const results = {};
+
+  for (const duration of ALLOWED_DURATIONS) {
+    results[duration] = await getBasePrice(duration);
+  }
+
+  return results;
+}
+
+async function setBasePrice(durationMonths, price) {
+  const duration = validateDuration(durationMonths);
+  const value = validateBasePrice(price);
+
+  await setSetting(
+    `pro.base_price.${duration}`,
+    value
+  );
+
+  return value;
 }
 
 async function getExtraDiscountPercent() {
@@ -58,16 +108,26 @@ async function getExtraDiscountPercent() {
 
 async function getProPricing(durationMonths) {
   const duration = validateDuration(durationMonths);
-  const basePrice = BASE_PRICES[duration];
 
-  const planDiscountPercent = Math.round(
-    (1 - basePrice / (BASE_PRICES[1] * duration)) * 100
-  );
+  const [basePrice, oneMonthPrice, extraDiscountPercent] =
+    await Promise.all([
+      getBasePrice(duration),
+      getBasePrice(1),
+      getExtraDiscountPercent(),
+    ]);
 
-  const extraDiscountPercent =
-    await getExtraDiscountPercent();
+  const planDiscountPercent = duration === 1
+    ? 0
+    : Math.max(
+        0,
+        Math.min(
+          90,
+          Math.round(
+            (1 - basePrice / (oneMonthPrice * duration)) * 100
+          )
+        )
+      );
 
-  // تخفیف عمومی فقط در صورت بیشتر بودن از تخفیف پلن اعمال می‌شود.
   const effectiveDiscountPercent = Math.max(
     planDiscountPercent,
     extraDiscountPercent
@@ -121,7 +181,11 @@ module.exports = {
   ALLOWED_DURATIONS,
   validateDuration,
   validateDiscountPercent,
+  validateBasePrice,
   calculateFinalPrice,
+  getBasePrice,
+  getAllBasePrices,
+  setBasePrice,
   getExtraDiscountPercent,
   getProPricing,
   getAllProPricing,
