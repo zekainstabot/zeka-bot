@@ -4,6 +4,7 @@ const { Markup } = require("telegraf");
 const adminService = require("../services/admin.service");
 const userRepository = require("../repositories/user.repository");
 const creditService = require("../services/credit.service");
+const adminUserCreditService = require("../services/admin-user-credit.service");
 const { getClient } = require("../database/client");
 
 const states = new Map();
@@ -44,7 +45,16 @@ function mainMenu(admin) {
   ]).resize();
 }
 
-function listMenu(page, totalPages, admin) {
+function profileMenu() {
+  return Markup.keyboard([
+    ["➕ افزایش اعتبار", "➖ کاهش اعتبار"],
+    ["📜 تاریخچه اعتبار"],
+    ["🔎 جستجوی کاربر"],
+    ["🔙 منوی کاربران"],
+  ]).resize();
+}
+
+function listMenu(page, totalPages) {
   const buttons = [];
 
   if (page > 0) {
@@ -69,7 +79,14 @@ function listMenu(page, totalPages, admin) {
   return Markup.keyboard(keyboard).resize();
 }
 
-function searchMenu(admin) {
+function searchMenu() {
+  return Markup.keyboard([
+    ["❌ لغو"],
+    ["🔙 منوی کاربران"],
+  ]).resize();
+}
+
+function amountMenu() {
   return Markup.keyboard([
     ["❌ لغو"],
     ["🔙 منوی کاربران"],
@@ -175,9 +192,15 @@ async function showUser(ctx, user, admin) {
     `📅 ثبت‌نام: ${formatDate(user.created_at)}\n` +
     `🕐 آخرین فعالیت: ${formatDate(user.last_active_at)}`;
 
+  setState(ctx.from.id, {
+    step: "userProfile",
+    userId: user.id,
+    telegramUserId: user.telegram_user_id,
+  });
+
   await ctx.reply(
     message,
-    mainMenu(admin)
+    profileMenu()
   );
 }
 
@@ -228,8 +251,6 @@ async function searchUser(ctx, value, admin) {
       mainMenu(admin)
     );
   }
-
-  clearState(ctx.from.id);
 }
 
 async function showUserStats(ctx, admin) {
@@ -264,6 +285,8 @@ async function showUserStats(ctx, admin) {
     `);
 
     const stats = result.rows[0] || {};
+
+    clearState(ctx.from.id);
 
     await ctx.reply(
       "📊 آمار کاربران\n\n" +
@@ -362,6 +385,8 @@ async function showUserList(ctx, filter, page = 0) {
     `, [PAGE_SIZE, offset]);
 
     if (!result.rows.length) {
+      clearState(ctx.from.id);
+
       await ctx.reply(
         `${selected.title}\n\nکاربری در این فهرست وجود ندارد.`,
         mainMenu(admin)
@@ -401,7 +426,7 @@ async function showUserList(ctx, filter, page = 0) {
 
     await ctx.reply(
       message,
-      listMenu(safePage, totalPages, admin)
+      listMenu(safePage, totalPages)
     );
   } catch (error) {
     console.error(
@@ -426,8 +451,7 @@ async function handleUserMenu(ctx) {
   clearState(ctx.from.id);
 
   await ctx.reply(
-    "👥 کاربران\n\n" +
-    "بخش موردنظر را انتخاب کن.",
+    "👥 کاربران\n\nبخش موردنظر را انتخاب کن.",
     mainMenu(admin)
   );
 }
@@ -446,8 +470,186 @@ async function handleSearchStart(ctx) {
   await ctx.reply(
     "🔎 جستجوی کاربر\n\n" +
     "Telegram ID، شناسه داخلی یا Username کاربر را ارسال کن.",
-    searchMenu(admin)
+    searchMenu()
   );
+}
+
+async function handleAmountStart(ctx, operation) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const state = getState(ctx.from.id);
+
+  if (!state || state.step !== "userProfile") {
+    await ctx.reply(
+      "ابتدا یک کاربر را جستجو کن."
+    );
+    return;
+  }
+
+  setState(ctx.from.id, {
+    step: "creditAmount",
+    operation,
+    userId: state.userId,
+    telegramUserId: state.telegramUserId,
+  });
+
+  const title = operation === "add"
+    ? "➕ افزایش اعتبار"
+    : "➖ کاهش اعتبار";
+
+  await ctx.reply(
+    `${title}\n\nمقدار اعتبار را به عدد ارسال کن:`,
+    amountMenu()
+  );
+}
+
+async function handleCreditAmount(ctx, value, state) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const amount = Number(
+    String(value).replace(/,/g, ".").trim()
+  );
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    await ctx.reply(
+      "❌ مقدار نامعتبر است. یک عدد مثبت ارسال کن."
+    );
+    return;
+  }
+
+  try {
+    let result;
+
+    if (state.operation === "add") {
+      result = await adminUserCreditService.addCredit({
+        userId: state.userId,
+        amount,
+        adminTelegramId: ctx.from.id,
+      });
+    } else {
+      result = await adminUserCreditService.removeCredit({
+        userId: state.userId,
+        amount,
+        adminTelegramId: ctx.from.id,
+      });
+    }
+
+    clearState(ctx.from.id);
+
+    const title = state.operation === "add"
+      ? "✅ اعتبار با موفقیت افزایش یافت."
+      : "✅ اعتبار با موفقیت کاهش یافت.";
+
+    await ctx.reply(
+      `${title}\n\n` +
+      `👤 Telegram ID: ${state.telegramUserId}\n` +
+      `💳 مقدار تغییر: ${result.amount}\n` +
+      `📉 موجودی قبل: ${result.balanceBefore}\n` +
+      `📈 موجودی بعد: ${result.balanceAfter}`,
+      Markup.keyboard([
+        ["🔎 جستجوی کاربر"],
+        ["🔙 منوی کاربران"],
+      ]).resize()
+    );
+  } catch (error) {
+    console.error(
+      "Admin credit adjustment failed:",
+      error
+    );
+
+    let message = "❌ عملیات تغییر اعتبار انجام نشد.";
+
+    if (error.message === "INSUFFICIENT_CREDIT") {
+      message =
+        "❌ موجودی کاربر برای این مقدار کاهش اعتبار کافی نیست.";
+    } else if (error.message === "INVALID_AMOUNT") {
+      message = "❌ مقدار اعتبار نامعتبر است.";
+    } else if (error.message === "AMOUNT_TOO_LARGE") {
+      message = "❌ مقدار واردشده بیش از حد مجاز است.";
+    }
+
+    clearState(ctx.from.id);
+
+    await ctx.reply(
+      message,
+      Markup.keyboard([
+        ["🔎 جستجوی کاربر"],
+        ["🔙 منوی کاربران"],
+      ]).resize()
+    );
+  }
+}
+
+async function showCreditHistory(ctx) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const state = getState(ctx.from.id);
+
+  if (!state || !state.userId) {
+    await ctx.reply(
+      "ابتدا یک کاربر را جستجو کن.",
+      mainMenu(admin)
+    );
+    return;
+  }
+
+  try {
+    const history =
+      await adminUserCreditService.getHistory(
+        state.userId,
+        10
+      );
+
+    if (!history.length) {
+      await ctx.reply(
+        "📜 برای این کاربر سابقه اعتباری ثبت نشده است.",
+        profileMenu()
+      );
+      return;
+    }
+
+    const lines = history.map((entry, index) => {
+      const amount = Number(entry.amount);
+      const sign = amount > 0 ? "+" : "";
+
+      return (
+        `${index + 1}. ${entry.entry_type}\n` +
+        `💳 مقدار: ${sign}${amount}\n` +
+        `📊 موجودی قبل: ${entry.balance_before ?? "نامشخص"}\n` +
+        `📊 موجودی بعد: ${entry.balance_after ?? "نامشخص"}\n` +
+        `📝 توضیح: ${entry.description || "ندارد"}\n` +
+        `📅 تاریخ: ${formatDate(entry.created_at)}`
+      );
+    });
+
+    await ctx.reply(
+      "📜 تاریخچه اعتبار کاربر\n\n" +
+      lines.join("\n\n"),
+      profileMenu()
+    );
+  } catch (error) {
+    console.error(
+      "Admin credit history failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت تاریخچه اعتبار انجام نشد.",
+      profileMenu()
+    );
+  }
 }
 
 async function handleBack(ctx) {
@@ -508,6 +710,11 @@ async function handleText(ctx) {
     return true;
   }
 
+  if (text === "🔙 منوی کاربران") {
+    await handleBack(ctx);
+    return true;
+  }
+
   if (state.step === "searchUser") {
     const admin = await requirePermission(ctx);
 
@@ -515,6 +722,11 @@ async function handleText(ctx) {
       await searchUser(ctx, text, admin);
     }
 
+    return true;
+  }
+
+  if (state.step === "creditAmount") {
+    await handleCreditAmount(ctx, text, state);
     return true;
   }
 
@@ -561,6 +773,21 @@ function createAdminUsersHandler(bot) {
         await showUserStats(ctx, admin);
       }
     }
+  );
+
+  bot.hears(
+    "➕ افزایش اعتبار",
+    (ctx) => handleAmountStart(ctx, "add")
+  );
+
+  bot.hears(
+    "➖ کاهش اعتبار",
+    (ctx) => handleAmountStart(ctx, "remove")
+  );
+
+  bot.hears(
+    "📜 تاریخچه اعتبار",
+    showCreditHistory
   );
 
   bot.hears(
