@@ -31,7 +31,9 @@ async function getSuperAdmin(ctx) {
 
 function buildFinanceMenu() {
   return Markup.keyboard([
-    ["💳 تراکنش‌ها", "⭐ درآمد Pro"],
+    ["💳 تراکنش‌ها"],
+    ["💳 مدیریت اعتبار", "💎 مدیریت Pro"],
+    ["⭐ درآمد Pro"],
     ["💰 درآمدها", "💸 هزینه‌ها"],
     ["📊 گزارش مالی"],
     ["🔙 پنل Super Admin"],
@@ -106,13 +108,12 @@ async function handleFinanceMenu(ctx) {
 
   await ctx.reply(
     "💰 مدیریت مالی زکا\n\n" +
-      "از این بخش می‌توانی تراکنش‌ها و گزارش‌های مالی را بررسی کنی.\n\n" +
-      "📌 بخش‌ها:\n" +
-      "💳 تراکنش‌ها\n" +
-      "⭐ درآمد Pro\n" +
-      "💰 درآمدها\n" +
-      "💸 هزینه‌ها\n" +
-      "📊 گزارش مالی\n\n" +
+      "مدیریت پرداخت‌ها، اعتبار کاربران و اشتراک‌های Pro از این بخش انجام می‌شود.\n\n" +
+      "💳 تراکنش‌ها: مشاهده تراکنش‌های ثبت‌شده\n" +
+      "💳 مدیریت اعتبار: افزودن، کسر و مشاهده اعتبار\n" +
+      "💎 مدیریت Pro: فعال‌سازی، تمدید و بررسی خریدها\n" +
+      "⭐ درآمد Pro: گزارش درآمد اشتراک‌ها\n" +
+      "💰 درآمدها و 💸 هزینه‌ها: گزارش مالی\n\n" +
       "یک بخش را انتخاب کن.",
     buildFinanceMenu()
   );
@@ -207,7 +208,7 @@ async function handleUnimplementedFinanceSection(ctx) {
   }
 
   await ctx.reply(
-    "⏳ این بخش هنوز پیاده‌سازی نشده است.",
+    "⏳ این قسمت در مرحله بعد پیاده‌سازی می‌شود.",
     buildFinanceMenu()
   );
 }
@@ -221,6 +222,11 @@ function createSuperAdminFinanceHandler(bot) {
   bot.hears(
     "💳 تراکنش‌ها",
     handleTransactions
+  );
+
+  bot.hears(
+    "🔙 بخش مالی",
+    handleFinanceMenu
   );
 
   bot.hears(
