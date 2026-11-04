@@ -67,7 +67,142 @@ async function getTransactionCount() {
   return Number(result.rows[0]?.total || 0);
 }
 
+async function getProRevenueSummary() {
+  const db = getClient();
+
+  const result = await db.query(
+    `
+      SELECT
+        COUNT(*) FILTER (
+          WHERE price > 0
+        )::BIGINT AS paid_subscription_count,
+
+        COALESCE(
+          SUM(price) FILTER (
+            WHERE price > 0
+          ),
+          0
+        ) AS total_revenue,
+
+        COUNT(*) FILTER (
+          WHERE price = 0
+        )::BIGINT AS zero_price_subscription_count,
+
+        COUNT(*) FILTER (
+          WHERE price > 0
+            AND created_at >= date_trunc('month', NOW())
+        )::BIGINT AS current_month_subscription_count,
+
+        COALESCE(
+          SUM(price) FILTER (
+            WHERE price > 0
+              AND created_at >= date_trunc('month', NOW())
+          ),
+          0
+        ) AS current_month_revenue,
+
+        COUNT(*) FILTER (
+          WHERE price > 0
+            AND created_at >= date_trunc('day', NOW())
+        )::BIGINT AS today_subscription_count,
+
+        COALESCE(
+          SUM(price) FILTER (
+            WHERE price > 0
+              AND created_at >= date_trunc('day', NOW())
+          ),
+          0
+        ) AS today_revenue
+
+      FROM pro_subscriptions
+
+      WHERE source_type = 'PURCHASE'
+    `
+  );
+
+  const row = result.rows[0] || {};
+
+  return {
+    paidSubscriptionCount: Number(
+      row.paid_subscription_count || 0
+    ),
+
+    totalRevenue: Number(
+      row.total_revenue || 0
+    ),
+
+    zeroPriceSubscriptionCount: Number(
+      row.zero_price_subscription_count || 0
+    ),
+
+    currentMonthSubscriptionCount: Number(
+      row.current_month_subscription_count || 0
+    ),
+
+    currentMonthRevenue: Number(
+      row.current_month_revenue || 0
+    ),
+
+    todaySubscriptionCount: Number(
+      row.today_subscription_count || 0
+    ),
+
+    todayRevenue: Number(
+      row.today_revenue || 0
+    ),
+  };
+}
+
+async function getLatestProSales(limit = 10) {
+  const db = getClient();
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 10, 50)
+  );
+
+  const result = await db.query(
+    `
+      SELECT
+        subscription.id,
+        subscription.subscription_id,
+        subscription.plan_type,
+        subscription.duration_months,
+        subscription.status,
+        subscription.starts_at,
+        subscription.expires_at,
+        subscription.price,
+        subscription.currency,
+        subscription.metadata,
+        subscription.created_at,
+
+        users.telegram_user_id,
+        users.username,
+        users.display_name
+
+      FROM pro_subscriptions subscription
+
+      INNER JOIN users
+        ON users.id = subscription.user_id
+
+      WHERE subscription.source_type = 'PURCHASE'
+        AND subscription.price > 0
+
+      ORDER BY
+        subscription.created_at DESC,
+        subscription.id DESC
+
+      LIMIT $1
+    `,
+    [safeLimit]
+  );
+
+  return result.rows;
+}
+
 module.exports = {
   getLatestTransactions,
   getTransactionCount,
+  getProRevenueSummary,
+  getLatestProSales,
 };
