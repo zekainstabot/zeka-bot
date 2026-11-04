@@ -1,4 +1,3 @@
-
 const { Telegraf } = require("telegraf");
 
 const {
@@ -71,6 +70,11 @@ const {
   startScheduledPublishing,
   stopScheduledPublishing,
 } = require("./features/scheduled-publishing/publishing.scheduler");
+
+const {
+  startProPurchaseNotificationScheduler,
+  stopProPurchaseNotificationScheduler,
+} = require("./scheduler/pro-purchase-notification.scheduler");
 
 const {
   createDownloadHandler,
@@ -212,6 +216,7 @@ function createBot() {
 
   register(async () => {
     stopScheduledPublishing();
+    stopProPurchaseNotificationScheduler();
 
     cleanupQuizTimers();
 
@@ -252,6 +257,8 @@ async function startBot() {
 
   startScheduledPublishing(telegramBot);
 
+  startProPurchaseNotificationScheduler(telegramBot);
+
   try {
     await telegramBot.launch();
 
@@ -263,11 +270,13 @@ async function startBot() {
 
     if (!isPollingConflict) {
       stopScheduledPublishing();
+      stopProPurchaseNotificationScheduler();
+
       throw error;
     }
 
     console.error(
-      "Telegram polling conflict detected. Scheduled publishing will continue in this process.",
+      "Telegram polling conflict detected. Scheduled publishing and Pro notifications will continue in this process.",
       error?.message || error
     );
   }
