@@ -18,6 +18,10 @@ const {
   setSetting,
 } = require("../services/settings.service");
 
+const {
+  createSuperAdminFinanceHandler,
+} = require("./super-admin-finance.handler");
+
 const PLATFORMS = [
   { key: "platform.instagram", name: "اینستاگرام" },
   { key: "platform.tiktok", name: "تیک‌تاک" },
@@ -51,7 +55,8 @@ async function getSuperAdmin(ctx) {
 
 function buildSuperAdminMenu() {
   return Markup.keyboard([
-    ["👥 کاربران", "⚙️ تنظیمات"],
+    ["👥 کاربران", "💰 مالی"],
+    ["⚙️ تنظیمات"],
     ["📥 مدیریت درخواست‌ها", "💳 مدیریت اعتبار"],
     ["🎁 مدیریت جوایز", "🌐 مدیریت پلتفرم‌ها"],
     ["🍪 کوکی اینستاگرام"],
@@ -381,6 +386,8 @@ function createSuperAdminHandler(bot) {
     "🔙 خروج از پنل Super Admin",
     handleSuperAdminExit
   );
+
+  createSuperAdminFinanceHandler(bot);
 }
 
 module.exports = {
