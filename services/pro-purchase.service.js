@@ -1,4 +1,3 @@
-
 const crypto = require("crypto");
 
 const { getClient } = require("../database/client");
@@ -703,16 +702,29 @@ async function reviewPurchaseRequest({
         purchase_request_id: String(request.id),
         reviewer_telegram_user_id:
           String(reviewerTelegramUserId),
+
         base_price_amount: Number(
           request.base_price_amount || 0
         ),
+
         plan_discount_percent: Number(
           request.plan_discount_percent || 0
         ),
+
+        extra_discount_percent: Number(
+          request.extra_discount_percent || 0
+        ),
+
         coupon_code: request.coupon_code || null,
+
         coupon_discount_percent: Number(
           request.coupon_discount_percent || 0
         ),
+
+        applied_discount_percent: Number(
+          request.applied_discount_percent || 0
+        ),
+
         final_price_amount: priceAmount,
         currency: "IRT",
       };
