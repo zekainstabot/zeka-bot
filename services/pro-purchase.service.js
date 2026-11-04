@@ -1,9 +1,15 @@
+
 const crypto = require("crypto");
 
 const { getClient } = require("../database/client");
+
 const adminManagementRepository = require(
   "../repositories/admin-management.repository"
 );
+
+const adminService = require("./admin.service");
+const userRepository = require("../repositories/user.repository");
+const adminActionLogService = require("./admin-action-log.service");
 
 const ALLOWED_DURATIONS = [1, 2, 3, 6, 12];
 
@@ -88,7 +94,10 @@ async function getPurchaseRequests({
     "CANCELLED",
   ];
 
-  if (status !== null && !allowedStatuses.includes(status)) {
+  if (
+    status !== null &&
+    !allowedStatuses.includes(status)
+  ) {
     throw new Error("INVALID_PURCHASE_STATUS");
   }
 
@@ -172,7 +181,8 @@ async function setPaymentCardNumber({
   requestId,
   cardNumber,
 }) {
-  const normalizedCardNumber = String(cardNumber || "").trim();
+  const normalizedCardNumber =
+    String(cardNumber || "").trim();
 
   if (!normalizedCardNumber) {
     throw new Error("INVALID_PAYMENT_CARD_NUMBER");
@@ -237,7 +247,10 @@ async function submitPurchaseReceipt({
     throw new Error("INVALID_RECEIPT_TYPE");
   }
 
-  if (receiptType === "TEXT" && !String(receiptText || "").trim()) {
+  if (
+    receiptType === "TEXT" &&
+    !String(receiptText || "").trim()
+  ) {
     throw new Error("EMPTY_RECEIPT_TEXT");
   }
 
@@ -266,8 +279,12 @@ async function submitPurchaseReceipt({
       requestId,
       String(telegramUserId),
       receiptType,
-      receiptType === "TEXT" ? String(receiptText).trim() : null,
-      receiptType === "PHOTO" ? receiptFileId : null,
+      receiptType === "TEXT"
+        ? String(receiptText).trim()
+        : null,
+      receiptType === "PHOTO"
+        ? receiptFileId
+        : null,
     ]
   );
 
@@ -278,13 +295,75 @@ function addMonths(date, months) {
   const result = new Date(date);
   const originalDay = result.getUTCDate();
 
-  result.setUTCMonth(result.getUTCMonth() + months);
+  result.setUTCMonth(
+    result.getUTCMonth() + months
+  );
 
   if (result.getUTCDate() !== originalDay) {
     result.setUTCDate(0);
   }
 
   return result;
+}
+
+async function logPurchaseReview({
+  request,
+  reviewerTelegramUserId,
+  decision,
+}) {
+  try {
+    const admin =
+      await adminService.getAdminByTelegramId(
+        reviewerTelegramUserId
+      );
+
+    if (!admin || !admin.is_active) {
+      console.error(
+        "Purchase review log skipped: admin not found or inactive."
+      );
+      return;
+    }
+
+    const user =
+      await userRepository.findByTelegramId(
+        String(request.telegram_user_id)
+      );
+
+    if (!user) {
+      console.error(
+        "Purchase review log skipped: target user not found."
+      );
+      return;
+    }
+
+    const approved = decision === "APPROVED";
+
+    await adminActionLogService.recordAction({
+      adminUserId: admin.user_id,
+      adminTelegramUserId: reviewerTelegramUserId,
+      targetUserId: user.id,
+      targetTelegramUserId: request.telegram_user_id,
+      action: approved
+        ? "PRO_ENABLE"
+        : "PRO_PURCHASE_REJECT",
+      details: {
+        operation: approved
+          ? "PURCHASE_APPROVED"
+          : "PURCHASE_REJECTED",
+        purchaseRequestId: request.id,
+        durationMonths: Number(request.duration_months),
+        decision,
+        reason: approved
+          ? "رسید پرداخت خرید Pro توسط مدیر تأیید شد."
+          : "رسید پرداخت خرید Pro توسط مدیر رد شد.",
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Pro purchase review log failed:",
+      error
+    );
+  }
 }
 
 async function reviewPurchaseRequest({
@@ -298,6 +377,8 @@ async function reviewPurchaseRequest({
 
   const db = getClient();
   const client = await db.connect();
+
+  let reviewedRequest = null;
 
   try {
     await client.query("BEGIN");
@@ -316,6 +397,7 @@ async function reviewPurchaseRequest({
 
     if (!request) {
       await client.query("ROLLBACK");
+
       return {
         success: false,
         reason: "NOT_FOUND",
@@ -324,6 +406,7 @@ async function reviewPurchaseRequest({
 
     if (request.status !== "RECEIPT_SUBMITTED") {
       await client.query("ROLLBACK");
+
       return {
         success: false,
         reason: "ALREADY_REVIEWED",
@@ -400,7 +483,8 @@ async function reviewPurchaseRequest({
           String(reviewerTelegramUserId),
           JSON.stringify({
             purchase_request_id: String(request.id),
-            reviewer_telegram_user_id: String(reviewerTelegramUserId),
+            reviewer_telegram_user_id:
+              String(reviewerTelegramUserId),
           }),
         ]
       );
@@ -441,18 +525,27 @@ async function reviewPurchaseRequest({
       throw new Error("PRO_PURCHASE_REVIEW_UPDATE_FAILED");
     }
 
-    await client.query("COMMIT");
+    reviewedRequest = updateResult.rows[0];
 
-    return {
-      success: true,
-      request: updateResult.rows[0],
-    };
+    await client.query("COMMIT");
   } catch (error) {
     await client.query("ROLLBACK");
     throw error;
   } finally {
     client.release();
   }
+
+  // ثبت تاریخچه فقط پس از Commit موفق
+  await logPurchaseReview({
+    request: reviewedRequest,
+    reviewerTelegramUserId,
+    decision,
+  });
+
+  return {
+    success: true,
+    request: reviewedRequest,
+  };
 }
 
 module.exports = {
