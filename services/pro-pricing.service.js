@@ -12,7 +12,6 @@ const BASE_PRICES = Object.freeze({
   12: 192000,
 });
 
-// تخفیف ثابت مدت اشتراک
 const PLAN_DISCOUNTS = Object.freeze({
   1: 0,
   2: 5,
@@ -22,7 +21,6 @@ const PLAN_DISCOUNTS = Object.freeze({
 });
 
 const ALLOWED_DURATIONS = Object.keys(BASE_PRICES).map(Number);
-
 const MAX_BASE_PRICE = 1000000000;
 
 function validateDuration(durationMonths) {
@@ -115,6 +113,75 @@ async function getExtraDiscountPercent() {
   return validateDiscountPercent(value);
 }
 
+/**
+ * خواندن قیمت و تخفیف عمومی داخل تراکنش خرید.
+ *
+ * FOR SHARE باعث می‌شود تغییر تنظیمات توسط ادمین
+ * تا پایان تراکنش خرید منتظر بماند.
+ */
+async function getProPricingWithClient(
+  client,
+  durationMonths
+) {
+  const duration = validateDuration(durationMonths);
+
+  const basePriceKey = `pro.base_price.${duration}`;
+  const discountKey = "pro.extra_discount_percent";
+
+  const result = await client.query(
+    `
+      SELECT
+        setting_key,
+        setting_value
+      FROM system_settings
+      WHERE setting_key = ANY($1::text[])
+      ORDER BY setting_key
+      FOR SHARE
+    `,
+    [[basePriceKey, discountKey]]
+  );
+
+  const settings = new Map(
+    result.rows.map((row) => [
+      row.setting_key,
+      row.setting_value,
+    ])
+  );
+
+  const basePrice = validateBasePrice(
+    settings.has(basePriceKey)
+      ? settings.get(basePriceKey)
+      : BASE_PRICES[duration]
+  );
+
+  const extraDiscountPercent =
+    validateDiscountPercent(
+      settings.has(discountKey)
+        ? settings.get(discountKey)
+        : 0
+    );
+
+  const planDiscountPercent =
+    PLAN_DISCOUNTS[duration];
+
+  const effectiveDiscountPercent = Math.max(
+    planDiscountPercent,
+    extraDiscountPercent
+  );
+
+  return {
+    durationMonths: duration,
+    basePriceAmount: basePrice,
+    planDiscountPercent,
+    extraDiscountPercent,
+    discountPercent: effectiveDiscountPercent,
+    priceAmount: calculateFinalPrice(
+      basePrice,
+      effectiveDiscountPercent
+    ),
+  };
+}
+
 async function getProPricing(durationMonths) {
   const duration = validateDuration(durationMonths);
 
@@ -135,12 +202,9 @@ async function getProPricing(durationMonths) {
   return {
     durationMonths: duration,
     basePriceAmount: basePrice,
-
     planDiscountPercent,
     extraDiscountPercent,
-
     discountPercent: effectiveDiscountPercent,
-
     priceAmount: calculateFinalPrice(
       basePrice,
       effectiveDiscountPercent
@@ -198,6 +262,7 @@ module.exports = {
   getExtraDiscountPercent,
 
   getProPricing,
+  getProPricingWithClient,
   getAllProPricing,
 
   setExtraDiscountPercent,
