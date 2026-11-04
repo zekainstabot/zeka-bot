@@ -9,8 +9,14 @@ const adminActionLogService = require("../services/admin-action-log.service");
 const flows = new Map();
 
 async function getSuperAdmin(ctx) {
+  const telegramUserId = ctx.from?.id;
+
+  if (!telegramUserId) {
+    return null;
+  }
+
   const admin = await adminService.getAdminByTelegramId(
-    ctx.from?.id
+    telegramUserId
   );
 
   if (
@@ -32,9 +38,7 @@ function formatAmount(value) {
 }
 
 function formatDate(value) {
-  if (!value) {
-    return "نامشخص";
-  }
+  if (!value) return "نامشخص";
 
   const date = new Date(value);
 
@@ -53,18 +57,14 @@ function creditProfileMenu() {
     ["📜 تاریخچه اعتبار مالی"],
     ["🔎 کاربر دیگر"],
     ["🔙 بخش مالی"],
-  ])
-    .resize()
-    .oneTime(false);
+  ]).resize().oneTime(false);
 }
 
 function creditCancelMenu() {
   return Markup.keyboard([
     ["❌ لغو عملیات"],
     ["🔙 بخش مالی"],
-  ])
-    .resize()
-    .oneTime(false);
+  ]).resize().oneTime(false);
 }
 
 async function showCreditProfile(ctx, user) {
@@ -94,10 +94,7 @@ async function showCreditProfile(ctx, user) {
 
 async function handleCreditMenu(ctx) {
   const admin = await getSuperAdmin(ctx);
-
-  if (!admin) {
-    return;
-  }
+  if (!admin) return;
 
   flows.set(String(ctx.from.id), {
     step: "search",
@@ -105,19 +102,14 @@ async function handleCreditMenu(ctx) {
 
   await ctx.reply(
     "💳 مدیریت اعتبار کاربران\n\n" +
-      "Telegram ID کاربر موردنظر را ارسال کن.\n\n" +
-      "مثال:\n" +
-      "123456789",
+      "Telegram ID کاربر موردنظر را ارسال کن.",
     creditCancelMenu()
   );
 }
 
 async function handleCreditSearchStart(ctx) {
   const admin = await getSuperAdmin(ctx);
-
-  if (!admin) {
-    return;
-  }
+  if (!admin) return;
 
   flows.set(String(ctx.from.id), {
     step: "search",
@@ -131,10 +123,7 @@ async function handleCreditSearchStart(ctx) {
 
 async function handleCreditOperationStart(ctx, operation) {
   const admin = await getSuperAdmin(ctx);
-
-  if (!admin) {
-    return;
-  }
+  if (!admin) return;
 
   const state = flows.get(String(ctx.from.id));
 
@@ -156,7 +145,7 @@ async function handleCreditOperationStart(ctx, operation) {
   await ctx.reply(
     `${title}\n\n` +
       `👤 Telegram ID: ${state.telegramUserId}\n\n` +
-      "مقدار اعتبار را به عدد وارد کن.\n\n" +
+      "مقدار اعتبار را به عدد وارد کن.\n" +
       "حداکثر مقدار مجاز: ۱٬۰۰۰٬۰۰۰",
     creditCancelMenu()
   );
@@ -164,10 +153,7 @@ async function handleCreditOperationStart(ctx, operation) {
 
 async function handleCreditHistory(ctx) {
   const admin = await getSuperAdmin(ctx);
-
-  if (!admin) {
-    return;
-  }
+  if (!admin) return;
 
   const state = flows.get(String(ctx.from.id));
 
@@ -185,7 +171,7 @@ async function handleCreditHistory(ctx) {
     if (!history.length) {
       await ctx.reply(
         "📜 تاریخچه اعتبار\n\n" +
-          "برای این کاربر هنوز هیچ تراکنش اعتباری ثبت نشده است.",
+          "برای این کاربر هنوز تراکنش اعتباری ثبت نشده است.",
         creditProfileMenu()
       );
       return;
@@ -244,7 +230,10 @@ async function logCreditAction({
       },
     });
   } catch (error) {
-    console.error("Finance credit action log failed:", error);
+    console.error(
+      "Finance credit action log failed:",
+      error
+    );
   }
 }
 
@@ -312,7 +301,7 @@ async function processCreditAmount(ctx, text, state, admin) {
         `👤 Telegram ID: ${state.telegramUserId}\n` +
         `💳 مقدار تغییر: ${formatAmount(result.amount)}\n` +
         `📉 موجودی قبل: ${formatAmount(result.balanceBefore)}\n` +
-        `📈 موجودی بعد: ${formatAmount(result.balanceAfter)}`,
+        `📈 موجودی بعد: ${formatAmount(result.balanceAfter)}`
     );
 
     await showCreditProfile(ctx, user);
@@ -353,7 +342,9 @@ async function handleCreditText(ctx, next) {
     return next();
   }
 
-  const text = String(ctx.message?.text || "").trim();
+  const text = String(
+    ctx.message?.text || ""
+  ).trim();
 
   if (
     text === "🔙 بخش مالی" ||
@@ -365,7 +356,9 @@ async function handleCreditText(ctx, next) {
 
   if (text === "❌ لغو عملیات") {
     if (state.userId) {
-      const user = await userRepository.findById(state.userId);
+      const user = await userRepository.findById(
+        state.userId
+      );
 
       if (user) {
         await showCreditProfile(ctx, user);
@@ -412,11 +405,14 @@ async function handleCreditText(ctx, next) {
     }
 
     try {
-      const user = await userRepository.findByTelegramId(text);
+      const user = await userRepository.findByTelegramId(
+        text
+      );
 
       if (!user) {
         await ctx.reply(
-          "❌ کاربری با این Telegram ID پیدا نشد.\n\nیک شناسه دیگر ارسال کن."
+          "❌ کاربری با این Telegram ID پیدا نشد.\n\n" +
+            "یک شناسه دیگر ارسال کن."
         );
         return;
       }
@@ -432,7 +428,12 @@ async function handleCreditText(ctx, next) {
   }
 
   if (state.step === "amount") {
-    await processCreditAmount(ctx, text, state, admin);
+    await processCreditAmount(
+      ctx,
+      text,
+      state,
+      admin
+    );
     return;
   }
 
@@ -440,7 +441,7 @@ async function handleCreditText(ctx, next) {
 }
 
 function createSuperAdminFinanceCreditHandler(bot) {
-  // This middleware must be registered before the finance menu routes.
+  // باید قبل از سایر text handlerهای مالی ثبت شود.
   bot.on("text", handleCreditText);
 
   bot.hears(
