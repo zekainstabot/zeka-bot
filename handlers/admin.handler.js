@@ -1,3 +1,4 @@
+
 const adminService = require("../services/admin.service");
 
 const {
@@ -27,6 +28,10 @@ const {
 const {
   createAdminBlockedUsersHandler,
 } = require("./admin-blocked-users.handler");
+
+const {
+  createAdminActionLogsHandler,
+} = require("./admin-action-logs.handler");
 
 const {
   createAdminCreditsHandler,
@@ -155,9 +160,7 @@ function buildAdminMenu(permissions) {
   return rows;
 }
 
-async function getAdminPanelData(
-  telegramUserId
-) {
+async function getAdminPanelData(telegramUserId) {
   const admin =
     await adminService.getAdminByTelegramId(
       telegramUserId
@@ -251,9 +254,7 @@ async function handleAdminExit(ctx) {
   );
 }
 
-async function handleUnavailableAdminSection(
-  ctx
-) {
+async function handleUnavailableAdminSection(ctx) {
   const button =
     ctx.message?.text;
 
@@ -337,6 +338,7 @@ function createAdminHandler(bot) {
 
   createAdminUsersHandler(bot);
   createAdminBlockedUsersHandler(bot);
+  createAdminActionLogsHandler(bot);
 
   createAdminCreditsHandler(bot);
   createAdminRewardsHandler(bot);
