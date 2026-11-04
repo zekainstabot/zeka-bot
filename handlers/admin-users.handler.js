@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -51,6 +50,7 @@ function mainMenu(admin) {
     ["🆕 کاربران جدید", "🟢 کاربران فعال"],
     ["💎 کاربران Pro"],
     ["📊 آمار کاربران"],
+    ["📚 تاریخچه اقدامات مدیران"],
     [getBackButton(admin)],
   ]).resize();
 }
