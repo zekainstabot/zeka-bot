@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -10,6 +9,10 @@ const financeService = require(
 const couponService = require(
   "../services/pro-coupon.service"
 );
+
+const {
+  createSuperAdminFinanceCreditHandler,
+} = require("./super-admin-finance-credit.handler");
 
 const couponCreationFlow = new Map();
 
@@ -743,6 +746,9 @@ async function handleUnimplementedFinanceSection(ctx) {
 }
 
 function createSuperAdminFinanceHandler(bot) {
+  // مدیریت اعتبار باید قبل از سایر text handlerها ثبت شود.
+  createSuperAdminFinanceCreditHandler(bot);
+
   bot.hears(
     "💰 مالی",
     handleFinanceMenu
