@@ -9,6 +9,9 @@ const couponReportService = require(
 
 const PAGE_SIZE = 10;
 
+// آخرین گزارش مشاهده‌شده برای هر مدیر
+const activeReports = new Map();
+
 async function getSuperAdmin(ctx) {
   const telegramUserId = ctx.from?.id;
 
@@ -69,8 +72,10 @@ function getStatusLabel(status) {
     CANCELLED: "⚫ لغو شده",
   };
 
-  return labels[String(status || "").toUpperCase()] ||
-    `❔ ${status || "نامشخص"}`;
+  return (
+    labels[String(status || "").toUpperCase()] ||
+    `❔ ${status || "نامشخص"}`
+  );
 }
 
 function getUserLabel(item) {
@@ -91,18 +96,17 @@ function buildPageKeyboard(
   totalPages
 ) {
   const buttons = [];
-
   const navigation = [];
 
-  if (page > 0) {
+  if (page > 1) {
     navigation.push(
-      `⬅️ صفحه قبل کد ${couponId} صفحه ${page}`
+      `⬅️ صفحه قبل کد ${couponId} صفحه ${page - 1}`
     );
   }
 
-  if (page + 1 < totalPages) {
+  if (page < totalPages) {
     navigation.push(
-      `صفحه بعد کد ${couponId} صفحه ${page + 2} ➡️`
+      `صفحه بعد کد ${couponId} صفحه ${page + 1} ➡️`
     );
   }
 
@@ -110,10 +114,13 @@ function buildPageKeyboard(
     buttons.push(navigation);
   }
 
-  buttons.push(
-    ["🔄 تازه‌سازی گزارش"],
-    ["🔙 مشاهده کدهای تخفیف"]
-  );
+  buttons.push([
+    `🔄 تازه‌سازی گزارش کد ${couponId} صفحه ${page}`,
+  ]);
+
+  buttons.push([
+    "🔙 مشاهده کدهای تخفیف",
+  ]);
 
   return Markup.keyboard(buttons)
     .resize()
@@ -128,25 +135,37 @@ async function showCouponUsageReport(
   const admin = await getSuperAdmin(ctx);
 
   if (!admin) {
-    await ctx.reply("⛔ فقط Super Admin به این گزارش دسترسی دارد.");
+    await ctx.reply(
+      "⛔ فقط Super Admin به این گزارش دسترسی دارد."
+    );
     return;
   }
 
+  const safeCouponId = Number(couponId);
   const safePage = Math.max(
     1,
     Math.floor(Number(page) || 1)
   );
 
-  const offset = (safePage - 1) * PAGE_SIZE;
+  if (
+    !Number.isSafeInteger(safeCouponId) ||
+    safeCouponId < 1
+  ) {
+    await ctx.reply("❌ شناسه کد تخفیف معتبر نیست.");
+    return;
+  }
 
   try {
-    const report = await couponReportService.getCouponUsageReport(
-      couponId,
-      {
-        limit: PAGE_SIZE,
-        offset,
-      }
-    );
+    const offset = (safePage - 1) * PAGE_SIZE;
+
+    const report =
+      await couponReportService.getCouponUsageReport(
+        safeCouponId,
+        {
+          limit: PAGE_SIZE,
+          offset,
+        }
+      );
 
     if (!report) {
       await ctx.reply(
@@ -165,13 +184,17 @@ async function showCouponUsageReport(
     );
 
     if (safePage > totalPages) {
-      await showCouponUsageReport(
+      return showCouponUsageReport(
         ctx,
-        couponId,
+        safeCouponId,
         totalPages
       );
-      return;
     }
+
+    activeReports.set(ctx.from.id, {
+      couponId: safeCouponId,
+      page: safePage,
+    });
 
     const coupon = report.coupon;
 
@@ -181,7 +204,9 @@ async function showCouponUsageReport(
       `🏷️ درصد تخفیف: ${coupon.discount_percent}٪\n` +
       `📊 تعداد ثبت‌شده: ${report.total}\n` +
       `📈 شمارنده کوپن: ${coupon.usage_count}\n` +
-      `📌 وضعیت: ${coupon.is_active ? "🟢 فعال" : "🔴 غیرفعال"}\n\n` +
+      `📌 وضعیت: ${
+        coupon.is_active ? "🟢 فعال" : "🔴 غیرفعال"
+      }\n\n` +
       "━━━━━━━━━━━━━━\n\n";
 
     if (!report.redemptions.length) {
@@ -201,12 +226,18 @@ async function showCouponUsageReport(
           return (
             `${rowNumber}. 👤 ${username}\n` +
             `🆔 Telegram ID: ${item.telegram_user_id}\n` +
-            `🧾 شماره درخواست: ${item.purchase_request_id || "نامشخص"}\n` +
-            `📦 مدت پلن: ${item.duration_months || "نامشخص"} ماه\n` +
+            `🧾 شماره درخواست: ${
+              item.purchase_request_id || "نامشخص"
+            }\n` +
+            `📦 مدت پلن: ${
+              item.duration_months || "نامشخص"
+            } ماه\n` +
             `🏷️ تخفیف ثبت‌شده: ${item.discount_percent}٪\n` +
             `💰 مبلغ نهایی: ${formatAmount(item.price_amount)}\n` +
             `📌 وضعیت خرید: ${status}\n` +
-            `📅 زمان ثبت کد: ${formatDate(item.redemption_created_at)}`
+            `📅 زمان ثبت کد: ${formatDate(
+              item.redemption_created_at
+            )}`
           );
         }
       );
@@ -223,8 +254,8 @@ async function showCouponUsageReport(
     await ctx.reply(
       message,
       buildPageKeyboard(
-        couponId,
-        safePage - 1,
+        safeCouponId,
+        safePage,
         totalPages
       )
     );
@@ -276,20 +307,34 @@ function createSuperAdminFinanceCouponReportHandler(bot) {
         return;
       }
 
+      const couponId = Number(match[2]);
+      const page = Number(match[3]);
+
       await showCouponUsageReport(
         ctx,
-        Number(match[2]),
-        Number(match[3])
+        couponId,
+        page
       );
     }
   );
 
   bot.hears(
-    "🔄 تازه‌سازی گزارش",
+    /^🔄 تازه‌سازی گزارش کد (\d+) صفحه (\d+)$/,
     async (ctx) => {
-      // برای تازه‌سازی، کاربر می‌تواند دوباره دکمه گزارش همان کد را بزند.
-      await ctx.reply(
-        "برای تازه‌سازی گزارش، دوباره دکمه «👥 کاربران کد» مربوط به همان کد را انتخاب کن."
+      const match = String(
+        ctx.message?.text || ""
+      ).match(
+        /^🔄 تازه‌سازی گزارش کد (\d+) صفحه (\d+)$/
+      );
+
+      if (!match) {
+        return;
+      }
+
+      await showCouponUsageReport(
+        ctx,
+        Number(match[1]),
+        Number(match[2])
       );
     }
   );
