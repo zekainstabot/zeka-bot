@@ -13,6 +13,7 @@ const ACTION_LABELS = {
   CREDIT_REMOVE: "➖ کاهش اعتبار",
   PRO_ENABLE: "🟢 فعال‌سازی Pro",
   PRO_DISABLE: "🔴 غیرفعال‌سازی Pro",
+  PRO_PURCHASE_REJECT: "❌ رد درخواست خرید Pro",
   USER_BLOCK: "🚫 مسدودسازی کاربر",
   USER_UNBLOCK: "🔓 آزادسازی کاربر",
 };
@@ -22,6 +23,7 @@ const ACTION_BUTTONS = {
   "➖ کاهش اعتبار": "CREDIT_REMOVE",
   "🟢 فعال‌سازی Pro": "PRO_ENABLE",
   "🔴 غیرفعال‌سازی Pro": "PRO_DISABLE",
+  "❌ رد درخواست خرید Pro": "PRO_PURCHASE_REJECT",
   "🚫 مسدودسازی کاربر": "USER_BLOCK",
   "🔓 آزادسازی کاربر": "USER_UNBLOCK",
 };
@@ -52,6 +54,34 @@ function formatDate(value) {
   return date.toLocaleString("fa-IR");
 }
 
+function getDetail(details, camelKey, snakeKey) {
+  if (details[camelKey] !== undefined) {
+    return details[camelKey];
+  }
+
+  if (snakeKey && details[snakeKey] !== undefined) {
+    return details[snakeKey];
+  }
+
+  return undefined;
+}
+
+function formatOperation(value) {
+  const labels = {
+    PURCHASE_APPROVED: "تأیید خرید Pro",
+    PURCHASE_REJECTED: "رد خرید Pro",
+    ACTIVATED: "فعال‌سازی Pro",
+    RENEWED: "تمدید Pro",
+    ENABLED: "فعال‌سازی مجدد Pro",
+    DISABLED: "غیرفعال‌سازی Pro",
+    CANCELLED: "لغو اشتراک Pro",
+    ADD: "افزایش اعتبار",
+    REMOVE: "کاهش اعتبار",
+  };
+
+  return labels[value] || value;
+}
+
 function formatDetails(details) {
   if (!details || typeof details !== "object") {
     return "جزئیاتی ثبت نشده";
@@ -59,20 +89,99 @@ function formatDetails(details) {
 
   const lines = [];
 
-  if (details.amount !== undefined) {
-    lines.push(`💳 مقدار: ${details.amount}`);
+  const amount = getDetail(details, "amount");
+  const balanceBefore = getDetail(
+    details,
+    "balanceBefore",
+    "balance_before"
+  );
+  const balanceAfter = getDetail(
+    details,
+    "balanceAfter",
+    "balance_after"
+  );
+
+  const durationMonths = getDetail(
+    details,
+    "durationMonths",
+    "duration_months"
+  );
+
+  const purchaseRequestId = getDetail(
+    details,
+    "purchaseRequestId",
+    "purchase_request_id"
+  );
+
+  const subscriptionId = getDetail(
+    details,
+    "subscriptionId",
+    "subscription_id"
+  );
+
+  const startsAt = getDetail(
+    details,
+    "startsAt",
+    "starts_at"
+  );
+
+  const expiresAt = getDetail(
+    details,
+    "expiresAt",
+    "expires_at"
+  );
+
+  const operation = getDetail(details, "operation");
+  const decision = getDetail(details, "decision");
+  const source = getDetail(details, "source");
+  const reason = getDetail(details, "reason");
+
+  if (amount !== undefined) {
+    lines.push(`💳 مقدار: ${amount}`);
   }
 
-  if (details.balance_before !== undefined) {
-    lines.push(`📉 موجودی قبل: ${details.balance_before}`);
+  if (balanceBefore !== undefined) {
+    lines.push(`📉 موجودی قبل: ${balanceBefore}`);
   }
 
-  if (details.balance_after !== undefined) {
-    lines.push(`📈 موجودی بعد: ${details.balance_after}`);
+  if (balanceAfter !== undefined) {
+    lines.push(`📈 موجودی بعد: ${balanceAfter}`);
   }
 
-  if (details.reason) {
-    lines.push(`📝 دلیل: ${details.reason}`);
+  if (durationMonths !== undefined) {
+    lines.push(`📆 مدت اشتراک: ${durationMonths} ماه`);
+  }
+
+  if (purchaseRequestId !== undefined) {
+    lines.push(`🧾 شناسه درخواست خرید: ${purchaseRequestId}`);
+  }
+
+  if (subscriptionId !== undefined) {
+    lines.push(`🔑 شناسه اشتراک: ${subscriptionId}`);
+  }
+
+  if (startsAt !== undefined) {
+    lines.push(`🟢 شروع اشتراک: ${formatDate(startsAt)}`);
+  }
+
+  if (expiresAt !== undefined) {
+    lines.push(`⏳ پایان اشتراک: ${formatDate(expiresAt)}`);
+  }
+
+  if (operation) {
+    lines.push(`⚙️ نوع عملیات: ${formatOperation(operation)}`);
+  }
+
+  if (decision) {
+    lines.push(`📋 نتیجه بررسی: ${decision}`);
+  }
+
+  if (source) {
+    lines.push(`📌 منبع عملیات: ${source}`);
+  }
+
+  if (reason) {
+    lines.push(`📝 دلیل: ${reason}`);
   }
 
   return lines.length
@@ -84,15 +193,11 @@ function getFilterDescription(filters = {}) {
   const lines = [];
 
   if (filters.adminTelegramId) {
-    lines.push(
-      `👮 مدیر: ${filters.adminTelegramId}`
-    );
+    lines.push(`👮 مدیر: ${filters.adminTelegramId}`);
   }
 
   if (filters.targetTelegramId) {
-    lines.push(
-      `👤 کاربر: ${filters.targetTelegramId}`
-    );
+    lines.push(`👤 کاربر: ${filters.targetTelegramId}`);
   }
 
   if (filters.action) {
@@ -108,9 +213,8 @@ function getFilterDescription(filters = {}) {
     : "بدون فیلتر";
 }
 
-function historyMenu(page, totalPages, filters = {}) {
+function historyMenu(page, totalPages) {
   const keyboard = [];
-
   const navigation = [];
 
   if (page > 0) {
@@ -144,29 +248,18 @@ async function requireUsersPermission(ctx) {
   }
 
   const admin =
-    await adminService.getAdminByTelegramId(
-      telegramId
-    );
+    await adminService.getAdminByTelegramId(telegramId);
 
   if (!admin || !admin.is_active) {
-    await ctx.reply(
-      "⛔ حساب مدیریتی شما فعال نیست."
-    );
-
+    await ctx.reply("⛔ حساب مدیریتی شما فعال نیست.");
     return null;
   }
 
   const allowed =
-    await adminService.hasPermission(
-      admin.user_id,
-      "users"
-    );
+    await adminService.hasPermission(admin.user_id, "users");
 
   if (!allowed) {
-    await ctx.reply(
-      "⛔ دسترسی مدیریت کاربران را ندارید."
-    );
-
+    await ctx.reply("⛔ دسترسی مدیریت کاربران را ندارید.");
     return null;
   }
 
@@ -207,15 +300,13 @@ async function showHistory(ctx, page = 0, filters = null) {
         "📚 تاریخچه اقدامات مدیران\n\n" +
         "هیچ سابقه‌ای با فیلترهای انتخاب‌شده پیدا نشد.\n\n" +
         `🔎 فیلترها:\n${getFilterDescription(activeFilters)}`,
-        historyMenu(0, 0, activeFilters)
+        historyMenu(0, 0)
       );
 
       return;
     }
 
-    const totalPages = Math.ceil(
-      total / PAGE_SIZE
-    );
+    const totalPages = Math.ceil(total / PAGE_SIZE);
 
     const safePage = Math.min(
       Math.max(Number(page) || 0, 0),
@@ -232,17 +323,13 @@ async function showHistory(ctx, page = 0, filters = null) {
       });
 
     if (!entries.length) {
-      await ctx.reply(
-        "❌ سوابقی برای این صفحه پیدا نشد."
-      );
-
+      await ctx.reply("❌ سوابقی برای این صفحه پیدا نشد.");
       return;
     }
 
     const lines = entries.map((entry, index) => {
       const action =
-        ACTION_LABELS[entry.action] ||
-        entry.action;
+        ACTION_LABELS[entry.action] || entry.action;
 
       return (
         `${safePage * PAGE_SIZE + index + 1}. ${action}\n` +
@@ -267,21 +354,11 @@ async function showHistory(ctx, page = 0, filters = null) {
       `🔎 فیلترها:\n${getFilterDescription(activeFilters)}\n\n` +
       "━━━━━━━━━━━━━━\n\n" +
       lines.join("\n\n"),
-      historyMenu(
-        safePage,
-        totalPages,
-        activeFilters
-      )
+      historyMenu(safePage, totalPages)
     );
   } catch (error) {
-    console.error(
-      "Admin action history failed:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ دریافت تاریخچه اقدامات انجام نشد."
-    );
+    console.error("Admin action history failed:", error);
+    await ctx.reply("❌ دریافت تاریخچه اقدامات انجام نشد.");
   }
 }
 
@@ -300,9 +377,7 @@ async function startAdminFilter(ctx) {
   await ctx.reply(
     "👮 فیلتر بر اساس مدیر\n\n" +
     "شناسه عددی تلگرام مدیر موردنظر را ارسال کن:",
-    Markup.keyboard([
-      ["❌ لغو فیلتر"],
-    ]).resize()
+    Markup.keyboard([["❌ لغو فیلتر"]]).resize()
   );
 }
 
@@ -321,9 +396,7 @@ async function startUserFilter(ctx) {
   await ctx.reply(
     "👤 فیلتر بر اساس کاربر\n\n" +
     "شناسه عددی تلگرام کاربر موردنظر را ارسال کن:",
-    Markup.keyboard([
-      ["❌ لغو فیلتر"],
-    ]).resize()
+    Markup.keyboard([["❌ لغو فیلتر"]]).resize()
   );
 }
 
@@ -344,6 +417,7 @@ async function startActionFilter(ctx) {
     Markup.keyboard([
       ["➕ افزایش اعتبار", "➖ کاهش اعتبار"],
       ["🟢 فعال‌سازی Pro", "🔴 غیرفعال‌سازی Pro"],
+      ["❌ رد درخواست خرید Pro"],
       ["🚫 مسدودسازی کاربر", "🔓 آزادسازی کاربر"],
       ["❌ لغو فیلتر"],
     ]).resize()
@@ -357,21 +431,17 @@ async function applyAdminFilter(ctx, value, state) {
     await ctx.reply(
       "❌ شناسه تلگرام معتبر نیست.\nفقط عدد ارسال کن."
     );
-
     return;
   }
 
   try {
     const targetAdmin =
-      await adminService.getAdminByTelegramId(
-        telegramId
-      );
+      await adminService.getAdminByTelegramId(telegramId);
 
     if (!targetAdmin) {
       await ctx.reply(
         "❌ هیچ مدیری با این شناسه تلگرام پیدا نشد."
       );
-
       return;
     }
 
@@ -383,14 +453,8 @@ async function applyAdminFilter(ctx, value, state) {
 
     await showHistory(ctx, 0, filters);
   } catch (error) {
-    console.error(
-      "Admin history admin filter failed:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ اعمال فیلتر مدیر انجام نشد."
-    );
+    console.error("Admin history admin filter failed:", error);
+    await ctx.reply("❌ اعمال فیلتر مدیر انجام نشد.");
   }
 }
 
@@ -401,21 +465,17 @@ async function applyUserFilter(ctx, value, state) {
     await ctx.reply(
       "❌ شناسه تلگرام معتبر نیست.\nفقط عدد ارسال کن."
     );
-
     return;
   }
 
   try {
     const user =
-      await userRepository.findByTelegramId(
-        telegramId
-      );
+      await userRepository.findByTelegramId(telegramId);
 
     if (!user) {
       await ctx.reply(
         "❌ کاربری با این شناسه تلگرام پیدا نشد."
       );
-
       return;
     }
 
@@ -427,23 +487,14 @@ async function applyUserFilter(ctx, value, state) {
 
     await showHistory(ctx, 0, filters);
   } catch (error) {
-    console.error(
-      "Admin history user filter failed:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ اعمال فیلتر کاربر انجام نشد."
-    );
+    console.error("Admin history user filter failed:", error);
+    await ctx.reply("❌ اعمال فیلتر کاربر انجام نشد.");
   }
 }
 
 async function applyActionFilter(ctx, action, state) {
   if (!ACTION_LABELS[action]) {
-    await ctx.reply(
-      "❌ نوع عملیات معتبر نیست."
-    );
-
+    await ctx.reply("❌ نوع عملیات معتبر نیست.");
     return;
   }
 
@@ -475,12 +526,7 @@ async function handleText(ctx, next) {
   const text = ctx.message?.text || "";
 
   if (text === "❌ لغو فیلتر") {
-    await showHistory(
-      ctx,
-      0,
-      state.filters || {}
-    );
-
+    await showHistory(ctx, 0, state.filters || {});
     return;
   }
 
@@ -506,43 +552,23 @@ async function handleText(ctx, next) {
   }
 
   if (text === "🔄 بروزرسانی تاریخچه") {
-    return showHistory(
-      ctx,
-      0,
-      state.filters || {}
-    );
+    return showHistory(ctx, 0, state.filters || {});
   }
 
   if (text === "⬅️ صفحه قبل تاریخچه") {
-    return showHistory(
-      ctx,
-      state.page - 1,
-      state.filters || {}
-    );
+    return showHistory(ctx, state.page - 1, state.filters || {});
   }
 
   if (text === "➡️ صفحه بعد تاریخچه") {
-    return showHistory(
-      ctx,
-      state.page + 1,
-      state.filters || {}
-    );
+    return showHistory(ctx, state.page + 1, state.filters || {});
   }
 
   if (state.step === "filterAdmin") {
-    return applyAdminFilter(
-      ctx,
-      text,
-      state
-    );
+    return applyAdminFilter(ctx, text, state);
   }
 
   if (state.step === "filterUser") {
-    return applyUserFilter(
-      ctx,
-      text,
-      state
-    );
+    return applyUserFilter(ctx, text, state);
   }
 
   if (state.step === "filterAction") {
@@ -552,15 +578,10 @@ async function handleText(ctx, next) {
       await ctx.reply(
         "❌ یکی از عملیات‌های موجود در فهرست را انتخاب کن."
       );
-
       return;
     }
 
-    return applyActionFilter(
-      ctx,
-      action,
-      state
-    );
+    return applyActionFilter(ctx, action, state);
   }
 
   return next();
@@ -572,72 +593,35 @@ function createAdminActionLogsHandler(bot) {
     (ctx) => showHistory(ctx, 0, {})
   );
 
-  bot.hears(
-    "👮 فیلتر مدیر",
-    startAdminFilter
-  );
+  bot.hears("👮 فیلتر مدیر", startAdminFilter);
+  bot.hears("👤 فیلتر کاربر", startUserFilter);
+  bot.hears("⚙️ فیلتر نوع عملیات", startActionFilter);
+  bot.hears("🧹 پاک کردن فیلترها", clearFilters);
 
-  bot.hears(
-    "👤 فیلتر کاربر",
-    startUserFilter
-  );
+  bot.hears("🔄 بروزرسانی تاریخچه", (ctx) => {
+    const state = getState(ctx.from.id);
+    return showHistory(ctx, 0, state?.filters || {});
+  });
 
-  bot.hears(
-    "⚙️ فیلتر نوع عملیات",
-    startActionFilter
-  );
+  bot.hears("⬅️ صفحه قبل تاریخچه", (ctx) => {
+    const state = getState(ctx.from.id);
 
-  bot.hears(
-    "🧹 پاک کردن فیلترها",
-    clearFilters
-  );
-
-  bot.hears(
-    "🔄 بروزرسانی تاریخچه",
-    (ctx) => {
-      const state = getState(ctx.from.id);
-
-      return showHistory(
-        ctx,
-        0,
-        state?.filters || {}
-      );
+    if (!state) {
+      return showHistory(ctx, 0, {});
     }
-  );
 
-  bot.hears(
-    "⬅️ صفحه قبل تاریخچه",
-    (ctx) => {
-      const state = getState(ctx.from.id);
+    return showHistory(ctx, state.page - 1, state.filters || {});
+  });
 
-      if (!state) {
-        return showHistory(ctx, 0, {});
-      }
+  bot.hears("➡️ صفحه بعد تاریخچه", (ctx) => {
+    const state = getState(ctx.from.id);
 
-      return showHistory(
-        ctx,
-        state.page - 1,
-        state.filters || {}
-      );
+    if (!state) {
+      return showHistory(ctx, 0, {});
     }
-  );
 
-  bot.hears(
-    "➡️ صفحه بعد تاریخچه",
-    (ctx) => {
-      const state = getState(ctx.from.id);
-
-      if (!state) {
-        return showHistory(ctx, 0, {});
-      }
-
-      return showHistory(
-        ctx,
-        state.page + 1,
-        state.filters || {}
-      );
-    }
-  );
+    return showHistory(ctx, state.page + 1, state.filters || {});
+  });
 
   bot.on("text", handleText);
 }
