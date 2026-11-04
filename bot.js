@@ -1,3 +1,4 @@
+
 const { Telegraf } = require("telegraf");
 
 const {
@@ -33,6 +34,10 @@ const {
 const {
   createBasicHandler,
 } = require("./handlers/basic.handler");
+
+const {
+  userBlockMiddleware,
+} = require("./middleware/user-block.middleware");
 
 const {
   createAccountHandler,
@@ -116,8 +121,8 @@ function createBot() {
   }
 
   bot = new Telegraf(config.bot.token, {
-  handlerTimeout: 180_000,
-});
+    handlerTimeout: 180_000,
+  });
 
   bot.catch((error, ctx) => {
     console.error("Telegram update handler failed:", {
@@ -141,9 +146,12 @@ function createBot() {
     return next();
   });
 
+  // جلوگیری از دسترسی کاربران مسدودشده
+  bot.use(userBlockMiddleware);
+
   setDeliveryBot(bot);
-setReportBot(bot);
-setZekaMediaBot(bot);
+  setReportBot(bot);
+  setZekaMediaBot(bot);
 
   createQuizHandler({
     bot,
