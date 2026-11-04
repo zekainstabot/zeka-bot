@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -8,9 +7,11 @@ const adminActionLogService = require("../services/admin-action-log.service");
 const flows = new Map();
 
 const PLAN_DURATIONS = [1, 2, 3, 6, 12];
+const FLOW_TTL_MS = 10 * 60 * 1000;
+const MAX_BASE_PRICE = 1000000000;
 
 function normalizeDigits(value) {
-  return String(value || "")
+  return String(value ?? "")
     .replace(/[۰-۹]/g, (digit) =>
       String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit))
     )
@@ -20,15 +21,53 @@ function normalizeDigits(value) {
 }
 
 function formatAmount(value) {
-  return new Intl.NumberFormat("fa-IR", {
-    maximumFractionDigits: 0,
-  }).format(Number(value || 0)) + " تومان";
+  return (
+    new Intl.NumberFormat("fa-IR", {
+      maximumFractionDigits: 0,
+    }).format(Number(value || 0)) + " تومان"
+  );
+}
+
+function getFlowKey(ctx) {
+  return String(ctx.from.id);
+}
+
+function getFlow(ctx) {
+  const key = getFlowKey(ctx);
+  const state = flows.get(key);
+
+  if (!state) {
+    return null;
+  }
+
+  if (
+    !state.updatedAt ||
+    Date.now() - state.updatedAt > FLOW_TTL_MS
+  ) {
+    flows.delete(key);
+    return null;
+  }
+
+  return state;
+}
+
+function setFlow(ctx, state) {
+  flows.set(getFlowKey(ctx), {
+    ...state,
+    updatedAt: Date.now(),
+  });
+}
+
+function clearFlow(ctx) {
+  flows.delete(getFlowKey(ctx));
 }
 
 async function getSuperAdmin(ctx) {
   const telegramUserId = ctx.from?.id;
 
-  if (!telegramUserId) return null;
+  if (!telegramUserId) {
+    return null;
+  }
 
   const admin = await adminService.getAdminByTelegramId(
     telegramUserId
@@ -77,11 +116,18 @@ function durationMenu() {
     .oneTime(false);
 }
 
-function parseDuration(text) {
-  const normalized = normalizeDigits(text)
-    .replace(/[^\d]/g, "");
+function parseDuration(value) {
+  const normalized = normalizeDigits(value).trim();
 
-  const duration = Number(normalized);
+  const match = normalized.match(
+    /^(\d+)\s*(?:ماهه?)?$/
+  );
+
+  if (!match) {
+    return null;
+  }
+
+  const duration = Number(match[1]);
 
   if (!PLAN_DURATIONS.includes(duration)) {
     return null;
@@ -90,18 +136,40 @@ function parseDuration(text) {
   return duration;
 }
 
+function parseIntegerInput(value, allowSeparators = false) {
+  let normalized = normalizeDigits(value).trim();
+
+  if (allowSeparators) {
+    normalized = normalized.replace(/[,٬،\s]/g, "");
+  }
+
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+
+  const number = Number(normalized);
+
+  if (!Number.isSafeInteger(number)) {
+    return null;
+  }
+
+  return number;
+}
+
 async function showPricing(ctx, includeMenu = true) {
-  const [plans, extraDiscount] = await Promise.all([
-    pricingService.getAllProPricing(),
-    pricingService.getExtraDiscountPercent(),
-  ]);
+  const plans = await pricingService.getAllProPricing();
+
+  const extraDiscount =
+    plans.length > 0
+      ? plans[0].extraDiscountPercent
+      : await pricingService.getExtraDiscountPercent();
 
   const lines = plans.map((plan) => {
     return (
       `⭐ پلن ${plan.durationMonths} ماهه\n` +
       `💰 قیمت پایه: ${formatAmount(plan.basePriceAmount)}\n` +
       `🏷️ تخفیف مدت پلن: ${plan.planDiscountPercent}٪\n` +
-      `🎁 تخفیف عمومی: ${extraDiscount}٪\n` +
+      `🎁 تخفیف عمومی: ${plan.extraDiscountPercent}٪\n` +
       `📉 تخفیف نهایی اعمال‌شده: ${plan.discountPercent}٪\n` +
       `✅ قیمت نهایی: ${formatAmount(plan.priceAmount)}`
     );
@@ -124,11 +192,16 @@ async function handlePricingMenu(ctx) {
   const admin = await getSuperAdmin(ctx);
 
   if (!admin) {
+    clearFlow(ctx);
+
     await ctx.reply(
       "⛔ فقط Super Admin به قیمت‌گذاری دسترسی دارد."
     );
+
     return;
   }
+
+  clearFlow(ctx);
 
   try {
     await showPricing(ctx);
@@ -146,9 +219,13 @@ async function handlePricingList(ctx) {
   const admin = await getSuperAdmin(ctx);
 
   if (!admin) {
+    clearFlow(ctx);
+
     await ctx.reply("⛔ دسترسی غیرمجاز.");
     return;
   }
+
+  clearFlow(ctx);
 
   try {
     await showPricing(ctx);
@@ -162,16 +239,17 @@ async function handlePricingList(ctx) {
   }
 }
 
-// شروع تغییر قیمت پایه
 async function handleBasePriceStart(ctx) {
   const admin = await getSuperAdmin(ctx);
 
   if (!admin) {
+    clearFlow(ctx);
+
     await ctx.reply("⛔ دسترسی غیرمجاز.");
     return;
   }
 
-  flows.set(String(ctx.from.id), {
+  setFlow(ctx, {
     step: "select_duration",
   });
 
@@ -183,8 +261,7 @@ async function handleBasePriceStart(ctx) {
   );
 }
 
-// انتخاب پلن
-async function handleDurationSelection(ctx, text, state) {
+async function handleDurationSelection(ctx, text) {
   const duration = parseDuration(text);
 
   if (!duration) {
@@ -192,6 +269,7 @@ async function handleDurationSelection(ctx, text, state) {
       "❌ پلن انتخاب‌شده معتبر نیست.\n\n" +
         "یکی از گزینه‌های منو را انتخاب کن."
     );
+
     return;
   }
 
@@ -200,11 +278,11 @@ async function handleDurationSelection(ctx, text, state) {
       duration
     );
 
-    state.step = "base_price";
-    state.durationMonths = duration;
-    state.currentPrice = currentPrice;
-
-    flows.set(String(ctx.from.id), state);
+    setFlow(ctx, {
+      step: "base_price",
+      durationMonths: duration,
+      currentPrice,
+    });
 
     await ctx.reply(
       `⭐ پلن انتخاب‌شده: ${duration} ماهه\n\n` +
@@ -218,7 +296,7 @@ async function handleDurationSelection(ctx, text, state) {
   } catch (error) {
     console.error("Reading Pro base price failed:", error);
 
-    flows.delete(String(ctx.from.id));
+    clearFlow(ctx);
 
     await ctx.reply(
       "❌ دریافت قیمت فعلی پلن انجام نشد.",
@@ -227,27 +305,36 @@ async function handleDurationSelection(ctx, text, state) {
   }
 }
 
-// ثبت قیمت جدید
 async function handleBasePriceInput(ctx, text, state, admin) {
-  const normalized = normalizeDigits(text)
-    .replace(/[,٬،\s]/g, "");
-
-  const price = Number(normalized);
+  const price = parseIntegerInput(text, true);
 
   if (
-    !Number.isSafeInteger(price) ||
+    price === null ||
     price < 1 ||
-    price > 1000000000
+    price > MAX_BASE_PRICE
   ) {
     await ctx.reply(
       "❌ مبلغ واردشده معتبر نیست.\n\n" +
         "فقط عدد صحیح بین ۱ تا ۱٬۰۰۰٬۰۰۰٬۰۰۰ تومان مجاز است."
     );
+
+    return;
+  }
+
+  const duration = state.durationMonths;
+
+  if (!PLAN_DURATIONS.includes(duration)) {
+    clearFlow(ctx);
+
+    await ctx.reply(
+      "❌ وضعیت عملیات نامعتبر است. دوباره شروع کن.",
+      pricingMenu()
+    );
+
     return;
   }
 
   try {
-    const duration = state.durationMonths;
     const previousPrice = state.currentPrice;
 
     const savedPrice = await pricingService.setBasePrice(
@@ -275,7 +362,7 @@ async function handleBasePriceInput(ctx, text, state, admin) {
       );
     }
 
-    flows.delete(String(ctx.from.id));
+    clearFlow(ctx);
 
     await ctx.reply(
       "✅ قیمت پایه پلن با موفقیت تغییر کرد.\n\n" +
@@ -291,7 +378,7 @@ async function handleBasePriceInput(ctx, text, state, admin) {
   } catch (error) {
     console.error("Saving Pro base price failed:", error);
 
-    flows.delete(String(ctx.from.id));
+    clearFlow(ctx);
 
     await ctx.reply(
       "❌ ذخیره قیمت جدید انجام نشد.",
@@ -300,11 +387,12 @@ async function handleBasePriceInput(ctx, text, state, admin) {
   }
 }
 
-// شروع تغییر تخفیف عمومی
 async function handleDiscountStart(ctx) {
   const admin = await getSuperAdmin(ctx);
 
   if (!admin) {
+    clearFlow(ctx);
+
     await ctx.reply("⛔ دسترسی غیرمجاز.");
     return;
   }
@@ -313,7 +401,7 @@ async function handleDiscountStart(ctx) {
     const currentDiscount =
       await pricingService.getExtraDiscountPercent();
 
-    flows.set(String(ctx.from.id), {
+    setFlow(ctx, {
       step: "discount",
       currentDiscount,
     });
@@ -332,6 +420,8 @@ async function handleDiscountStart(ctx) {
       error
     );
 
+    clearFlow(ctx);
+
     await ctx.reply(
       "❌ دریافت تخفیف فعلی انجام نشد.",
       pricingMenu()
@@ -340,11 +430,10 @@ async function handleDiscountStart(ctx) {
 }
 
 async function handleDiscountInput(ctx, text, state, admin) {
-  const normalized = normalizeDigits(text);
-  const discount = Number(normalized);
+  const discount = parseIntegerInput(text);
 
   if (
-    !Number.isInteger(discount) ||
+    discount === null ||
     discount < 0 ||
     discount > 90
   ) {
@@ -352,6 +441,7 @@ async function handleDiscountInput(ctx, text, state, admin) {
       "❌ درصد تخفیف نامعتبر است.\n\n" +
         "فقط عدد صحیح بین صفر تا ۹۰ مجاز است."
     );
+
     return;
   }
 
@@ -381,7 +471,7 @@ async function handleDiscountInput(ctx, text, state, admin) {
       );
     }
 
-    flows.delete(String(ctx.from.id));
+    clearFlow(ctx);
 
     await ctx.reply(
       "✅ تخفیف عمومی Pro با موفقیت تغییر کرد.\n\n" +
@@ -396,16 +486,15 @@ async function handleDiscountInput(ctx, text, state, admin) {
   } catch (error) {
     console.error("Saving Pro discount failed:", error);
 
+    clearFlow(ctx);
+
     await ctx.reply(
       "❌ ذخیره تخفیف عمومی انجام نشد.",
       pricingMenu()
     );
-
-    flows.delete(String(ctx.from.id));
   }
 }
 
-// مدیریت ورودی‌های متنی
 async function handlePricingText(ctx, next) {
   const telegramUserId = ctx.from?.id;
 
@@ -413,8 +502,7 @@ async function handlePricingText(ctx, next) {
     return next();
   }
 
-  const key = String(telegramUserId);
-  const state = flows.get(key);
+  const state = getFlow(ctx);
 
   if (!state) {
     return next();
@@ -424,16 +512,18 @@ async function handlePricingText(ctx, next) {
     ctx.message?.text || ""
   ).trim();
 
+  // خروج از جریان قیمت‌گذاری
   if (
     text === "🔙 بخش مالی" ||
     text === "🔙 پنل Super Admin"
   ) {
-    flows.delete(key);
+    clearFlow(ctx);
     return next();
   }
 
+  // لغو عملیات
   if (text === "❌ لغو عملیات") {
-    flows.delete(key);
+    clearFlow(ctx);
 
     await ctx.reply(
       "عملیات لغو شد.",
@@ -443,29 +533,33 @@ async function handlePricingText(ctx, next) {
     return;
   }
 
-  if (
-    text === "🏷️ تخفیف عمومی Pro" ||
-    text === "📊 مشاهده قیمت پلن‌ها" ||
-    text === "💰 تغییر قیمت پلن‌ها" ||
-    text === "✏️ تغییر تخفیف عمومی"
-  ) {
+  // تغییر منو باید جریان قبلی را متوقف کند.
+  const navigationButtons = [
+    "🏷️ تخفیف عمومی Pro",
+    "📊 مشاهده قیمت پلن‌ها",
+    "💰 تغییر قیمت پلن‌ها",
+    "✏️ تغییر تخفیف عمومی",
+  ];
+
+  if (navigationButtons.includes(text)) {
+    clearFlow(ctx);
     return next();
   }
 
   const admin = await getSuperAdmin(ctx);
 
   if (!admin) {
-    flows.delete(key);
-    await ctx.reply("⛔ دسترسی غیرمجاز.");
+    clearFlow(ctx);
+
+    await ctx.reply(
+      "⛔ دسترسی غیرمجاز."
+    );
+
     return;
   }
 
   if (state.step === "select_duration") {
-    await handleDurationSelection(
-      ctx,
-      text,
-      state
-    );
+    await handleDurationSelection(ctx, text);
     return;
   }
 
@@ -476,6 +570,7 @@ async function handlePricingText(ctx, next) {
       state,
       admin
     );
+
     return;
   }
 
@@ -486,10 +581,11 @@ async function handlePricingText(ctx, next) {
       state,
       admin
     );
+
     return;
   }
 
-  flows.delete(key);
+  clearFlow(ctx);
   return next();
 }
 
