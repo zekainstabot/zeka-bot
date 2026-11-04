@@ -1,3 +1,4 @@
+
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -13,6 +14,10 @@ const couponService = require(
 const {
   createSuperAdminFinanceCreditHandler,
 } = require("./super-admin-finance-credit.handler");
+
+const {
+  createSuperAdminFinancePricingHandler,
+} = require("./super-admin-finance-pricing.handler");
 
 const couponCreationFlow = new Map();
 
@@ -43,6 +48,7 @@ function buildFinanceMenu() {
     ["💳 تراکنش‌ها"],
     ["💳 مدیریت اعتبار", "💎 مدیریت Pro"],
     ["⭐ درآمد Pro"],
+    ["🏷️ تخفیف عمومی Pro"],
     ["🎟️ کدهای تخفیف"],
     ["💰 درآمدها", "💸 هزینه‌ها"],
     ["📊 گزارش مالی"],
@@ -133,6 +139,7 @@ async function handleFinanceMenu(ctx) {
       "💳 مدیریت اعتبار: افزودن، کسر و مشاهده اعتبار\n" +
       "💎 مدیریت Pro: فعال‌سازی، تمدید و بررسی خریدها\n" +
       "⭐ درآمد Pro: گزارش درآمد اشتراک‌ها\n" +
+      "🏷️ تخفیف عمومی Pro: تنظیم درصد تخفیف همه پلن‌ها\n" +
       "🎟️ کدهای تخفیف: ساخت و مدیریت کدهای خرید Pro\n\n" +
       "یک بخش را انتخاب کن.",
     buildFinanceMenu()
@@ -746,8 +753,9 @@ async function handleUnimplementedFinanceSection(ctx) {
 }
 
 function createSuperAdminFinanceHandler(bot) {
-  // مدیریت اعتبار باید قبل از سایر text handlerها ثبت شود.
+  // این دو هندلر باید قبل از text handlerهای همین فایل ثبت شوند.
   createSuperAdminFinanceCreditHandler(bot);
+  createSuperAdminFinancePricingHandler(bot);
 
   bot.hears(
     "💰 مالی",
