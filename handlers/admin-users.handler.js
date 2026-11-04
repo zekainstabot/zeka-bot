@@ -6,6 +6,7 @@ const userRepository = require("../repositories/user.repository");
 const creditService = require("../services/credit.service");
 const adminUserCreditService = require("../services/admin-user-credit.service");
 const adminProService = require("../services/admin-pro.service");
+const adminActionLogService = require("../services/admin-action-log.service");
 const { getClient } = require("../database/client");
 
 const states = new Map();
@@ -27,6 +28,14 @@ function getState(userId) {
 
 function clearState(userId) {
   states.delete(String(userId));
+}
+
+async function logAdminAction(data) {
+  try {
+    await adminActionLogService.recordAction(data);
+  } catch (error) {
+    console.error("Admin action log failed:", error);
+  }
 }
 
 function getBackButton(admin) {
@@ -572,6 +581,21 @@ async function handleCreditAmount(ctx, value, state) {
       });
     }
 
+    await logAdminAction({
+      adminUserId: admin.user_id,
+      adminTelegramUserId: ctx.from.id,
+      targetUserId: state.userId,
+      targetTelegramUserId: state.telegramUserId,
+      action: state.operation === "add"
+        ? "CREDIT_ADD"
+        : "CREDIT_REMOVE",
+      details: {
+        amount: result.amount,
+        balance_before: result.balanceBefore,
+        balance_after: result.balanceAfter,
+      },
+    });
+
     clearState(ctx.from.id);
 
     const title = state.operation === "add"
@@ -650,6 +674,17 @@ async function handleProfileProAction(ctx, action) {
         targetTelegramUserId: state.telegramUserId,
       });
     }
+
+    await logAdminAction({
+      adminUserId: admin.user_id,
+      adminTelegramUserId: ctx.from.id,
+      targetUserId: state.userId,
+      targetTelegramUserId: state.telegramUserId,
+      action: action === "enable"
+        ? "PRO_ENABLE"
+        : "PRO_DISABLE",
+      details: {},
+    });
 
     const updatedUser =
       await userRepository.findById(state.userId);
@@ -857,6 +892,17 @@ async function handleBlockReason(ctx, reason, state) {
       return;
     }
 
+    await logAdminAction({
+      adminUserId: admin.user_id,
+      adminTelegramUserId: ctx.from.id,
+      targetUserId: updatedUser.id,
+      targetTelegramUserId: updatedUser.telegram_user_id,
+      action: "USER_BLOCK",
+      details: {
+        reason: cleanReason,
+      },
+    });
+
     clearState(ctx.from.id);
 
     await ctx.reply(
@@ -925,6 +971,15 @@ async function handleProfileUnblockAction(ctx) {
       );
       return;
     }
+
+    await logAdminAction({
+      adminUserId: admin.user_id,
+      adminTelegramUserId: ctx.from.id,
+      targetUserId: updatedUser.id,
+      targetTelegramUserId: updatedUser.telegram_user_id,
+      action: "USER_UNBLOCK",
+      details: {},
+    });
 
     await ctx.reply(
       "✅ محدودیت حساب کاربر برداشته شد."
