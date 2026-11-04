@@ -310,6 +310,7 @@ async function logPurchaseReview({
   request,
   reviewerTelegramUserId,
   decision,
+  subscriptionDetails = null,
 }) {
   try {
     const admin =
@@ -338,6 +339,31 @@ async function logPurchaseReview({
 
     const approved = decision === "APPROVED";
 
+    const details = {
+      operation: approved
+        ? "PURCHASE_APPROVED"
+        : "PURCHASE_REJECTED",
+
+      purchaseRequestId: request.id,
+      durationMonths: Number(request.duration_months),
+      decision,
+
+      reason: approved
+        ? "رسید پرداخت خرید Pro توسط مدیر تأیید شد."
+        : "رسید پرداخت خرید Pro توسط مدیر رد شد.",
+    };
+
+    if (approved && subscriptionDetails) {
+      details.subscriptionId =
+        subscriptionDetails.subscriptionId;
+
+      details.startsAt =
+        subscriptionDetails.startsAt;
+
+      details.expiresAt =
+        subscriptionDetails.expiresAt;
+    }
+
     await adminActionLogService.recordAction({
       adminUserId: admin.user_id,
       adminTelegramUserId: reviewerTelegramUserId,
@@ -346,17 +372,7 @@ async function logPurchaseReview({
       action: approved
         ? "PRO_ENABLE"
         : "PRO_PURCHASE_REJECT",
-      details: {
-        operation: approved
-          ? "PURCHASE_APPROVED"
-          : "PURCHASE_REJECTED",
-        purchaseRequestId: request.id,
-        durationMonths: Number(request.duration_months),
-        decision,
-        reason: approved
-          ? "رسید پرداخت خرید Pro توسط مدیر تأیید شد."
-          : "رسید پرداخت خرید Pro توسط مدیر رد شد.",
-      },
+      details,
     });
   } catch (error) {
     console.error(
@@ -379,6 +395,7 @@ async function reviewPurchaseRequest({
   const client = await db.connect();
 
   let reviewedRequest = null;
+  let subscriptionDetails = null;
 
   try {
     await client.query("BEGIN");
@@ -500,6 +517,12 @@ async function reviewPurchaseRequest({
         `,
         [user.id, expiresAt]
       );
+
+      subscriptionDetails = {
+        subscriptionId,
+        startsAt: startsAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      };
     }
 
     const updateResult = await client.query(
@@ -529,17 +552,25 @@ async function reviewPurchaseRequest({
 
     await client.query("COMMIT");
   } catch (error) {
-    await client.query("ROLLBACK");
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Pro purchase rollback failed:",
+        rollbackError
+      );
+    }
+
     throw error;
   } finally {
     client.release();
   }
 
-  // ثبت تاریخچه فقط پس از Commit موفق
   await logPurchaseReview({
     request: reviewedRequest,
     reviewerTelegramUserId,
     decision,
+    subscriptionDetails,
   });
 
   return {
