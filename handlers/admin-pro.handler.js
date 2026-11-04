@@ -1,3 +1,4 @@
+
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -572,6 +573,17 @@ async function showProPurchaseRequests(ctx, page = 0, isCallback = false) {
         ]);
 
         await ctx.reply(details, keyboard);
+      } else if (request.status === "WAITING_RECEIPT") {
+        const keyboard = Markup.inlineKeyboard([
+          [
+            Markup.button.callback(
+              "🔁 ارسال مجدد اطلاعات پرداخت",
+              `admin_pro_purchase_resend_payment:${request.id}`
+            ),
+          ],
+        ]);
+
+        await ctx.reply(details, keyboard);
       } else {
         await ctx.reply(details);
       }
@@ -677,6 +689,81 @@ async function startPaymentDetailsFlow(ctx) {
     await ctx.answerCbQuery(
       "خطا در دریافت درخواست.",
       { show_alert: true }
+    );
+  }
+}
+
+async function resendPaymentDetails(ctx) {
+  if (!(await requireAccess(ctx))) {
+    await ctx.answerCbQuery();
+    return;
+  }
+
+  const match = String(
+    ctx.callbackQuery?.data || ""
+  ).match(/^admin_pro_purchase_resend_payment:(\d+)$/);
+
+  if (!match) {
+    await ctx.answerCbQuery(
+      "درخواست نامعتبر است.",
+      { show_alert: true }
+    );
+    return;
+  }
+
+  const requestId = match[1];
+
+  try {
+    const request =
+      await proPurchaseService.getPurchaseRequestById(
+        requestId
+      );
+
+    if (
+      !request ||
+      request.status !== "WAITING_RECEIPT" ||
+      !request.payment_card_number
+    ) {
+      await ctx.answerCbQuery(
+        "اطلاعات پرداخت موجود نیست یا وضعیت درخواست تغییر کرده است.",
+        { show_alert: true }
+      );
+      return;
+    }
+
+    await ctx.telegram.sendMessage(
+      request.telegram_user_id,
+      "💎 اطلاعات خرید زکا پرو\n\n" +
+        `🆔 شماره درخواست: ${request.id}\n` +
+        `⏳ مدت اشتراک: ${request.duration_months} ماه\n\n` +
+        "📋 اطلاعات پرداخت:\n\n" +
+        request.payment_card_number +
+        "\n\nپس از پرداخت، تصویر رسید را به همین ربات بفرست. " +
+        "اگر تصویر نداری، اطلاعات رسید را به‌صورت متن ارسال کن."
+    );
+
+    await ctx.answerCbQuery(
+      "اطلاعات پرداخت دوباره ارسال شد."
+    );
+
+    await ctx.reply(
+      `✅ اطلاعات پرداخت درخواست ${request.id} دوباره برای کاربر ارسال شد.`
+    );
+  } catch (error) {
+    console.error(
+      "Resending Pro payment details failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "ارسال اطلاعات پرداخت ناموفق بود.",
+        { show_alert: true }
+      );
+    } catch (_) {}
+
+    await ctx.reply(
+      "❌ ارسال مجدد اطلاعات پرداخت انجام نشد. لاگ Render را بررسی کن."
     );
   }
 }
@@ -834,6 +921,11 @@ function createAdminProHandler(bot) {
   bot.action(
     /^admin_pro_purchase_payment:\d+$/,
     startPaymentDetailsFlow
+  );
+
+  bot.action(
+    /^admin_pro_purchase_resend_payment:\d+$/,
+    resendPaymentDetails
   );
 
   bot.action(
