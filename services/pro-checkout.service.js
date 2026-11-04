@@ -3,6 +3,7 @@ const { getClient } = require("../database/client");
 
 const {
   getProPricing,
+  getProPricingWithClient,
   calculateFinalPrice,
 } = require("./pro-pricing.service");
 
@@ -19,117 +20,115 @@ function normalizeCouponCode(code) {
     .replace(/\s+/g, "");
 }
 
-async function getCheckoutQuote({
-  durationMonths,
-  telegramUserId,
-  couponCode = null,
-}) {
-  const pricing = await getProPricing(durationMonths);
+function getCouponError(reason) {
+  const error = new Error(reason);
+  error.code = reason;
+  return error;
+}
 
-  let coupon = null;
+function validateCouponRow(row, telegramUserId) {
+  if (!row) {
+    return "NOT_FOUND";
+  }
 
-  if (couponCode) {
-    const normalizedCode = normalizeCouponCode(
-      couponCode
-    );
+  if (!row.is_active) {
+    return "INACTIVE";
+  }
 
-    if (
-      !normalizedCode ||
-      !/^[A-Z0-9_-]{1,50}$/.test(normalizedCode)
-    ) {
-      return {
-        valid: false,
-        reason: "INVALID_FORMAT",
-      };
-    }
+  const now = new Date();
 
-    const db = getClient();
+  if (
+    row.starts_at &&
+    new Date(row.starts_at) > now
+  ) {
+    return "NOT_STARTED";
+  }
 
-    const result = await db.query(
-      `
-        SELECT
-          coupon.*,
-          EXISTS (
-            SELECT 1
-            FROM pro_discount_redemptions redemption
-            WHERE redemption.coupon_id = coupon.id
-              AND redemption.telegram_user_id = $2
-          ) AS already_used
-        FROM pro_discount_coupons coupon
-        WHERE coupon.code = $1
-        LIMIT 1
-      `,
-      [
-        normalizedCode,
-        String(telegramUserId),
-      ]
-    );
+  if (
+    row.expires_at &&
+    new Date(row.expires_at) <= now
+  ) {
+    return "EXPIRED";
+  }
 
-    const row = result.rows[0];
+  if (
+    row.max_uses !== null &&
+    Number(row.usage_count) >= Number(row.max_uses)
+  ) {
+    return "LIMIT_REACHED";
+  }
 
-    if (!row) {
-      return {
-        valid: false,
-        reason: "NOT_FOUND",
-      };
-    }
+  if (row.already_used) {
+    return "ALREADY_USED";
+  }
 
-    if (!row.is_active) {
-      return {
-        valid: false,
-        reason: "INACTIVE",
-      };
-    }
+  return null;
+}
 
-    const now = new Date();
+async function getCouponForQuote(
+  db,
+  code,
+  telegramUserId
+) {
+  const normalizedCode = normalizeCouponCode(code);
 
-    if (
-      row.starts_at &&
-      new Date(row.starts_at) > now
-    ) {
-      return {
-        valid: false,
-        reason: "NOT_STARTED",
-      };
-    }
+  if (
+    !normalizedCode ||
+    !/^[A-Z0-9_-]{1,50}$/.test(normalizedCode)
+  ) {
+    return {
+      valid: false,
+      reason: "INVALID_FORMAT",
+    };
+  }
 
-    if (
-      row.expires_at &&
-      new Date(row.expires_at) <= now
-    ) {
-      return {
-        valid: false,
-        reason: "EXPIRED",
-      };
-    }
+  const result = await db.query(
+    `
+      SELECT
+        coupon.*,
+        EXISTS (
+          SELECT 1
+          FROM pro_discount_redemptions redemption
+          WHERE redemption.coupon_id = coupon.id
+            AND redemption.telegram_user_id = $2
+        ) AS already_used
+      FROM pro_discount_coupons coupon
+      WHERE coupon.code = $1
+      LIMIT 1
+    `,
+    [
+      normalizedCode,
+      String(telegramUserId),
+    ]
+  );
 
-    if (
-      row.max_uses !== null &&
-      Number(row.usage_count) >=
-        Number(row.max_uses)
-    ) {
-      return {
-        valid: false,
-        reason: "LIMIT_REACHED",
-      };
-    }
+  const row = result.rows[0];
 
-    if (row.already_used) {
-      return {
-        valid: false,
-        reason: "ALREADY_USED",
-      };
-    }
+  const reason = validateCouponRow(
+    row,
+    telegramUserId
+  );
 
-    coupon = {
+  if (reason) {
+    return {
+      valid: false,
+      reason,
+    };
+  }
+
+  return {
+    valid: true,
+    coupon: {
       id: row.id,
       code: row.code,
       discountPercent: Number(
         row.discount_percent
       ),
-    };
-  }
+    },
+  };
+}
 
+function buildQuote(pricing, coupon = null) {
   const couponDiscountPercent =
     coupon?.discountPercent || 0;
 
@@ -165,6 +164,34 @@ async function getCheckoutQuote({
   };
 }
 
+async function getCheckoutQuote({
+  durationMonths,
+  telegramUserId,
+  couponCode = null,
+}) {
+  const pricing = await getProPricing(durationMonths);
+
+  let coupon = null;
+
+  if (couponCode) {
+    const db = getClient();
+
+    const result = await getCouponForQuote(
+      db,
+      couponCode,
+      telegramUserId
+    );
+
+    if (!result.valid) {
+      return result;
+    }
+
+    coupon = result.coupon;
+  }
+
+  return buildQuote(pricing, coupon);
+}
+
 async function createPricedPurchaseRequest({
   telegramUserId,
   username,
@@ -172,25 +199,20 @@ async function createPricedPurchaseRequest({
   durationMonths,
   couponCode = null,
 }) {
-  const quote = await getCheckoutQuote({
-    durationMonths,
-    telegramUserId,
-    couponCode,
-  });
-
-  if (!quote.valid) {
-    const error = new Error(
-      "INVALID_OR_UNAVAILABLE_COUPON"
-    );
-
-    error.code = quote.reason;
-
-    throw error;
-  }
-
   const normalizedTelegramId = String(
     telegramUserId
   );
+
+  const normalizedCouponCode = couponCode
+    ? normalizeCouponCode(couponCode)
+    : null;
+
+  if (
+    normalizedCouponCode &&
+    !/^[A-Z0-9_-]{1,50}$/.test(normalizedCouponCode)
+  ) {
+    throw getCouponError("INVALID_FORMAT");
+  }
 
   const db = getClient();
   const client = await db.connect();
@@ -198,6 +220,7 @@ async function createPricedPurchaseRequest({
   try {
     await client.query("BEGIN");
 
+    // جلوگیری از ثبت هم‌زمان چند درخواست برای یک کاربر
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
       [`pro-purchase-user:${normalizedTelegramId}`]
@@ -233,88 +256,63 @@ async function createPricedPurchaseRequest({
       };
     }
 
+    // قیمت و تخفیف از تنظیمات لحظه ثبت درخواست خوانده می‌شوند.
+    // قفل تنظیمات تا پایان تراکنش نگه داشته می‌شود.
+    const pricing = await getProPricingWithClient(
+      client,
+      durationMonths
+    );
+
     let couponRow = null;
 
-    if (quote.couponCode) {
+    if (normalizedCouponCode) {
       const couponResult = await client.query(
         `
-          SELECT *
-          FROM pro_discount_coupons
-          WHERE code = $1
-          FOR UPDATE
-        `,
-        [quote.couponCode]
-      );
-
-      couponRow = couponResult.rows[0];
-
-      const now = new Date();
-
-      if (
-        !couponRow ||
-        !couponRow.is_active ||
-        (
-          couponRow.starts_at &&
-          new Date(couponRow.starts_at) > now
-        ) ||
-        (
-          couponRow.expires_at &&
-          new Date(couponRow.expires_at) <= now
-        ) ||
-        (
-          couponRow.max_uses !== null &&
-          Number(couponRow.usage_count) >=
-            Number(couponRow.max_uses)
-        )
-      ) {
-        const error = new Error(
-          "COUPON_UNAVAILABLE"
-        );
-
-        error.code = "COUPON_UNAVAILABLE";
-
-        throw error;
-      }
-
-      const alreadyUsed = await client.query(
-        `
-          SELECT id
-          FROM pro_discount_redemptions
-          WHERE coupon_id = $1
-            AND telegram_user_id = $2
-          LIMIT 1
+          SELECT
+            coupon.*,
+            EXISTS (
+              SELECT 1
+              FROM pro_discount_redemptions redemption
+              WHERE redemption.coupon_id = coupon.id
+                AND redemption.telegram_user_id = $2
+            ) AS already_used
+          FROM pro_discount_coupons coupon
+          WHERE coupon.code = $1
+          FOR UPDATE OF coupon
         `,
         [
-          couponRow.id,
+          normalizedCouponCode,
           normalizedTelegramId,
         ]
       );
 
-      if (alreadyUsed.rows.length) {
-        const error = new Error(
-          "COUPON_ALREADY_USED"
+      couponRow = couponResult.rows[0];
+
+      const couponError = validateCouponRow(
+        couponRow,
+        normalizedTelegramId
+      );
+
+      if (couponError) {
+        throw getCouponError(
+          couponError === "ALREADY_USED"
+            ? "COUPON_ALREADY_USED"
+            : "COUPON_UNAVAILABLE"
         );
-
-        error.code = "COUPON_ALREADY_USED";
-
-        throw error;
       }
     }
 
-    const couponDiscountPercent = couponRow
-      ? Number(couponRow.discount_percent)
-      : 0;
+    const coupon = couponRow
+      ? {
+          id: couponRow.id,
+          code: couponRow.code,
+          discountPercent: Number(
+            couponRow.discount_percent
+          ),
+        }
+      : null;
 
-    const appliedDiscountPercent = Math.max(
-      Number(quote.planDiscountPercent || 0),
-      Number(quote.extraDiscountPercent || 0),
-      couponDiscountPercent
-    );
-
-    const finalPrice = calculateFinalPrice(
-      quote.basePriceAmount,
-      appliedDiscountPercent
-    );
+    const quote = buildQuote(pricing, coupon);
 
     const requestResult = await client.query(
       `
@@ -346,17 +344,17 @@ async function createPricedPurchaseRequest({
         normalizedTelegramId,
         username || null,
         displayName || null,
-        Number(durationMonths),
+        quote.durationMonths,
 
         quote.basePriceAmount,
 
         quote.planDiscountPercent,
         quote.extraDiscountPercent,
-        couponRow?.code || null,
-        couponDiscountPercent,
+        quote.couponCode,
+        quote.couponDiscountPercent,
 
-        appliedDiscountPercent,
-        finalPrice,
+        quote.appliedDiscountPercent,
+        quote.priceAmount,
       ]
     );
 
@@ -377,7 +375,7 @@ async function createPricedPurchaseRequest({
           couponRow.id,
           request.id,
           normalizedTelegramId,
-          couponDiscountPercent,
+          quote.couponDiscountPercent,
         ]
       );
 
