@@ -1,4 +1,3 @@
-
 const { getPool } = require("../database/pool");
 
 async function getCouponUsageReport(
@@ -58,37 +57,41 @@ async function getCouponUsageReport(
     db.query(
       `
         SELECT
-          redemption.id AS redemption_id,
-          redemption.telegram_user_id,
-          redemption.discount_percent,
-          redemption.created_at AS redemption_created_at,
-
           request.id AS purchase_request_id,
+          request.telegram_user_id,
           request.username,
           request.display_name,
           request.duration_months,
           request.price_amount,
           request.base_price_amount,
+          request.coupon_discount_percent AS discount_percent,
           request.status AS purchase_status,
           request.created_at AS purchase_created_at,
-          request.reviewed_at
+          request.reviewed_at,
 
-        FROM pro_discount_redemptions redemption
+          COALESCE(
+            redemption.created_at,
+            request.created_at
+          ) AS redemption_created_at
 
-        LEFT JOIN pro_purchase_requests request
-          ON request.id = redemption.purchase_request_id
+        FROM pro_purchase_requests request
 
-        WHERE redemption.coupon_id = $1
+        LEFT JOIN pro_discount_redemptions redemption
+          ON redemption.purchase_request_id = request.id
+          AND redemption.coupon_id = $1
+
+        WHERE request.coupon_code = $2
 
         ORDER BY
-          redemption.created_at DESC,
-          redemption.id DESC
+          request.created_at DESC,
+          request.id DESC
 
-        LIMIT $2
-        OFFSET $3
+        LIMIT $3
+        OFFSET $4
       `,
       [
         safeCouponId,
+        coupon.code,
         safeLimit,
         safeOffset,
       ]
@@ -100,11 +103,11 @@ async function getCouponUsageReport(
           COUNT(*)::INTEGER AS total,
 
           COUNT(*) FILTER (
-            WHERE request.status = 'APPROVED'
+            WHERE status = 'APPROVED'
           )::INTEGER AS approved_count,
 
           COUNT(*) FILTER (
-            WHERE request.status IN (
+            WHERE status IN (
               'PENDING',
               'WAITING_RECEIPT',
               'RECEIPT_SUBMITTED'
@@ -112,21 +115,18 @@ async function getCouponUsageReport(
           )::INTEGER AS pending_count,
 
           COUNT(*) FILTER (
-            WHERE request.status = 'REJECTED'
+            WHERE status = 'REJECTED'
           )::INTEGER AS rejected_count,
 
           COUNT(*) FILTER (
-            WHERE request.status = 'CANCELLED'
+            WHERE status = 'CANCELLED'
           )::INTEGER AS cancelled_count
 
-        FROM pro_discount_redemptions redemption
+        FROM pro_purchase_requests
 
-        LEFT JOIN pro_purchase_requests request
-          ON request.id = redemption.purchase_request_id
-
-        WHERE redemption.coupon_id = $1
+        WHERE coupon_code = $1
       `,
-      [safeCouponId]
+      [coupon.code]
     ),
   ]);
 
