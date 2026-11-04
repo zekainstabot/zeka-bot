@@ -1,13 +1,31 @@
-
 const { getClient } = require("../database/client");
 
-async function getLatestTransactions(limit = 10) {
-  const db = getClient();
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 50;
 
-  const safeLimit = Math.max(
+function normalizeLimit(limit) {
+  const parsed = Number(limit);
+
+  if (!Number.isFinite(parsed)) {
+    return DEFAULT_LIMIT;
+  }
+
+  return Math.max(
     1,
-    Math.min(Number(limit) || 10, 50)
+    Math.min(
+      Math.floor(parsed),
+      MAX_LIMIT
+    )
   );
+}
+
+// --------------------------------------------------
+// Transactions
+// --------------------------------------------------
+
+async function getLatestTransactions(limit = DEFAULT_LIMIT) {
+  const db = getClient();
+  const safeLimit = normalizeLimit(limit);
 
   const result = await db.query(
     `
@@ -64,59 +82,84 @@ async function getTransactionCount() {
     `
   );
 
-  return Number(result.rows[0]?.total || 0);
+  return Number(
+    result.rows[0]?.total || 0
+  );
 }
+
+// --------------------------------------------------
+// Pro revenue summary
+// --------------------------------------------------
 
 async function getProRevenueSummary() {
   const db = getClient();
 
   const result = await db.query(
     `
+      WITH time_boundaries AS (
+        SELECT
+          (
+            date_trunc(
+              'day',
+              NOW() AT TIME ZONE 'Asia/Tehran'
+            ) AT TIME ZONE 'Asia/Tehran'
+          ) AS today_start,
+
+          (
+            date_trunc(
+              'month',
+              NOW() AT TIME ZONE 'Asia/Tehran'
+            ) AT TIME ZONE 'Asia/Tehran'
+          ) AS month_start
+      )
+
       SELECT
         COUNT(*) FILTER (
-          WHERE price > 0
+          WHERE subscription.price > 0
         )::BIGINT AS paid_subscription_count,
 
         COALESCE(
-          SUM(price) FILTER (
-            WHERE price > 0
+          SUM(subscription.price) FILTER (
+            WHERE subscription.price > 0
           ),
           0
         ) AS total_revenue,
 
         COUNT(*) FILTER (
-          WHERE price = 0
+          WHERE subscription.price = 0
         )::BIGINT AS zero_price_subscription_count,
 
         COUNT(*) FILTER (
-          WHERE price > 0
-            AND created_at >= date_trunc('month', NOW())
+          WHERE subscription.price > 0
+            AND subscription.created_at >= boundaries.month_start
         )::BIGINT AS current_month_subscription_count,
 
         COALESCE(
-          SUM(price) FILTER (
-            WHERE price > 0
-              AND created_at >= date_trunc('month', NOW())
+          SUM(subscription.price) FILTER (
+            WHERE subscription.price > 0
+              AND subscription.created_at >= boundaries.month_start
           ),
           0
         ) AS current_month_revenue,
 
         COUNT(*) FILTER (
-          WHERE price > 0
-            AND created_at >= date_trunc('day', NOW())
+          WHERE subscription.price > 0
+            AND subscription.created_at >= boundaries.today_start
         )::BIGINT AS today_subscription_count,
 
         COALESCE(
-          SUM(price) FILTER (
-            WHERE price > 0
-              AND created_at >= date_trunc('day', NOW())
+          SUM(subscription.price) FILTER (
+            WHERE subscription.price > 0
+              AND subscription.created_at >= boundaries.today_start
           ),
           0
         ) AS today_revenue
 
-      FROM pro_subscriptions
+      FROM pro_subscriptions subscription
 
-      WHERE source_type = 'PURCHASE'
+      CROSS JOIN time_boundaries boundaries
+
+      WHERE subscription.source_type = 'PURCHASE'
     `
   );
 
@@ -153,13 +196,13 @@ async function getProRevenueSummary() {
   };
 }
 
-async function getLatestProSales(limit = 10) {
-  const db = getClient();
+// --------------------------------------------------
+// Latest Pro sales
+// --------------------------------------------------
 
-  const safeLimit = Math.max(
-    1,
-    Math.min(Number(limit) || 10, 50)
-  );
+async function getLatestProSales(limit = DEFAULT_LIMIT) {
+  const db = getClient();
+  const safeLimit = normalizeLimit(limit);
 
   const result = await db.query(
     `
@@ -199,6 +242,10 @@ async function getLatestProSales(limit = 10) {
 
   return result.rows;
 }
+
+// --------------------------------------------------
+// Exports
+// --------------------------------------------------
 
 module.exports = {
   getLatestTransactions,
