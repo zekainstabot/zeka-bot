@@ -1,12 +1,19 @@
+
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
 const userRepository = require("../repositories/user.repository");
 const creditService = require("../services/credit.service");
+const { getClient } = require("../database/client");
 
 const states = new Map();
 
-const MENU = "👥 مدیریت کاربران";
+const MENU_BUTTONS = [
+  "👥 کاربران",
+  "👥 مدیریت کاربران",
+];
+
+const PAGE_SIZE = 10;
 
 function setState(userId, state) {
   states.set(String(userId), state);
@@ -20,18 +27,52 @@ function clearState(userId) {
   states.delete(String(userId));
 }
 
-function mainMenu() {
+function getBackButton(admin) {
+  return admin?.role_key === "super_admin"
+    ? "🔙 پنل Super Admin"
+    : "🔙 پنل ادمین";
+}
+
+function mainMenu(admin) {
   return Markup.keyboard([
     ["🔎 جستجوی کاربر"],
+    ["📋 لیست کاربران"],
+    ["🆕 کاربران جدید", "🟢 کاربران فعال"],
+    ["💎 کاربران Pro"],
     ["📊 آمار کاربران"],
-    ["🔙 پنل ادمین"],
+    [getBackButton(admin)],
   ]).resize();
 }
 
-function searchMenu() {
+function listMenu(page, totalPages, admin) {
+  const buttons = [];
+
+  if (page > 0) {
+    buttons.push("⬅️ صفحه قبل");
+  }
+
+  if (page < totalPages - 1) {
+    buttons.push("➡️ صفحه بعد");
+  }
+
+  const keyboard = [];
+
+  if (buttons.length) {
+    keyboard.push(buttons);
+  }
+
+  keyboard.push(
+    ["🔎 جستجوی کاربر"],
+    ["🔙 منوی کاربران"]
+  );
+
+  return Markup.keyboard(keyboard).resize();
+}
+
+function searchMenu(admin) {
   return Markup.keyboard([
     ["❌ لغو"],
-    ["🔙 مدیریت کاربران"],
+    ["🔙 منوی کاربران"],
   ]).resize();
 }
 
@@ -70,11 +111,25 @@ async function requirePermission(ctx) {
   return admin;
 }
 
-async function showUser(ctx, user) {
+function formatDate(value) {
+  if (!value) {
+    return "نامشخص";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "نامشخص";
+  }
+
+  return date.toLocaleString("fa-IR");
+}
+
+async function showUser(ctx, user, admin) {
   if (!user) {
     await ctx.reply(
       "❌ کاربر پیدا نشد.",
-      mainMenu()
+      mainMenu(admin)
     );
     return;
   }
@@ -83,9 +138,7 @@ async function showUser(ctx, user) {
 
   try {
     balance =
-      await creditService.getBalance(
-        user.id
-      );
+      await creditService.getBalance(user.id);
   } catch (error) {
     console.error(
       "Admin user credit lookup failed:",
@@ -107,7 +160,7 @@ async function showUser(ctx, user) {
       ? "🟢 فعال"
       : "🔴 غیرفعال";
 
-  const text =
+  const message =
     "👤 اطلاعات کاربر\n\n" +
     `🆔 شناسه داخلی: ${user.id}\n` +
     `📱 Telegram ID: ${user.telegram_user_id}\n` +
@@ -119,20 +172,16 @@ async function showUser(ctx, user) {
     `🏆 Level: ${user.level || 0}\n` +
     `🔥 Streak: ${user.streak_days || 0}\n` +
     `🌐 زبان: ${user.language || "fa"}\n` +
-    `📅 ثبت‌نام: ${
-      user.created_at || "نامشخص"
-    }\n` +
-    `🕐 آخرین فعالیت: ${
-      user.last_active_at || "نامشخص"
-    }`;
+    `📅 ثبت‌نام: ${formatDate(user.created_at)}\n` +
+    `🕐 آخرین فعالیت: ${formatDate(user.last_active_at)}`;
 
   await ctx.reply(
-    text,
-    mainMenu()
+    message,
+    mainMenu(admin)
   );
 }
 
-async function searchUser(ctx, value) {
+async function searchUser(ctx, value, admin) {
   const query = String(value || "").trim();
 
   if (!query) {
@@ -147,34 +196,27 @@ async function searchUser(ctx, value) {
   try {
     if (/^\d+$/.test(query)) {
       user =
-        await userRepository.findByTelegramId(
-          query
-        );
+        await userRepository.findByTelegramId(query);
 
       if (!user) {
         user =
-          await userRepository.findById(
-            Number(query)
-          );
+          await userRepository.findById(Number(query));
       }
     } else {
-      const username =
-        query.startsWith("@")
-          ? query.slice(1)
-          : query;
+      const username = query.startsWith("@")
+        ? query.slice(1)
+        : query;
 
       if (
         typeof userRepository.findByUsername ===
         "function"
       ) {
         user =
-          await userRepository.findByUsername(
-            username
-          );
+          await userRepository.findByUsername(username);
       }
     }
 
-    await showUser(ctx, user);
+    await showUser(ctx, user, admin);
   } catch (error) {
     console.error(
       "Admin user search failed:",
@@ -183,46 +225,55 @@ async function searchUser(ctx, value) {
 
     await ctx.reply(
       "❌ جستجوی کاربر انجام نشد.",
-      mainMenu()
+      mainMenu(admin)
     );
   }
 
   clearState(ctx.from.id);
 }
 
-async function showUserStats(ctx) {
+async function showUserStats(ctx, admin) {
   try {
-    const db =
-      require("../database/client").getClient();
+    const db = getClient();
 
-    const result =
-      await db.query(`
-        SELECT
-          COUNT(*)::int AS total_users,
-          COUNT(*) FILTER (
-            WHERE created_at >= CURRENT_DATE
-          )::int AS today_users,
-          COUNT(*) FILTER (
-            WHERE last_active_at >= NOW() - INTERVAL '24 hours'
-          )::int AS active_24h,
-          COUNT(*) FILTER (
-            WHERE is_pro = TRUE
-          )::int AS pro_users
-        FROM users
-      `);
+    const result = await db.query(`
+      SELECT
+        COUNT(*)::int AS total_users,
 
-    const stats =
-      result.rows[0] || {};
+        COUNT(*) FILTER (
+          WHERE created_at >= CURRENT_DATE
+        )::int AS today_users,
+
+        COUNT(*) FILTER (
+          WHERE created_at >= NOW() - INTERVAL '7 days'
+        )::int AS week_users,
+
+        COUNT(*) FILTER (
+          WHERE last_active_at >= NOW() - INTERVAL '24 hours'
+        )::int AS active_24h,
+
+        COUNT(*) FILTER (
+          WHERE last_active_at >= NOW() - INTERVAL '7 days'
+        )::int AS active_7d,
+
+        COUNT(*) FILTER (
+          WHERE is_pro = TRUE
+        )::int AS pro_users
+
+      FROM users
+    `);
+
+    const stats = result.rows[0] || {};
 
     await ctx.reply(
       "📊 آمار کاربران\n\n" +
-        `👥 کل کاربران: ${stats.total_users || 0}\n` +
-        `🆕 کاربران امروز: ${stats.today_users || 0}\n` +
-        `🟢 فعال در ۲۴ ساعت اخیر: ${
-          stats.active_24h || 0
-        }\n` +
-        `💎 کاربران Pro: ${stats.pro_users || 0}`,
-      mainMenu()
+      `👥 کل کاربران: ${stats.total_users || 0}\n` +
+      `🆕 ثبت‌نام امروز: ${stats.today_users || 0}\n` +
+      `📅 ثبت‌نام ۷ روز اخیر: ${stats.week_users || 0}\n` +
+      `🟢 فعال در ۲۴ ساعت اخیر: ${stats.active_24h || 0}\n` +
+      `🟢 فعال در ۷ روز اخیر: ${stats.active_7d || 0}\n` +
+      `💎 کاربران Pro: ${stats.pro_users || 0}`,
+      mainMenu(admin)
     );
   } catch (error) {
     console.error(
@@ -232,27 +283,159 @@ async function showUserStats(ctx) {
 
     await ctx.reply(
       "❌ دریافت آمار کاربران انجام نشد.",
-      mainMenu()
+      mainMenu(admin)
+    );
+  }
+}
+
+async function showUserList(ctx, filter, page = 0) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const filters = {
+    all: {
+      title: "📋 فهرست همه کاربران",
+      where: "",
+    },
+    new: {
+      title: "🆕 کاربران جدید",
+      where: "WHERE created_at >= NOW() - INTERVAL '7 days'",
+    },
+    active: {
+      title: "🟢 کاربران فعال",
+      where: "WHERE last_active_at >= NOW() - INTERVAL '7 days'",
+    },
+    pro: {
+      title: "💎 کاربران Pro",
+      where: "WHERE is_pro = TRUE",
+    },
+  };
+
+  const selected = filters[filter];
+
+  if (!selected) {
+    await ctx.reply(
+      "❌ نوع فهرست نامعتبر است.",
+      mainMenu(admin)
+    );
+    return;
+  }
+
+  try {
+    const db = getClient();
+
+    const countResult = await db.query(`
+      SELECT COUNT(*)::int AS total
+      FROM users
+      ${selected.where}
+    `);
+
+    const total = Number(countResult.rows[0]?.total || 0);
+    const totalPages = Math.max(
+      1,
+      Math.ceil(total / PAGE_SIZE)
+    );
+
+    const safePage = Math.min(
+      Math.max(Number(page) || 0, 0),
+      totalPages - 1
+    );
+
+    const offset = safePage * PAGE_SIZE;
+
+    const result = await db.query(`
+      SELECT
+        id,
+        telegram_user_id,
+        username,
+        display_name,
+        is_pro,
+        created_at,
+        last_active_at
+      FROM users
+      ${selected.where}
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [PAGE_SIZE, offset]);
+
+    if (!result.rows.length) {
+      await ctx.reply(
+        `${selected.title}\n\nکاربری در این فهرست وجود ندارد.`,
+        mainMenu(admin)
+      );
+      return;
+    }
+
+    const lines = result.rows.map((user, index) => {
+      const number = offset + index + 1;
+
+      const name =
+        user.display_name ||
+        (user.username ? `@${user.username}` : "بدون نام");
+
+      const pro = user.is_pro ? "💎" : "";
+
+      return (
+        `${number}. ${name} ${pro}\n` +
+        `   شناسه: ${user.telegram_user_id}\n` +
+        `   تاریخ عضویت: ${formatDate(user.created_at)}`
+      );
+    });
+
+    const message =
+      `${selected.title}\n` +
+      `تعداد کل: ${total}\n` +
+      `صفحه ${safePage + 1} از ${totalPages}\n\n` +
+      lines.join("\n\n") +
+      "\n\nبرای مشاهده جزئیات هر کاربر، از جستجوی کاربر و شناسه او استفاده کن.";
+
+    setState(ctx.from.id, {
+      step: "userList",
+      filter,
+      page: safePage,
+      totalPages,
+    });
+
+    await ctx.reply(
+      message,
+      listMenu(safePage, totalPages, admin)
+    );
+  } catch (error) {
+    console.error(
+      "Admin user list failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت فهرست کاربران انجام نشد.",
+      mainMenu(admin)
     );
   }
 }
 
 async function handleUserMenu(ctx) {
-  if (!(await requirePermission(ctx))) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
     return;
   }
 
   clearState(ctx.from.id);
 
   await ctx.reply(
-    "👥 مدیریت کاربران\n\n" +
-      "عملیات موردنظر را انتخاب کنید.",
-    mainMenu()
+    "👥 کاربران\n\n" +
+    "بخش موردنظر را انتخاب کن.",
+    mainMenu(admin)
   );
 }
 
 async function handleSearchStart(ctx) {
-  if (!(await requirePermission(ctx))) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
     return;
   }
 
@@ -262,14 +445,43 @@ async function handleSearchStart(ctx) {
 
   await ctx.reply(
     "🔎 جستجوی کاربر\n\n" +
-      "Telegram ID، شناسه داخلی یا Username کاربر را ارسال کنید.",
-    searchMenu()
+    "Telegram ID، شناسه داخلی یا Username کاربر را ارسال کن.",
+    searchMenu(admin)
   );
 }
 
 async function handleBack(ctx) {
   clearState(ctx.from.id);
   await handleUserMenu(ctx);
+}
+
+async function handlePageChange(ctx, direction) {
+  const state = getState(ctx.from.id);
+
+  if (!state || state.step !== "userList") {
+    return;
+  }
+
+  let nextPage = state.page;
+
+  if (direction === "next") {
+    nextPage += 1;
+  } else {
+    nextPage -= 1;
+  }
+
+  if (
+    nextPage < 0 ||
+    nextPage >= state.totalPages
+  ) {
+    return;
+  }
+
+  await showUserList(
+    ctx,
+    state.filter,
+    nextPage
+  );
 }
 
 async function handleText(ctx) {
@@ -279,22 +491,29 @@ async function handleText(ctx) {
     return false;
   }
 
-  if (ctx.message?.text === "❌ لغو") {
+  const text = ctx.message?.text || "";
+
+  if (text === "❌ لغو") {
     clearState(ctx.from.id);
 
-    await ctx.reply(
-      "❌ عملیات لغو شد.",
-      mainMenu()
-    );
+    const admin = await requirePermission(ctx);
+
+    if (admin) {
+      await ctx.reply(
+        "❌ عملیات لغو شد.",
+        mainMenu(admin)
+      );
+    }
 
     return true;
   }
 
   if (state.step === "searchUser") {
-    await searchUser(
-      ctx,
-      ctx.message?.text
-    );
+    const admin = await requirePermission(ctx);
+
+    if (admin) {
+      await searchUser(ctx, text, admin);
+    }
 
     return true;
   }
@@ -303,10 +522,9 @@ async function handleText(ctx) {
 }
 
 function createAdminUsersHandler(bot) {
-  bot.hears(
-    MENU,
-    handleUserMenu
-  );
+  for (const button of MENU_BUTTONS) {
+    bot.hears(button, handleUserMenu);
+  }
 
   bot.hears(
     "🔎 جستجوی کاربر",
@@ -314,24 +532,54 @@ function createAdminUsersHandler(bot) {
   );
 
   bot.hears(
+    "📋 لیست کاربران",
+    (ctx) => showUserList(ctx, "all", 0)
+  );
+
+  bot.hears(
+    "🆕 کاربران جدید",
+    (ctx) => showUserList(ctx, "new", 0)
+  );
+
+  bot.hears(
+    "🟢 کاربران فعال",
+    (ctx) => showUserList(ctx, "active", 0)
+  );
+
+  bot.hears(
+    "💎 کاربران Pro",
+    (ctx) => showUserList(ctx, "pro", 0)
+  );
+
+  bot.hears(
     "📊 آمار کاربران",
     async (ctx) => {
-      if (!(await requirePermission(ctx))) {
-        return;
-      }
+      const admin = await requirePermission(ctx);
 
-      await showUserStats(ctx);
+      if (admin) {
+        clearState(ctx.from.id);
+        await showUserStats(ctx, admin);
+      }
     }
   );
 
   bot.hears(
-    "🔙 مدیریت کاربران",
+    "🔙 منوی کاربران",
     handleBack
   );
 
+  bot.hears(
+    "⬅️ صفحه قبل",
+    (ctx) => handlePageChange(ctx, "previous")
+  );
+
+  bot.hears(
+    "➡️ صفحه بعد",
+    (ctx) => handlePageChange(ctx, "next")
+  );
+
   bot.on("text", async (ctx, next) => {
-    const handled =
-      await handleText(ctx);
+    const handled = await handleText(ctx);
 
     if (handled) {
       return;
