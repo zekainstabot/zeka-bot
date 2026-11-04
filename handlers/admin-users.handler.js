@@ -5,6 +5,7 @@ const adminService = require("../services/admin.service");
 const userRepository = require("../repositories/user.repository");
 const creditService = require("../services/credit.service");
 const adminUserCreditService = require("../services/admin-user-credit.service");
+const adminProService = require("../services/admin-pro.service");
 const { getClient } = require("../database/client");
 
 const states = new Map();
@@ -49,6 +50,7 @@ function profileMenu() {
   return Markup.keyboard([
     ["➕ افزایش اعتبار", "➖ کاهش اعتبار"],
     ["📜 تاریخچه اعتبار"],
+    ["🟢 روشن کردن Pro", "🔴 خاموش کردن Pro"],
     ["🔎 جستجوی کاربر"],
     ["🔙 منوی کاربران"],
   ]).resize();
@@ -185,6 +187,7 @@ async function showUser(ctx, user, admin) {
     `🔹 Username: ${username}\n` +
     `💳 اعتبار: ${balance}\n` +
     `💎 Pro: ${proStatus}\n` +
+    `📅 انقضای Pro: ${formatDate(user.pro_expires_at)}\n` +
     `⭐ XP: ${user.xp || 0}\n` +
     `🏆 Level: ${user.level || 0}\n` +
     `🔥 Streak: ${user.streak_days || 0}\n` +
@@ -588,6 +591,78 @@ async function handleCreditAmount(ctx, value, state) {
   }
 }
 
+async function handleProfileProAction(ctx, action) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
+    return;
+  }
+
+  const state = getState(ctx.from.id);
+
+  if (
+    !state ||
+    state.step !== "userProfile" ||
+    !state.telegramUserId
+  ) {
+    await ctx.reply(
+      "ابتدا یک کاربر را جستجو کن."
+    );
+    return;
+  }
+
+  try {
+    if (action === "enable") {
+      await adminProService.enablePro({
+        telegramUserId: ctx.from.id,
+        targetTelegramUserId: state.telegramUserId,
+      });
+    } else {
+      await adminProService.disablePro({
+        telegramUserId: ctx.from.id,
+        targetTelegramUserId: state.telegramUserId,
+      });
+    }
+
+    const updatedUser =
+      await userRepository.findById(state.userId);
+
+    await ctx.reply(
+      action === "enable"
+        ? "🟢 اشتراک Pro کاربر روشن شد."
+        : "🔴 اشتراک Pro کاربر خاموش شد."
+    );
+
+    await showUser(ctx, updatedUser, admin);
+  } catch (error) {
+    console.error(
+      "Admin profile Pro action failed:",
+      error
+    );
+
+    let message = "❌ تغییر وضعیت Pro انجام نشد.";
+
+    if (error.code === "PRO_EXPIRED") {
+      message =
+        "⚠️ اشتراک این کاربر منقضی شده است.\nبرای فعال‌سازی مجدد از بخش مدیریت Pro و گزینه فعال‌سازی یا تمدید استفاده کن.";
+    } else if (error.code === "PERMISSION_DENIED") {
+      message =
+        "⛔ برای تغییر اشتراک Pro به مجوز مدیریت Pro نیاز داری.";
+    } else if (error.code === "ADMIN_ACCESS_DENIED") {
+      message =
+        "⛔ حساب مدیریتی شما فعال نیست.";
+    } else if (error.code === "USER_NOT_FOUND") {
+      message =
+        "❌ کاربر در سیستم Pro پیدا نشد.";
+    }
+
+    await ctx.reply(
+      message,
+      profileMenu()
+    );
+  }
+}
+
 async function showCreditHistory(ctx) {
   const admin = await requirePermission(ctx);
 
@@ -783,6 +858,16 @@ function createAdminUsersHandler(bot) {
   bot.hears(
     "➖ کاهش اعتبار",
     (ctx) => handleAmountStart(ctx, "remove")
+  );
+
+  bot.hears(
+    "🟢 روشن کردن Pro",
+    (ctx) => handleProfileProAction(ctx, "enable")
+  );
+
+  bot.hears(
+    "🔴 خاموش کردن Pro",
+    (ctx) => handleProfileProAction(ctx, "disable")
   );
 
   bot.hears(
