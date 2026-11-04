@@ -1,3 +1,4 @@
+
 const crypto = require("crypto");
 
 const { getClient } = require("../database/client");
@@ -37,7 +38,6 @@ async function createPurchaseRequest({
   try {
     await client.query("BEGIN");
 
-    // تمام درخواست‌های هم‌زمان یک کاربر را پشت سر هم اجرا می‌کند.
     await client.query(
       "SELECT pg_advisory_xact_lock(hashtext($1))",
       [`pro-purchase-user:${normalizedTelegramId}`]
@@ -241,33 +241,135 @@ async function setPaymentCardNumber({
   return result.rows[0] || null;
 }
 
-async function cancelPurchaseRequest(telegramUserId) {
-  const db = getClient();
-
-  const result = await db.query(
+/**
+ * مصرف کد تخفیف یک درخواست را آزاد می‌کند.
+ * این تابع باید داخل transaction فراخوانی شود.
+ */
+async function releaseCouponRedemption(
+  client,
+  purchaseRequestId
+) {
+  const couponResult = await client.query(
     `
-      WITH target AS (
-        SELECT id
+      SELECT coupon.id
+      FROM pro_discount_coupons coupon
+      INNER JOIN pro_discount_redemptions redemption
+        ON redemption.coupon_id = coupon.id
+      WHERE redemption.purchase_request_id = $1
+      FOR UPDATE OF coupon
+    `,
+    [purchaseRequestId]
+  );
+
+  if (!couponResult.rows.length) {
+    return false;
+  }
+
+  const couponId = couponResult.rows[0].id;
+
+  const deleteResult = await client.query(
+    `
+      DELETE FROM pro_discount_redemptions
+      WHERE purchase_request_id = $1
+        AND coupon_id = $2
+      RETURNING id
+    `,
+    [purchaseRequestId, couponId]
+  );
+
+  if (!deleteResult.rows.length) {
+    return false;
+  }
+
+  await client.query(
+    `
+      UPDATE pro_discount_coupons
+      SET
+        usage_count = GREATEST(usage_count - 1, 0),
+        updated_at = NOW()
+      WHERE id = $1
+    `,
+    [couponId]
+  );
+
+  return true;
+}
+
+async function cancelPurchaseRequest(telegramUserId) {
+  const normalizedTelegramId = String(telegramUserId);
+  const db = getClient();
+  const client = await db.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      [`pro-purchase-user:${normalizedTelegramId}`]
+    );
+
+    const targetResult = await client.query(
+      `
+        SELECT *
         FROM pro_purchase_requests
         WHERE telegram_user_id = $1
           AND status = ANY($2::varchar[])
-        ORDER BY created_at DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1
         FOR UPDATE
-      )
-      UPDATE pro_purchase_requests
-      SET
-        status = 'CANCELLED',
-        updated_at = NOW()
-      WHERE id = (SELECT id FROM target)
-        AND telegram_user_id = $1
-        AND status = ANY($2::varchar[])
-      RETURNING *
-    `,
-    [String(telegramUserId), OPEN_STATUSES]
-  );
+      `,
+      [normalizedTelegramId, OPEN_STATUSES]
+    );
 
-  return result.rows[0] || null;
+    const request = targetResult.rows[0];
+
+    if (!request) {
+      await client.query("COMMIT");
+      return null;
+    }
+
+    const updateResult = await client.query(
+      `
+        UPDATE pro_purchase_requests
+        SET
+          status = 'CANCELLED',
+          updated_at = NOW()
+        WHERE id = $1
+          AND status = ANY($2::varchar[])
+        RETURNING *
+      `,
+      [request.id, OPEN_STATUSES]
+    );
+
+    const cancelledRequest = updateResult.rows[0];
+
+    if (!cancelledRequest) {
+      await client.query("COMMIT");
+      return null;
+    }
+
+    await releaseCouponRedemption(
+      client,
+      cancelledRequest.id
+    );
+
+    await client.query("COMMIT");
+
+    return cancelledRequest;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Cancelling Pro purchase rollback failed:",
+        rollbackError
+      );
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function submitPurchaseReceipt({
@@ -311,11 +413,6 @@ async function submitPurchaseReceipt({
   try {
     await client.query("BEGIN");
 
-    /*
-     * قفل بر اساس محتوای رسید:
-     * رسید یکسان حتی اگر هم‌زمان از چند درخواست ارسال شود،
-     * فقط یک بار بررسی و ثبت خواهد شد.
-     */
     const receiptIdentifier =
       receiptType === "PHOTO"
         ? normalizedFileId
@@ -367,8 +464,6 @@ async function submitPurchaseReceipt({
       const duplicateId =
         String(duplicateResult.rows[0].id);
 
-      // اگر رسید قبلاً برای همین درخواست ثبت شده باشد،
-      // درخواست دیگری ایجاد یا به‌روزرسانی نمی‌شود.
       if (duplicateId !== String(requestId)) {
         const error = new Error("DUPLICATE_RECEIPT");
         error.code = "DUPLICATE_RECEIPT";
@@ -490,6 +585,9 @@ async function logPurchaseReview({
 
       details.expiresAt =
         subscriptionDetails.expiresAt;
+
+      details.priceAmount =
+        subscriptionDetails.priceAmount;
     }
 
     await adminActionLogService.recordAction({
@@ -597,6 +695,28 @@ async function reviewPurchaseRequest({
         "-" +
         crypto.randomBytes(4).toString("hex");
 
+      const priceAmount = Number(
+        request.price_amount || 0
+      );
+
+      const metadata = {
+        purchase_request_id: String(request.id),
+        reviewer_telegram_user_id:
+          String(reviewerTelegramUserId),
+        base_price_amount: Number(
+          request.base_price_amount || 0
+        ),
+        plan_discount_percent: Number(
+          request.plan_discount_percent || 0
+        ),
+        coupon_code: request.coupon_code || null,
+        coupon_discount_percent: Number(
+          request.coupon_discount_percent || 0
+        ),
+        final_price_amount: priceAmount,
+        currency: "IRT",
+      };
+
       await client.query(
         `
           INSERT INTO pro_subscriptions (
@@ -615,7 +735,7 @@ async function reviewPurchaseRequest({
           )
           VALUES (
             $1, $2, $3, $4, 'ACTIVE',
-            $5, $6, 'PURCHASE', $7, 0, 'IRT', $8
+            $5, $6, 'PURCHASE', $7, $8, 'IRT', $9
           )
         `,
         [
@@ -626,11 +746,8 @@ async function reviewPurchaseRequest({
           startsAt,
           expiresAt,
           String(reviewerTelegramUserId),
-          JSON.stringify({
-            purchase_request_id: String(request.id),
-            reviewer_telegram_user_id:
-              String(reviewerTelegramUserId),
-          }),
+          priceAmount,
+          JSON.stringify(metadata),
         ]
       );
 
@@ -650,6 +767,7 @@ async function reviewPurchaseRequest({
         subscriptionId,
         startsAt: startsAt.toISOString(),
         expiresAt: expiresAt.toISOString(),
+        priceAmount,
       };
     }
 
@@ -677,6 +795,13 @@ async function reviewPurchaseRequest({
     }
 
     reviewedRequest = updateResult.rows[0];
+
+    if (decision === "REJECTED") {
+      await releaseCouponRedemption(
+        client,
+        request.id
+      );
+    }
 
     await client.query("COMMIT");
   } catch (error) {
