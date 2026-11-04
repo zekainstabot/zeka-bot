@@ -1,4 +1,3 @@
-
 const crypto = require("crypto");
 
 const { getClient } = require("../database/client");
@@ -31,50 +30,85 @@ async function createPurchaseRequest({
     throw new Error("INVALID_PRO_DURATION");
   }
 
+  const normalizedTelegramId = String(telegramUserId);
   const db = getClient();
+  const client = await db.connect();
 
-  const existing = await db.query(
-    `
-      SELECT *
-      FROM pro_purchase_requests
-      WHERE telegram_user_id = $1
-        AND status = ANY($2::varchar[])
-      ORDER BY created_at DESC
-      LIMIT 1
-    `,
-    [String(telegramUserId), OPEN_STATUSES]
-  );
+  try {
+    await client.query("BEGIN");
 
-  if (existing.rows.length) {
+    // تمام درخواست‌های هم‌زمان یک کاربر را پشت سر هم اجرا می‌کند.
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      [`pro-purchase-user:${normalizedTelegramId}`]
+    );
+
+    const existing = await client.query(
+      `
+        SELECT *
+        FROM pro_purchase_requests
+        WHERE telegram_user_id = $1
+          AND status = ANY($2::varchar[])
+        ORDER BY
+          CASE
+            WHEN status = 'RECEIPT_SUBMITTED' THEN 0
+            WHEN status = 'WAITING_RECEIPT' THEN 1
+            ELSE 2
+          END,
+          created_at DESC
+        LIMIT 1
+      `,
+      [normalizedTelegramId, OPEN_STATUSES]
+    );
+
+    if (existing.rows.length) {
+      await client.query("COMMIT");
+
+      return {
+        request: existing.rows[0],
+        alreadyPending: true,
+      };
+    }
+
+    const result = await client.query(
+      `
+        INSERT INTO pro_purchase_requests (
+          telegram_user_id,
+          username,
+          display_name,
+          duration_months
+        )
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+      `,
+      [
+        normalizedTelegramId,
+        username || null,
+        displayName || null,
+        duration,
+      ]
+    );
+
+    await client.query("COMMIT");
+
     return {
-      request: existing.rows[0],
-      alreadyPending: true,
+      request: result.rows[0],
+      alreadyPending: false,
     };
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Creating Pro purchase request rollback failed:",
+        rollbackError
+      );
+    }
+
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const result = await db.query(
-    `
-      INSERT INTO pro_purchase_requests (
-        telegram_user_id,
-        username,
-        display_name,
-        duration_months
-      )
-      VALUES ($1, $2, $3, $4)
-      RETURNING *
-    `,
-    [
-      String(telegramUserId),
-      username || null,
-      displayName || null,
-      duration,
-    ]
-  );
-
-  return {
-    request: result.rows[0],
-    alreadyPending: false,
-  };
 }
 
 async function getProManagers() {
@@ -247,48 +281,142 @@ async function submitPurchaseReceipt({
     throw new Error("INVALID_RECEIPT_TYPE");
   }
 
+  const normalizedReceiptText =
+    receiptType === "TEXT"
+      ? String(receiptText || "").trim()
+      : null;
+
+  const normalizedFileId =
+    receiptType === "PHOTO"
+      ? String(receiptFileId || "").trim()
+      : null;
+
   if (
     receiptType === "TEXT" &&
-    !String(receiptText || "").trim()
+    !normalizedReceiptText
   ) {
     throw new Error("EMPTY_RECEIPT_TEXT");
   }
 
-  if (receiptType === "PHOTO" && !receiptFileId) {
+  if (
+    receiptType === "PHOTO" &&
+    !normalizedFileId
+  ) {
     throw new Error("MISSING_RECEIPT_FILE_ID");
   }
 
   const db = getClient();
+  const client = await db.connect();
 
-  const result = await db.query(
-    `
-      UPDATE pro_purchase_requests
-      SET
-        status = 'RECEIPT_SUBMITTED',
-        receipt_type = $3,
-        receipt_text = $4,
-        receipt_file_id = $5,
-        receipt_submitted_at = NOW(),
-        updated_at = NOW()
-      WHERE id = $1
-        AND telegram_user_id = $2
-        AND status = 'WAITING_RECEIPT'
-      RETURNING *
-    `,
-    [
-      requestId,
-      String(telegramUserId),
-      receiptType,
-      receiptType === "TEXT"
-        ? String(receiptText).trim()
-        : null,
+  try {
+    await client.query("BEGIN");
+
+    /*
+     * قفل بر اساس محتوای رسید:
+     * رسید یکسان حتی اگر هم‌زمان از چند درخواست ارسال شود،
+     * فقط یک بار بررسی و ثبت خواهد شد.
+     */
+    const receiptIdentifier =
       receiptType === "PHOTO"
-        ? receiptFileId
-        : null,
-    ]
-  );
+        ? normalizedFileId
+        : normalizedReceiptText;
 
-  return result.rows[0] || null;
+    const lockKey = crypto
+      .createHash("sha256")
+      .update(
+        `pro-purchase-receipt:${receiptType}:${receiptIdentifier}`
+      )
+      .digest("hex");
+
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1))",
+      [lockKey]
+    );
+
+    let duplicateQuery;
+    let duplicateParams;
+
+    if (receiptType === "PHOTO") {
+      duplicateQuery = `
+        SELECT id
+        FROM pro_purchase_requests
+        WHERE receipt_type = 'PHOTO'
+          AND receipt_file_id = $1
+        LIMIT 1
+      `;
+
+      duplicateParams = [normalizedFileId];
+    } else {
+      duplicateQuery = `
+        SELECT id
+        FROM pro_purchase_requests
+        WHERE receipt_type = 'TEXT'
+          AND receipt_text = $1
+        LIMIT 1
+      `;
+
+      duplicateParams = [normalizedReceiptText];
+    }
+
+    const duplicateResult = await client.query(
+      duplicateQuery,
+      duplicateParams
+    );
+
+    if (duplicateResult.rows.length) {
+      const duplicateId =
+        String(duplicateResult.rows[0].id);
+
+      // اگر رسید قبلاً برای همین درخواست ثبت شده باشد،
+      // درخواست دیگری ایجاد یا به‌روزرسانی نمی‌شود.
+      if (duplicateId !== String(requestId)) {
+        const error = new Error("DUPLICATE_RECEIPT");
+        error.code = "DUPLICATE_RECEIPT";
+        throw error;
+      }
+    }
+
+    const result = await client.query(
+      `
+        UPDATE pro_purchase_requests
+        SET
+          status = 'RECEIPT_SUBMITTED',
+          receipt_type = $3,
+          receipt_text = $4,
+          receipt_file_id = $5,
+          receipt_submitted_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $1
+          AND telegram_user_id = $2
+          AND status = 'WAITING_RECEIPT'
+        RETURNING *
+      `,
+      [
+        requestId,
+        String(telegramUserId),
+        receiptType,
+        normalizedReceiptText,
+        normalizedFileId,
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    return result.rows[0] || null;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Submitting Pro receipt rollback failed:",
+        rollbackError
+      );
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function addMonths(date, months) {
