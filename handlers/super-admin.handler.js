@@ -51,7 +51,7 @@ async function getSuperAdmin(ctx) {
 
 function buildSuperAdminMenu() {
   return Markup.keyboard([
-    ["👥 مدیریت کاربران", "⚙️ تنظیمات"],
+    ["👥 کاربران", "⚙️ تنظیمات"],
     ["📥 مدیریت درخواست‌ها", "💳 مدیریت اعتبار"],
     ["🎁 مدیریت جوایز", "🌐 مدیریت پلتفرم‌ها"],
     ["🍪 کوکی اینستاگرام"],
