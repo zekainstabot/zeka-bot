@@ -1,3 +1,4 @@
+
 const crypto = require("crypto");
 
 const { getClient } = require("../database/client");
@@ -757,7 +758,7 @@ async function reviewPurchaseRequest({
           request.duration_months,
           startsAt,
           expiresAt,
-          String(reviewerTelegramUserId),
+          request.id,
           priceAmount,
           JSON.stringify(metadata),
         ]
