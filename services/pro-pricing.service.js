@@ -1,8 +1,9 @@
-
 const {
   getSetting,
   setSetting,
 } = require("./settings.service");
+
+const { getPool } = require("../database/pool");
 
 const BASE_PRICES = Object.freeze({
   1: 20000,
@@ -22,6 +23,7 @@ const PLAN_DISCOUNTS = Object.freeze({
 
 const ALLOWED_DURATIONS = Object.keys(BASE_PRICES).map(Number);
 const MAX_BASE_PRICE = 1000000000;
+const DISCOUNT_SETTING_KEY = "pro.extra_discount_percent";
 
 function validateDuration(durationMonths) {
   const duration = Number(durationMonths);
@@ -62,12 +64,73 @@ function validateBasePrice(price) {
 }
 
 function calculateFinalPrice(basePrice, discountPercent) {
-  const price = Number(basePrice);
-  const discount = Number(discountPercent);
+  const price = validateBasePrice(basePrice);
+  const discount = validateDiscountPercent(discountPercent);
 
-  return Math.max(
-    0,
-    Math.round(price * (100 - discount) / 100)
+  return Math.round(
+    price * (100 - discount) / 100
+  );
+}
+
+function buildPricing(durationMonths, basePrice, extraDiscountPercent) {
+  const duration = validateDuration(durationMonths);
+  const safeBasePrice = validateBasePrice(basePrice);
+  const safeExtraDiscount =
+    validateDiscountPercent(extraDiscountPercent);
+
+  const planDiscountPercent =
+    PLAN_DISCOUNTS[duration];
+
+  const effectiveDiscountPercent = Math.max(
+    planDiscountPercent,
+    safeExtraDiscount
+  );
+
+  return {
+    durationMonths: duration,
+    basePriceAmount: safeBasePrice,
+    planDiscountPercent,
+    extraDiscountPercent: safeExtraDiscount,
+    discountPercent: effectiveDiscountPercent,
+    priceAmount: calculateFinalPrice(
+      safeBasePrice,
+      effectiveDiscountPercent
+    ),
+  };
+}
+
+function getSettingValue(settings, key, fallback) {
+  return settings.has(key)
+    ? settings.get(key)
+    : fallback;
+}
+
+async function readPricingSettings(queryable, durations) {
+  const keys = [];
+
+  for (const duration of durations) {
+    keys.push(`pro.base_price.${duration}`);
+  }
+
+  keys.push(DISCOUNT_SETTING_KEY);
+
+  const result = await queryable.query(
+    `
+      SELECT
+        setting_key,
+        setting_value
+      FROM system_settings
+      WHERE setting_key = ANY($1::text[])
+      ORDER BY setting_key
+    `,
+    [keys]
+  );
+
+  return new Map(
+    result.rows.map((row) => [
+      row.setting_key,
+      row.setting_value,
+    ])
   );
 }
 
@@ -83,10 +146,25 @@ async function getBasePrice(durationMonths) {
 }
 
 async function getAllBasePrices() {
+  const db = getPool();
+
+  const settings = await readPricingSettings(
+    db,
+    ALLOWED_DURATIONS
+  );
+
   const results = {};
 
   for (const duration of ALLOWED_DURATIONS) {
-    results[duration] = await getBasePrice(duration);
+    const key = `pro.base_price.${duration}`;
+
+    results[duration] = validateBasePrice(
+      getSettingValue(
+        settings,
+        key,
+        BASE_PRICES[duration]
+      )
+    );
   }
 
   return results;
@@ -106,7 +184,7 @@ async function setBasePrice(durationMonths, price) {
 
 async function getExtraDiscountPercent() {
   const value = await getSetting(
-    "pro.extra_discount_percent",
+    DISCOUNT_SETTING_KEY,
     0
   );
 
@@ -114,10 +192,10 @@ async function getExtraDiscountPercent() {
 }
 
 /**
- * خواندن قیمت و تخفیف عمومی داخل تراکنش خرید.
+ * خواندن قیمت و تخفیف داخل تراکنش خرید.
  *
- * FOR SHARE باعث می‌شود تغییر تنظیمات توسط ادمین
- * تا پایان تراکنش خرید منتظر بماند.
+ * FOR SHARE مانع تغییر هم‌زمان تنظیمات تا پایان
+ * تراکنش خرید می‌شود.
  */
 async function getProPricingWithClient(
   client,
@@ -126,7 +204,6 @@ async function getProPricingWithClient(
   const duration = validateDuration(durationMonths);
 
   const basePriceKey = `pro.base_price.${duration}`;
-  const discountKey = "pro.extra_discount_percent";
 
   const result = await client.query(
     `
@@ -138,7 +215,7 @@ async function getProPricingWithClient(
       ORDER BY setting_key
       FOR SHARE
     `,
-    [[basePriceKey, discountKey]]
+    [[basePriceKey, DISCOUNT_SETTING_KEY]]
   );
 
   const settings = new Map(
@@ -149,86 +226,114 @@ async function getProPricingWithClient(
   );
 
   const basePrice = validateBasePrice(
-    settings.has(basePriceKey)
-      ? settings.get(basePriceKey)
-      : BASE_PRICES[duration]
+    getSettingValue(
+      settings,
+      basePriceKey,
+      BASE_PRICES[duration]
+    )
   );
 
   const extraDiscountPercent =
     validateDiscountPercent(
-      settings.has(discountKey)
-        ? settings.get(discountKey)
-        : 0
+      getSettingValue(
+        settings,
+        DISCOUNT_SETTING_KEY,
+        0
+      )
     );
 
-  const planDiscountPercent =
-    PLAN_DISCOUNTS[duration];
-
-  const effectiveDiscountPercent = Math.max(
-    planDiscountPercent,
+  return buildPricing(
+    duration,
+    basePrice,
     extraDiscountPercent
   );
-
-  return {
-    durationMonths: duration,
-    basePriceAmount: basePrice,
-    planDiscountPercent,
-    extraDiscountPercent,
-    discountPercent: effectiveDiscountPercent,
-    priceAmount: calculateFinalPrice(
-      basePrice,
-      effectiveDiscountPercent
-    ),
-  };
 }
 
+/**
+ * دریافت قیمت یک پلن با یک کوئری واحد.
+ */
 async function getProPricing(durationMonths) {
   const duration = validateDuration(durationMonths);
+  const db = getPool();
 
-  const [basePrice, extraDiscountPercent] =
-    await Promise.all([
-      getBasePrice(duration),
-      getExtraDiscountPercent(),
-    ]);
-
-  const planDiscountPercent =
-    PLAN_DISCOUNTS[duration];
-
-  const effectiveDiscountPercent = Math.max(
-    planDiscountPercent,
-    extraDiscountPercent
+  const settings = await readPricingSettings(
+    db,
+    [duration]
   );
 
-  return {
-    durationMonths: duration,
-    basePriceAmount: basePrice,
-    planDiscountPercent,
-    extraDiscountPercent,
-    discountPercent: effectiveDiscountPercent,
-    priceAmount: calculateFinalPrice(
-      basePrice,
-      effectiveDiscountPercent
-    ),
-  };
+  const basePriceKey = `pro.base_price.${duration}`;
+
+  const basePrice = validateBasePrice(
+    getSettingValue(
+      settings,
+      basePriceKey,
+      BASE_PRICES[duration]
+    )
+  );
+
+  const extraDiscountPercent =
+    validateDiscountPercent(
+      getSettingValue(
+        settings,
+        DISCOUNT_SETTING_KEY,
+        0
+      )
+    );
+
+  return buildPricing(
+    duration,
+    basePrice,
+    extraDiscountPercent
+  );
 }
 
+/**
+ * دریافت تمام پلن‌ها با یک کوئری واحد.
+ *
+ * این روش از ترکیب قیمت‌های قدیمی و جدید
+ * هنگام تغییر هم‌زمان تنظیمات جلوگیری می‌کند.
+ */
 async function getAllProPricing() {
-  const results = [];
+  const db = getPool();
 
-  for (const duration of ALLOWED_DURATIONS) {
-    results.push(
-      await getProPricing(duration)
+  const settings = await readPricingSettings(
+    db,
+    ALLOWED_DURATIONS
+  );
+
+  const extraDiscountPercent =
+    validateDiscountPercent(
+      getSettingValue(
+        settings,
+        DISCOUNT_SETTING_KEY,
+        0
+      )
     );
-  }
 
-  return results;
+  return ALLOWED_DURATIONS.map((duration) => {
+    const basePriceKey = `pro.base_price.${duration}`;
+
+    const basePrice = validateBasePrice(
+      getSettingValue(
+        settings,
+        basePriceKey,
+        BASE_PRICES[duration]
+      )
+    );
+
+    return buildPricing(
+      duration,
+      basePrice,
+      extraDiscountPercent
+    );
+  });
 }
 
 async function setExtraDiscountPercent(percent) {
   const value = validateDiscountPercent(percent);
 
   await setSetting(
-    "pro.extra_discount_percent",
+    DISCOUNT_SETTING_KEY,
     value
   );
 
