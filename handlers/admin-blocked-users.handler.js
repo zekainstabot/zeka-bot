@@ -1,8 +1,10 @@
 
 const { Markup } = require("telegraf");
 const { getClient } = require("../database/client");
+
 const adminService = require("../services/admin.service");
 const userRepository = require("../repositories/user.repository");
+const adminActionLogService = require("../services/admin-action-log.service");
 
 const PAGE_SIZE = 10;
 const states = new Map();
@@ -17,6 +19,14 @@ function getState(telegramId) {
 
 function clearState(telegramId) {
   states.delete(String(telegramId));
+}
+
+async function logAdminAction(data) {
+  try {
+    await adminActionLogService.recordAction(data);
+  } catch (error) {
+    console.error("Admin action log failed:", error);
+  }
 }
 
 function formatDate(value) {
@@ -256,7 +266,7 @@ async function unblockSelectedUser(ctx) {
           updated_at = NOW()
         WHERE id = $1
           AND is_blocked = TRUE
-        RETURNING telegram_user_id
+        RETURNING id, telegram_user_id
       `,
       [state.userId]
     );
@@ -272,10 +282,23 @@ async function unblockSelectedUser(ctx) {
       return;
     }
 
+    const updatedUser = result.rows[0];
+
+    await logAdminAction({
+      adminUserId: admin.user_id,
+      adminTelegramUserId: ctx.from.id,
+      targetUserId: updatedUser.id,
+      targetTelegramUserId: updatedUser.telegram_user_id,
+      action: "USER_UNBLOCK",
+      details: {
+        source: "blocked_users_panel",
+      },
+    });
+
     clearState(ctx.from.id);
 
     await ctx.reply(
-      `✅ حساب کاربر ${result.rows[0].telegram_user_id} آزاد شد.`
+      `✅ حساب کاربر ${updatedUser.telegram_user_id} آزاد شد.`
     );
 
     await showBlockedUsers(ctx, 0);
