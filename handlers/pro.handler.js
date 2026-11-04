@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const {
@@ -63,18 +62,34 @@ async function handleReceipt(
     return false;
   }
 
-  const updated = await submitPurchaseReceipt({
-    requestId: request.id,
-    telegramUserId,
-    receiptType,
-    receiptText,
-    receiptFileId,
-  });
+  let updated;
+
+  try {
+    updated = await submitPurchaseReceipt({
+      requestId: request.id,
+      telegramUserId,
+      receiptType,
+      receiptText,
+      receiptFileId,
+    });
+  } catch (error) {
+    if (error.code === "DUPLICATE_RECEIPT") {
+      await ctx.reply(
+        "⚠️ این رسید قبلاً برای یک درخواست خرید ثبت شده است.\n\n" +
+          "لطفاً رسید پرداخت معتبر و جدید ارسال کن."
+      );
+
+      return true;
+    }
+
+    throw error;
+  }
 
   if (!updated) {
     await ctx.reply(
       "⚠️ رسید ثبت نشد. ممکن است وضعیت درخواست تغییر کرده باشد."
     );
+
     return true;
   }
 
