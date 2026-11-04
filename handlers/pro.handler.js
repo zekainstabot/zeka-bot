@@ -1,3 +1,4 @@
+
 const { Markup } = require("telegraf");
 
 const {
@@ -26,6 +27,12 @@ const durationKeyboard = Markup.keyboard([
 const checkoutKeyboard = Markup.keyboard([
   ["🎟️ وارد کردن کد تخفیف"],
   ["✅ ثبت درخواست خرید"],
+  ["🔙 بازگشت", "❌ لغو درخواست"],
+])
+  .resize()
+  .persistent();
+
+const couponKeyboard = Markup.keyboard([
   ["🔙 بازگشت", "❌ لغو درخواست"],
 ])
   .resize()
@@ -126,6 +133,9 @@ async function showCheckout(ctx, state) {
 
   if (!quote.valid) {
     state.couponCode = null;
+    state.step = "checkout";
+
+    purchaseFlow.set(ctx.from.id, state);
 
     await ctx.reply(
       couponErrorMessage(quote.reason),
@@ -173,9 +183,9 @@ async function submitCheckout(ctx) {
       await ctx.reply(
         "⏳ یک درخواست خرید پرو از قبل ثبت شده و هنوز باز است.\n\n" +
           `🆔 شماره درخواست: ${result.request.id}\n` +
-          "برای ادامه، منتظر بررسی درخواست قبلی بمان.",
-        ctx.telegram ? undefined : undefined
+          "برای ادامه، منتظر بررسی درخواست قبلی بمان."
       );
+
       return;
     }
 
@@ -192,7 +202,10 @@ async function submitCheckout(ctx) {
         "\nدرخواست از طریق پنل مدیریت بررسی می‌شود. پس از دریافت اطلاعات پرداخت، پرداخت را انجام بده و رسید را برای ربات بفرست."
     );
   } catch (error) {
-    console.error("Pro checkout submission failed:", error);
+    console.error(
+      "Pro checkout submission failed:",
+      error
+    );
 
     if (
       error.code === "COUPON_UNAVAILABLE" ||
@@ -200,13 +213,27 @@ async function submitCheckout(ctx) {
     ) {
       state.step = "checkout";
       state.couponCode = null;
+
       purchaseFlow.set(ctx.from.id, state);
 
       await ctx.reply(
         "⚠️ کد تخفیف هنگام ثبت درخواست دیگر قابل استفاده نبود.\n" +
-          "لطفاً بدون کد یا با کد دیگری ادامه بده.",
-        checkoutKeyboard
+          "پیش‌فاکتور بدون کد تخفیف به‌روزرسانی شد."
       );
+
+      try {
+        await showCheckout(ctx, state);
+      } catch (quoteError) {
+        console.error(
+          "Refreshing Pro checkout quote failed:",
+          quoteError
+        );
+
+        await ctx.reply(
+          "❌ دریافت مجدد قیمت انجام نشد. کمی بعد تلاش کن."
+        );
+      }
+
       return;
     }
 
@@ -282,6 +309,7 @@ function createProHandler({ bot, mainMenu }) {
       step: "duration",
       durationMonths: null,
       couponCode: null,
+      quote: null,
     });
 
     await ctx.reply(
@@ -305,16 +333,13 @@ function createProHandler({ bot, mainMenu }) {
       }
 
       state.step = "coupon";
+
       purchaseFlow.set(ctx.from.id, state);
 
       await ctx.reply(
         "🎟️ کد تخفیف را ارسال کن.\n\n" +
           "برای لغو ورود کد، «🔙 بازگشت» را بزن.",
-        Markup.keyboard([
-          ["🔙 بازگشت", "❌ لغو درخواست"],
-        ])
-          .resize()
-          .persistent()
+        couponKeyboard
       );
     }
   );
@@ -378,9 +403,22 @@ function createProHandler({ bot, mainMenu }) {
 
       if (state.step === "coupon") {
         state.step = "checkout";
+
         purchaseFlow.set(ctx.from.id, state);
 
-        await showCheckout(ctx, state);
+        try {
+          await showCheckout(ctx, state);
+        } catch (error) {
+          console.error(
+            "Returning to Pro checkout failed:",
+            error
+          );
+
+          await ctx.reply(
+            "❌ دریافت پیش‌فاکتور انجام نشد. دوباره تلاش کن."
+          );
+        }
+
         return;
       }
 
@@ -388,12 +426,15 @@ function createProHandler({ bot, mainMenu }) {
         state.step = "duration";
         state.durationMonths = null;
         state.couponCode = null;
+        state.quote = null;
+
         purchaseFlow.set(ctx.from.id, state);
 
         await ctx.reply(
           "مدت اشتراک را دوباره انتخاب کن.",
           durationKeyboard
         );
+
         return;
       }
 
@@ -429,7 +470,10 @@ function createProHandler({ bot, mainMenu }) {
       try {
         await showCheckout(ctx, state);
       } catch (error) {
-        console.error("Pro quote generation failed:", error);
+        console.error(
+          "Pro quote generation failed:",
+          error
+        );
 
         await ctx.reply(
           "❌ دریافت قیمت اشتراک انجام نشد. کمی بعد دوباره تلاش کن."
@@ -462,6 +506,7 @@ function createProHandler({ bot, mainMenu }) {
             await ctx.reply(
               couponErrorMessage(quote.reason)
             );
+
             return;
           }
 
@@ -471,11 +516,15 @@ function createProHandler({ bot, mainMenu }) {
             .replace(/\s+/g, "");
 
           state.step = "checkout";
+
           purchaseFlow.set(ctx.from.id, state);
 
           await showCheckout(ctx, state);
         } catch (error) {
-          console.error("Pro coupon validation failed:", error);
+          console.error(
+            "Pro coupon validation failed:",
+            error
+          );
 
           await ctx.reply(
             "❌ بررسی کد تخفیف انجام نشد. دوباره تلاش کن."
@@ -496,7 +545,10 @@ function createProHandler({ bot, mainMenu }) {
         return;
       }
     } catch (error) {
-      console.error("Pro text handler failed:", error);
+      console.error(
+        "Pro text handler failed:",
+        error
+      );
     }
 
     return next();
@@ -522,7 +574,10 @@ function createProHandler({ bot, mainMenu }) {
         return;
       }
     } catch (error) {
-      console.error("Pro photo handler failed:", error);
+      console.error(
+        "Pro photo handler failed:",
+        error
+      );
     }
 
     return next();
