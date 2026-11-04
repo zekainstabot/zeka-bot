@@ -18,96 +18,12 @@ const OPEN_STATUSES = [
   "RECEIPT_SUBMITTED",
 ];
 
-async function createPurchaseRequest({
-  telegramUserId,
-  username,
-  displayName,
-  durationMonths,
-}) {
-  const duration = Number(durationMonths);
-
-  if (!ALLOWED_DURATIONS.includes(duration)) {
-    throw new Error("INVALID_PRO_DURATION");
-  }
-
-  const normalizedTelegramId = String(telegramUserId);
-  const db = getClient();
-  const client = await db.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    await client.query(
-      "SELECT pg_advisory_xact_lock(hashtext($1))",
-      [`pro-purchase-user:${normalizedTelegramId}`]
-    );
-
-    const existing = await client.query(
-      `
-        SELECT *
-        FROM pro_purchase_requests
-        WHERE telegram_user_id = $1
-          AND status = ANY($2::varchar[])
-        ORDER BY
-          CASE
-            WHEN status = 'RECEIPT_SUBMITTED' THEN 0
-            WHEN status = 'WAITING_RECEIPT' THEN 1
-            ELSE 2
-          END,
-          created_at DESC
-        LIMIT 1
-      `,
-      [normalizedTelegramId, OPEN_STATUSES]
-    );
-
-    if (existing.rows.length) {
-      await client.query("COMMIT");
-
-      return {
-        request: existing.rows[0],
-        alreadyPending: true,
-      };
-    }
-
-    const result = await client.query(
-      `
-        INSERT INTO pro_purchase_requests (
-          telegram_user_id,
-          username,
-          display_name,
-          duration_months
-        )
-        VALUES ($1, $2, $3, $4)
-        RETURNING *
-      `,
-      [
-        normalizedTelegramId,
-        username || null,
-        displayName || null,
-        duration,
-      ]
-    );
-
-    await client.query("COMMIT");
-
-    return {
-      request: result.rows[0],
-      alreadyPending: false,
-    };
-  } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch (rollbackError) {
-      console.error(
-        "Creating Pro purchase request rollback failed:",
-        rollbackError
-      );
-    }
-
-    throw error;
-  } finally {
-    client.release();
-  }
+// مسیر قدیمی خرید بدون قیمت غیرفعال است.
+// ثبت درخواست باید فقط از مسیر checkout قیمت‌گذاری‌شده انجام شود.
+async function createPurchaseRequest() {
+  const error = new Error("PRICED_CHECKOUT_REQUIRED");
+  error.code = "PRICED_CHECKOUT_REQUIRED";
+  throw error;
 }
 
 async function getProManagers() {
@@ -655,6 +571,44 @@ async function reviewPurchaseRequest({
       };
     }
 
+    // جلوگیری از فعال‌سازی اشتراک با مبلغ صفر یا قیمت نامعتبر
+    if (decision === "APPROVED") {
+      const basePrice = Number(
+        request.base_price_amount
+      );
+
+      const finalPrice = Number(
+        request.price_amount
+      );
+
+      const discount = Number(
+        request.applied_discount_percent
+      );
+
+      const expectedPrice = Math.round(
+        basePrice * (100 - discount) / 100
+      );
+
+      const validPrice =
+        Number.isSafeInteger(basePrice) &&
+        basePrice > 0 &&
+        Number.isSafeInteger(finalPrice) &&
+        finalPrice > 0 &&
+        Number.isInteger(discount) &&
+        discount >= 0 &&
+        discount <= 90 &&
+        finalPrice === expectedPrice;
+
+      if (!validPrice) {
+        await client.query("ROLLBACK");
+
+        return {
+          success: false,
+          reason: "INVALID_PRICE",
+        };
+      }
+    }
+
     if (decision === "APPROVED") {
       const userResult = await client.query(
         `
@@ -695,7 +649,7 @@ async function reviewPurchaseRequest({
         crypto.randomBytes(4).toString("hex");
 
       const priceAmount = Number(
-        request.price_amount || 0
+        request.price_amount
       );
 
       const metadata = {
@@ -704,7 +658,7 @@ async function reviewPurchaseRequest({
           String(reviewerTelegramUserId),
 
         base_price_amount: Number(
-          request.base_price_amount || 0
+          request.base_price_amount
         ),
 
         plan_discount_percent: Number(
@@ -722,7 +676,7 @@ async function reviewPurchaseRequest({
         ),
 
         applied_discount_percent: Number(
-          request.applied_discount_percent || 0
+          request.applied_discount_percent
         ),
 
         final_price_amount: priceAmount,
@@ -821,6 +775,7 @@ async function reviewPurchaseRequest({
             "لطفاً برای بررسی علت با پشتیبانی تماس بگیر."
           );
 
+    // ثبت اعلان در Outbox داخل همان تراکنش خرید
     await client.query(
       `
         INSERT INTO pro_purchase_notification_outbox (
@@ -844,6 +799,8 @@ async function reviewPurchaseRequest({
       ]
     );
 
+    // در صورت رد درخواست، مصرف کوپن آزاد می‌شود.
+    // در صورت تأیید، مصرف کوپن باقی می‌ماند.
     if (decision === "REJECTED") {
       await releaseCouponRedemption(
         client,
