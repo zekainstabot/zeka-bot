@@ -9,9 +9,6 @@ const couponReportService = require(
 
 const PAGE_SIZE = 10;
 
-// آخرین گزارش مشاهده‌شده برای هر مدیر
-const activeReports = new Map();
-
 async function getSuperAdmin(ctx) {
   const telegramUserId = ctx.from?.id;
 
@@ -127,6 +124,19 @@ function buildPageKeyboard(
     .oneTime(false);
 }
 
+function buildSummaryMessage(report) {
+  const summary = report.summary || {};
+
+  return (
+    "📊 آمار استفاده از کد\n\n" +
+    `👥 کل رزروهای باقی‌مانده: ${report.total}\n` +
+    `✅ مصرف نهایی: ${Number(summary.approved || 0)}\n` +
+    `⏳ درخواست‌های در انتظار: ${Number(summary.pending || 0)}\n` +
+    `❌ درخواست‌های ردشده: ${Number(summary.rejected || 0)}\n` +
+    `🚫 درخواست‌های لغوشده: ${Number(summary.cancelled || 0)}\n\n`
+  );
+}
+
 async function showCouponUsageReport(
   ctx,
   couponId,
@@ -142,6 +152,7 @@ async function showCouponUsageReport(
   }
 
   const safeCouponId = Number(couponId);
+
   const safePage = Math.max(
     1,
     Math.floor(Number(page) || 1)
@@ -151,7 +162,9 @@ async function showCouponUsageReport(
     !Number.isSafeInteger(safeCouponId) ||
     safeCouponId < 1
   ) {
-    await ctx.reply("❌ شناسه کد تخفیف معتبر نیست.");
+    await ctx.reply(
+      "❌ شناسه کد تخفیف معتبر نیست."
+    );
     return;
   }
 
@@ -191,40 +204,38 @@ async function showCouponUsageReport(
       );
     }
 
-    activeReports.set(ctx.from.id, {
-      couponId: safeCouponId,
-      page: safePage,
-    });
-
     const coupon = report.coupon;
+
+    const maxUses =
+      coupon.max_uses === null
+        ? "نامحدود"
+        : Number(coupon.max_uses);
 
     let message =
       "👥 گزارش کاربران کد تخفیف\n\n" +
       `🎟️ کد: ${coupon.code}\n` +
       `🏷️ درصد تخفیف: ${coupon.discount_percent}٪\n` +
-      `📊 تعداد ثبت‌شده: ${report.total}\n` +
-      `📈 شمارنده کوپن: ${coupon.usage_count}\n` +
+      `📊 سقف استفاده: ${maxUses}\n` +
+      `📈 شمارنده مصرف کوپن: ${coupon.usage_count}\n` +
+      `📅 شروع اعتبار: ${formatDate(coupon.starts_at)}\n` +
+      `⏰ انقضا: ${formatDate(coupon.expires_at)}\n` +
       `📌 وضعیت: ${
         coupon.is_active ? "🟢 فعال" : "🔴 غیرفعال"
       }\n\n` +
+      "━━━━━━━━━━━━━━\n\n" +
+      buildSummaryMessage(report) +
       "━━━━━━━━━━━━━━\n\n";
 
     if (!report.redemptions.length) {
       message +=
-        "هنوز هیچ کاربری از این کد استفاده نکرده است.";
+        "هنوز هیچ رزرو فعالی برای این کد ثبت نشده است.";
     } else {
       const lines = report.redemptions.map(
         (item, index) => {
           const rowNumber = offset + index + 1;
 
-          const username = getUserLabel(item);
-
-          const status = getStatusLabel(
-            item.purchase_status
-          );
-
           return (
-            `${rowNumber}. 👤 ${username}\n` +
+            `${rowNumber}. 👤 ${getUserLabel(item)}\n` +
             `🆔 Telegram ID: ${item.telegram_user_id}\n` +
             `🧾 شماره درخواست: ${
               item.purchase_request_id || "نامشخص"
@@ -234,9 +245,12 @@ async function showCouponUsageReport(
             } ماه\n` +
             `🏷️ تخفیف ثبت‌شده: ${item.discount_percent}٪\n` +
             `💰 مبلغ نهایی: ${formatAmount(item.price_amount)}\n` +
-            `📌 وضعیت خرید: ${status}\n` +
-            `📅 زمان ثبت کد: ${formatDate(
+            `📌 وضعیت خرید: ${getStatusLabel(item.purchase_status)}\n` +
+            `📅 زمان رزرو کد: ${formatDate(
               item.redemption_created_at
+            )}\n` +
+            `📅 زمان ثبت درخواست: ${formatDate(
+              item.purchase_created_at
             )}`
           );
         }
@@ -307,13 +321,10 @@ function createSuperAdminFinanceCouponReportHandler(bot) {
         return;
       }
 
-      const couponId = Number(match[2]);
-      const page = Number(match[3]);
-
       await showCouponUsageReport(
         ctx,
-        couponId,
-        page
+        Number(match[2]),
+        Number(match[3])
       );
     }
   );
