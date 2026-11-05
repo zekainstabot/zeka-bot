@@ -1,6 +1,4 @@
-const {
-  Markup,
-} = require("telegraf");
+const { Markup } = require("telegraf");
 
 const adminFortuneService =
   require("../services/admin-fortune.service");
@@ -17,34 +15,45 @@ const BANK_BUTTON = "📚 بانک فال‌ها";
 const STATS_BUTTON = "📊 آمار فال‌ها";
 const CANCEL_TEXT = "❌ لغو";
 
-async function menu(ctx) {
-  let isSuperAdmin = false;
+const BACK_BUTTONS = [
+  "🔙 سرگرمی",
+  "🔙 پنل ادمین",
+  "🔙 پنل Super Admin",
+];
 
+async function isSuperAdmin(telegramUserId) {
   try {
     const admin =
       await adminService.getAdminByTelegramId(
-        ctx.from?.id
+        telegramUserId
       );
 
-    isSuperAdmin =
-      Boolean(
-        admin &&
-        admin.is_active &&
-        admin.role_key === "super_admin"
-      );
+    return Boolean(
+      admin &&
+      admin.is_active &&
+      admin.role_key === "super_admin"
+    );
   } catch (error) {
     console.error(
-      "Fortune menu admin lookup failed:",
+      "Fortune admin role lookup failed:",
       error
     );
+
+    return false;
   }
+}
+
+async function menu(ctx) {
+  const superAdmin = await isSuperAdmin(
+    ctx.from?.id
+  );
 
   return Markup.keyboard([
     [ADD_BUTTON],
     [IMPORT_BUTTON],
     [BANK_BUTTON, STATS_BUTTON],
     [
-      isSuperAdmin
+      superAdmin
         ? "🔙 سرگرمی"
         : "🔙 پنل ادمین",
     ],
@@ -64,9 +73,7 @@ function categoryMenu(categories) {
 }
 
 function getState(userId) {
-  return (
-    states.get(String(userId)) || null
-  );
+  return states.get(String(userId)) || null;
 }
 
 function setState(userId, state) {
@@ -143,9 +150,21 @@ async function startManualAdd(ctx) {
 async function handleText(ctx, next) {
   const userId = ctx.from?.id;
 
-  const state = userId
-    ? getState(userId)
-    : null;
+  if (!userId) {
+    return next();
+  }
+
+  const text = String(
+    ctx.message?.text || ""
+  ).trim();
+
+  // اجازه عبور دکمه‌های بازگشت به Handler اصلی
+  if (BACK_BUTTONS.includes(text)) {
+    clearState(userId);
+    return next();
+  }
+
+  const state = getState(userId);
 
   if (!state) {
     return next();
@@ -165,10 +184,6 @@ async function handleText(ctx, next) {
     return;
   }
 
-  const text = String(
-    ctx.message?.text || ""
-  ).trim();
-
   if (text === CANCEL_TEXT) {
     clearState(userId);
 
@@ -185,6 +200,7 @@ async function handleText(ctx, next) {
       userId
     );
 
+    // انتخاب دسته فال
     if (state.step === "category") {
       const categories =
         await adminFortuneService.listCategories(
@@ -221,6 +237,7 @@ async function handleText(ctx, next) {
       return;
     }
 
+    // دریافت عنوان فال
     if (state.step === "title") {
       const title =
         text === "ندارد"
@@ -240,6 +257,7 @@ async function handleText(ctx, next) {
       return;
     }
 
+    // دریافت متن و ذخیره فال
     if (state.step === "content") {
       if (!text) {
         await ctx.reply(
@@ -347,7 +365,12 @@ async function handleNotReady(ctx) {
       "⏳ این بخش در مرحله بعد تکمیل می‌شود.",
       await menu(ctx)
     );
-  } catch {
+  } catch (error) {
+    console.error(
+      "Fortune feature permission failed:",
+      error
+    );
+
     await ctx.reply(
       "⛔ دسترسی ندارید."
     );
