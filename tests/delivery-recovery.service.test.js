@@ -17,9 +17,11 @@ function createHarness({
 
   const lockClient = {
     async query(sql) {
-      calls.push(sql.includes("pg_try_advisory_lock")
-        ? "lock"
-        : "unlock");
+      calls.push(
+        sql.includes("pg_try_advisory_lock")
+          ? "lock"
+          : "unlock"
+      );
 
       if (sql.includes("pg_try_advisory_lock")) {
         return {
@@ -43,10 +45,11 @@ function createHarness({
     }),
 
     jobRepository: {
-      findSending: async () => jobs.map((job) => ({
-        reserved_cost: reservedCost,
-        ...job,
-      })),
+      findSending: async () =>
+        jobs.map((job) => ({
+          reserved_cost: reservedCost,
+          ...job,
+        })),
     },
 
     deliveryRepository: {
@@ -108,7 +111,10 @@ test("recovery does not consume or complete when delivery is missing", async () 
 
   assert.equal(result.recovered, 0);
   assert.equal(calls.includes("consume:1"), false);
-  assert.equal(calls.some((call) => call.startsWith("complete:")), false);
+  assert.equal(
+    calls.some((call) => call.startsWith("complete:")),
+    false
+  );
 });
 
 test("recovery does not resend or consume UNKNOWN deliveries", async () => {
@@ -138,6 +144,7 @@ test("SENT delivery consumes credit and completes the job", async () => {
   const result = await recover();
 
   assert.equal(result.recovered, 1);
+
   assert.deepEqual(
     calls.filter((call) =>
       ["consume:1", "complete:1:2"].includes(call)
@@ -159,6 +166,28 @@ test("credit consumption failure leaves the job for retry", async () => {
 
   assert.equal(result.recovered, 0);
   assert.equal(calls.includes("complete:1:2"), false);
+});
+
+test("completion failure leaves the job for retry and releases the lock", async () => {
+  const { recover, calls } = createHarness({
+    jobs: [{ id: 1 }],
+    delivery: {
+      status: "SENT",
+      telegram_message_id: "123",
+    },
+    completeError: new Error("Completion database failure"),
+  });
+
+  const result = await recover();
+
+  assert.equal(result.recovered, 0);
+  assert.deepEqual(result.jobs, []);
+
+  assert.ok(calls.includes("consume:1"));
+  assert.ok(calls.includes("complete:1:2"));
+
+  assert.ok(calls.includes("unlock"));
+  assert.ok(calls.includes("release"));
 });
 
 test("zero-cost SENT delivery completes without consuming credit", async () => {
