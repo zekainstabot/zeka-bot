@@ -258,33 +258,89 @@ async function setPaymentCardNumber({
 
 /**
  * مصرف کد تخفیف یک درخواست را آزاد می‌کند.
- * این تابع باید داخل transaction فراخوانی شود.
+ *
+ * قبل از حذف redemption فعال، تاریخچه آن را ثبت می‌کند.
+ * این تابع باید حتماً داخل transaction فراخوانی شود.
+ *
+ * وضعیت مجاز:
+ * REJECTED
+ * CANCELLED
  */
 async function releaseCouponRedemption(
   client,
-  purchaseRequestId
+  purchaseRequestId,
+  purchaseStatus
 ) {
   const safeRequestId =
     validatePurchaseRequestId(purchaseRequestId);
 
-  const couponResult = await client.query(
+  if (
+    !["REJECTED", "CANCELLED"].includes(
+      purchaseStatus
+    )
+  ) {
+    throw createError(
+      "INVALID_COUPON_RELEASE_STATUS"
+    );
+  }
+
+  // دریافت و قفل کردن کوپن و redemption فعال
+  const redemptionResult = await client.query(
     `
-      SELECT coupon.id
+      SELECT
+        coupon.id AS coupon_id,
+        redemption.telegram_user_id,
+        redemption.discount_percent,
+        redemption.created_at AS redemption_created_at
+
       FROM pro_discount_coupons coupon
+
       INNER JOIN pro_discount_redemptions redemption
         ON redemption.coupon_id = coupon.id
+
       WHERE redemption.purchase_request_id = $1
-      FOR UPDATE OF coupon
+
+      FOR UPDATE OF coupon, redemption
     `,
     [safeRequestId]
   );
 
-  if (!couponResult.rows.length) {
+  const redemption = redemptionResult.rows[0];
+
+  if (!redemption) {
     return false;
   }
 
-  const couponId = couponResult.rows[0].id;
+  // ثبت سابقه پیش از حذف redemption فعال
+  // این عملیات داخل همان transaction انجام می‌شود.
+  await client.query(
+    `
+      INSERT INTO pro_discount_redemption_history (
+        coupon_id,
+        purchase_request_id,
+        telegram_user_id,
+        discount_percent,
+        purchase_status,
+        redemption_created_at,
+        released_at
+      )
+      VALUES (
+        $1, $2, $3, $4, $5, $6, NOW()
+      )
+      ON CONFLICT (purchase_request_id)
+      DO NOTHING
+    `,
+    [
+      redemption.coupon_id,
+      safeRequestId,
+      redemption.telegram_user_id,
+      redemption.discount_percent,
+      purchaseStatus,
+      redemption.redemption_created_at,
+    ]
+  );
 
+  // حذف مصرف فعال کوپن
   const deleteResult = await client.query(
     `
       DELETE FROM pro_discount_redemptions
@@ -294,7 +350,7 @@ async function releaseCouponRedemption(
     `,
     [
       safeRequestId,
-      couponId,
+      redemption.coupon_id,
     ]
   );
 
@@ -302,6 +358,7 @@ async function releaseCouponRedemption(
     return false;
   }
 
+  // کاهش شمارنده مصرف کوپن
   await client.query(
     `
       UPDATE pro_discount_coupons
@@ -310,7 +367,7 @@ async function releaseCouponRedemption(
         updated_at = NOW()
       WHERE id = $1
     `,
-    [couponId]
+    [redemption.coupon_id]
   );
 
   return true;
@@ -377,9 +434,11 @@ async function cancelPurchaseRequest(telegramUserId) {
       return null;
     }
 
+    // آزادسازی کوپن همراه با ثبت تاریخچه
     await releaseCouponRedemption(
       client,
-      cancelledRequest.id
+      cancelledRequest.id,
+      "CANCELLED"
     );
 
     await client.query("COMMIT");
@@ -1017,12 +1076,13 @@ async function reviewPurchaseRequest({
       ]
     );
 
-    // در صورت رد درخواست، مصرف کوپن آزاد می‌شود.
+    // در صورت رد درخواست، مصرف کوپن آزاد و تاریخچه ثبت می‌شود.
     // در صورت تأیید، مصرف کوپن باقی می‌ماند.
     if (decision === "REJECTED") {
       await releaseCouponRedemption(
         client,
-        request.id
+        request.id,
+        "REJECTED"
       );
     }
 
