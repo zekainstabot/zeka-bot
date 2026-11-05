@@ -1,7 +1,13 @@
+
+"use strict";
+
 const { getClient } = require("../database/client");
 
+/**
+ * ایجاد یک سؤال جدید توسط ادمین
+ */
 async function createQuestion({
-  languageCode,
+  languageCode = "fa",
   category,
   difficulty,
   questionText,
@@ -11,7 +17,6 @@ async function createQuestion({
   optionD,
   correctOption,
   explanation = null,
-  createdBy,
 }) {
   const db = getClient();
 
@@ -28,15 +33,12 @@ async function createQuestion({
         option_d,
         correct_option,
         explanation,
-        status,
-        source_type,
-        created_by,
-        updated_by
+        status
       )
       VALUES (
-        $1, $2, $3, $4, $5, $6,
-        $7, $8, $9, $10, 'ACTIVE',
-        'ADMIN', $11, $11
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        'ACTIVE'
       )
       RETURNING *
     `,
@@ -51,7 +53,6 @@ async function createQuestion({
       optionD,
       correctOption,
       explanation,
-      createdBy,
     ]
   );
 
@@ -59,14 +60,16 @@ async function createQuestion({
 }
 
 /**
- * ثبت گروهی سؤال‌های واردشده از سایت.
+ * واردکردن گروهی سؤال‌ها از سایت
  *
- * ویژگی‌ها:
+ * امکانات:
  * - حداکثر ۱۰۰ سؤال در هر درخواست
- * - رد سؤال‌های تکراری
- * - رد سؤال‌های ناقص یا بدون پاسخ صحیح
- * - ثبت تمام سؤال‌ها در یک تراکنش
- * - لغو کامل تراکنش در صورت بروز خطا
+ * - بررسی اعتبار سؤال و گزینه‌ها
+ * - رد سؤال‌های بدون پاسخ صحیح
+ * - شناسایی سؤال‌های تکراری
+ * - ثبت گروهی در یک تراکنش
+ * - جلوگیری از تداخل ثبت هم‌زمان
+ * - بازگرداندن آمار ثبت، تکراری و نامعتبر
  */
 async function importQuestions({
   questions,
@@ -74,15 +77,12 @@ async function importQuestions({
   category,
   categoryId,
   difficulty,
-  createdBy,
 }) {
   if (
     !Array.isArray(questions) ||
     questions.length === 0
   ) {
-    throw new Error(
-      "Questions list is empty"
-    );
+    throw new Error("Questions list is empty");
   }
 
   if (questions.length > 100) {
@@ -92,40 +92,31 @@ async function importQuestions({
   }
 
   if (
-    !category ||
-    typeof category !== "string"
+    typeof category !== "string" ||
+    !category.trim()
   ) {
-    throw new Error(
-      "Invalid quiz category"
-    );
+    throw new Error("Invalid quiz category");
   }
+
+  const normalizedDifficulty = String(
+    difficulty || ""
+  ).trim().toUpperCase();
 
   if (
     !["EASY", "MEDIUM", "HARD"].includes(
-      String(difficulty).toUpperCase()
+      normalizedDifficulty
     )
   ) {
-    throw new Error(
-      "Invalid quiz difficulty"
-    );
+    throw new Error("Invalid quiz difficulty");
   }
 
-  if (
-    !Number.isInteger(Number(categoryId)) ||
-    Number(categoryId) <= 0
-  ) {
-    throw new Error(
-      "Invalid category ID"
-    );
-  }
+  const normalizedCategoryId = Number(categoryId);
 
   if (
-    !Number.isInteger(Number(createdBy)) ||
-    Number(createdBy) <= 0
+    !Number.isInteger(normalizedCategoryId) ||
+    normalizedCategoryId <= 0
   ) {
-    throw new Error(
-      "Invalid creator ID"
-    );
+    throw new Error("Invalid category ID");
   }
 
   const db = getClient();
@@ -138,11 +129,13 @@ async function importQuestions({
     questions: [],
   };
 
+  let transactionStarted = false;
+
   try {
     await client.query("BEGIN");
+    transactionStarted = true;
 
-    // جلوگیری از تداخل ثبت هم‌زمان سؤال‌ها
-    // هنگام بررسی تکراری بودن.
+    // جلوگیری از ثبت هم‌زمان سؤال‌های تکراری
     await client.query(
       `
         LOCK TABLE quiz_questions
@@ -153,7 +146,7 @@ async function importQuestions({
     const normalizedQuestions = [];
 
     for (const question of questions) {
-      if (!question) {
+      if (!question || typeof question !== "object") {
         result.invalid++;
         continue;
       }
@@ -167,27 +160,26 @@ async function importQuestions({
         question.optionB,
         question.optionC,
         question.optionD,
-      ].map((value) =>
-        String(value || "").trim()
-      );
+      ].map((value) => String(value || "").trim());
 
       const correctOption = String(
         question.correctOption || ""
       ).trim().toUpperCase();
 
-      if (
-        questionText.length < 5 ||
-        questionText.length > 2000 ||
-        options.some(
+      const valid =
+        questionText.length >= 5 &&
+        questionText.length <= 2000 &&
+        options.every(
           (option) =>
-            !option ||
-            option.length > 500
-        ) ||
-        new Set(options).size !== 4 ||
-        !["A", "B", "C", "D"].includes(
+            option.length > 0 &&
+            option.length <= 500
+        ) &&
+        new Set(options).size === 4 &&
+        ["A", "B", "C", "D"].includes(
           correctOption
-        )
-      ) {
+        );
+
+      if (!valid) {
         result.invalid++;
         continue;
       }
@@ -199,10 +191,11 @@ async function importQuestions({
         optionC: options[2],
         optionD: options[3],
         correctOption,
-        explanation:
-          question.explanation
-            ? String(question.explanation).trim().slice(0, 2000)
-            : null,
+        explanation: question.explanation
+          ? String(question.explanation)
+              .trim()
+              .slice(0, 2000)
+          : null,
       });
     }
 
@@ -212,6 +205,7 @@ async function importQuestions({
         .replace(/\s+/g, " ")
         .trim();
 
+      // بررسی تکراری بودن سؤال
       const existing = await client.query(
         `
           SELECT id
@@ -234,6 +228,7 @@ async function importQuestions({
         continue;
       }
 
+      // ثبت سؤال جدید
       const inserted = await client.query(
         `
           INSERT INTO quiz_questions (
@@ -248,24 +243,20 @@ async function importQuestions({
             option_d,
             correct_option,
             explanation,
-            status,
-            source_type,
-            created_by,
-            updated_by
+            status
           )
           VALUES (
             $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10,
-            $11, 'ACTIVE', 'ADMIN',
-            $12, $12
+            $11, 'ACTIVE'
           )
           RETURNING id
         `,
         [
           languageCode,
           category,
-          Number(categoryId),
-          String(difficulty).toUpperCase(),
+          normalizedCategoryId,
+          normalizedDifficulty,
           question.questionText,
           question.optionA,
           question.optionB,
@@ -273,7 +264,6 @@ async function importQuestions({
           question.optionD,
           question.correctOption,
           question.explanation,
-          Number(createdBy),
         ]
       );
 
@@ -287,16 +277,30 @@ async function importQuestions({
     }
 
     await client.query("COMMIT");
+    transactionStarted = false;
 
     return result;
   } catch (error) {
-    await client.query("ROLLBACK");
+    if (transactionStarted) {
+      try {
+        await client.query("ROLLBACK");
+      } catch (rollbackError) {
+        console.error(
+          "Quiz import rollback failed:",
+          rollbackError
+        );
+      }
+    }
+
     throw error;
   } finally {
     client.release();
   }
 }
 
+/**
+ * شمارش سؤال‌های فعال
+ */
 async function countActiveQuestions() {
   const db = getClient();
 
@@ -308,11 +312,12 @@ async function countActiveQuestions() {
     `
   );
 
-  return Number(
-    result.rows[0]?.count || 0
-  );
+  return Number(result.rows[0]?.count || 0);
 }
 
+/**
+ * دریافت سؤال با شناسه
+ */
 async function getQuestionById(questionId) {
   const db = getClient();
 
@@ -329,6 +334,9 @@ async function getQuestionById(questionId) {
   return result.rows[0] || null;
 }
 
+/**
+ * دریافت فهرست سؤال‌ها
+ */
 async function listQuestions({
   search = "",
   status = "ALL",
@@ -361,7 +369,12 @@ async function listQuestions({
     );
   }
 
-  if (categoryId && Number(categoryId)) {
+  if (
+    categoryId !== null &&
+    categoryId !== undefined &&
+    Number.isInteger(Number(categoryId)) &&
+    Number(categoryId) > 0
+  ) {
     values.push(Number(categoryId));
 
     conditions.push(
@@ -413,6 +426,9 @@ async function listQuestions({
   return result.rows;
 }
 
+/**
+ * شمارش سؤال‌ها با فیلتر
+ */
 async function countQuestions({
   search = "",
   status = "ALL",
@@ -433,7 +449,12 @@ async function countQuestions({
     );
   }
 
-  if (categoryId && Number(categoryId)) {
+  if (
+    categoryId !== null &&
+    categoryId !== undefined &&
+    Number.isInteger(Number(categoryId)) &&
+    Number(categoryId) > 0
+  ) {
     values.push(Number(categoryId));
 
     conditions.push(
@@ -473,11 +494,12 @@ async function countQuestions({
     values
   );
 
-  return Number(
-    result.rows[0]?.count || 0
-  );
+  return Number(result.rows[0]?.count || 0);
 }
 
+/**
+ * ویرایش سؤال
+ */
 async function updateQuestion({
   questionId,
   category,
@@ -489,7 +511,6 @@ async function updateQuestion({
   optionD,
   correctOption,
   explanation = null,
-  updatedBy,
 }) {
   const db = getClient();
 
@@ -505,9 +526,7 @@ async function updateQuestion({
         option_c = $7,
         option_d = $8,
         correct_option = $9,
-        explanation = $10,
-        updated_by = $11,
-        updated_at = NOW()
+        explanation = $10
       WHERE id = $1
       RETURNING *
     `,
@@ -522,17 +541,18 @@ async function updateQuestion({
       optionD,
       correctOption,
       explanation,
-      updatedBy,
     ]
   );
 
   return result.rows[0] || null;
 }
 
+/**
+ * فعال یا غیرفعال کردن سؤال
+ */
 async function updateQuestionStatus({
   questionId,
   status,
-  updatedBy,
 }) {
   const db = getClient();
 
@@ -545,31 +565,28 @@ async function updateQuestionStatus({
       normalizedStatus
     )
   ) {
-    throw new Error(
-      "Invalid question status"
-    );
+    throw new Error("Invalid question status");
   }
 
   const result = await db.query(
     `
       UPDATE quiz_questions
-      SET
-        status = $2,
-        updated_by = $3,
-        updated_at = NOW()
+      SET status = $2
       WHERE id = $1
       RETURNING *
     `,
     [
       questionId,
       normalizedStatus,
-      updatedBy,
     ]
   );
 
   return result.rows[0] || null;
 }
 
+/**
+ * دریافت دسته‌بندی‌ها
+ */
 async function listCategories() {
   const db = getClient();
 
