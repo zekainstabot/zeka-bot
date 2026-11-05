@@ -21,6 +21,10 @@ const {
   createSuperAdminFinanceHandler,
 } = require("./super-admin-finance.handler");
 
+const {
+  quizAdminMenu,
+} = require("./admin-quiz/menu");
+
 const PLATFORMS = [
   { key: "platform.instagram", name: "اینستاگرام" },
   { key: "platform.tiktok", name: "تیک‌تاک" },
@@ -134,16 +138,21 @@ async function handleSuperAdminQuizMenu(ctx) {
     return;
   }
 
-  await ctx.reply(
-    "🧠 مدیریت مسابقه\n\nبخش موردنظر را انتخاب کنید.",
-    Markup.keyboard([
-      ["➕ افزودن سؤال"],
-      ["🚨 گزارش‌های سؤالات"],
-      ["🔙 سرگرمی"],
-    ])
-      .resize()
-      .oneTime(false)
-  );
+  try {
+    await ctx.reply(
+      "🧠 مدیریت مسابقه\n\nبخش موردنظر را انتخاب کنید.",
+      await quizAdminMenu(ctx)
+    );
+  } catch (error) {
+    console.error(
+      "Super Admin quiz menu failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت منوی مدیریت مسابقه انجام نشد."
+    );
+  }
 }
 
 async function handleProAdminMenu(ctx) {
