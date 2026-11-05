@@ -9,6 +9,36 @@ const adminProStates = new Map();
 const CANCEL_TEXT = "❌ لغو";
 const PURCHASE_PAGE_SIZE = 5;
 
+const NAVIGATION_BUTTONS = new Set([
+  "🔙 پنل Super Admin",
+  "🔙 خروج از پنل Super Admin",
+  "🔙 بخش مالی",
+  "🔙 پنل ادمین",
+  "🔙 خروج از پنل مدیریت",
+  "🔙 پنل مدیریت",
+
+  "💰 مالی",
+  "👥 کاربران",
+  "⚙️ تنظیمات",
+  "📥 مدیریت درخواست‌ها",
+  "🎁 مدیریت جوایز",
+  "🌐 مدیریت پلتفرم‌ها",
+  "🍪 کوکی اینستاگرام",
+  "✨ مدیریت امکانات",
+  "🆘 پشتیبانی",
+  "📊 مانیتورینگ",
+  "🛠 مدیریت ادمین",
+  "📋 گزارش‌ها",
+  "🐞 گزارش مشکلات",
+  "🧠 مدیریت مسابقه",
+  "🔮 مدیریت فال",
+
+  "💳 مدیریت اعتبار",
+  "📺 مدیریت زکا مدیا",
+  "👥 مدیریت کاربران",
+  "📊 گزارش سؤالات",
+]);
+
 const cancelMenu = Markup.keyboard([
   [CANCEL_TEXT],
 ]).resize();
@@ -156,19 +186,26 @@ async function startSimpleFlow(ctx, action) {
 async function handleAdminProText(ctx, next) {
   const telegramUserId = ctx.from?.id;
 
-  if (!telegramUserId) return next();
+  if (!telegramUserId) {
+    return next();
+  }
 
   const state = getState(telegramUserId);
 
-  if (!state) return next();
+  if (!state) {
+    return next();
+  }
 
   const text =
     typeof ctx.message?.text === "string"
       ? ctx.message.text.trim()
       : "";
 
-  if (!text) return;
+  if (!text) {
+    return next();
+  }
 
+  // لغو عملیات جاری Pro
   if (text === CANCEL_TEXT || text === "/cancel") {
     clearState(telegramUserId);
 
@@ -178,6 +215,18 @@ async function handleAdminProText(ctx, next) {
     );
 
     return;
+  }
+
+  // دستورهای بات نباید توسط State قبلی مصرف شوند.
+  if (text.startsWith("/")) {
+    clearState(telegramUserId);
+    return next();
+  }
+
+  // انتقال به سایر بخش‌های پنل
+  if (NAVIGATION_BUTTONS.has(text)) {
+    clearState(telegramUserId);
+    return next();
   }
 
   try {
