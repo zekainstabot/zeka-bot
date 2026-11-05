@@ -1,4 +1,3 @@
-
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -10,6 +9,7 @@ const {
 function createHarness({
   reservedCost = 2,
   sendError = null,
+  downloadError = null,
   missingMessageId = false,
   consumeError = null,
   completeError = null,
@@ -32,6 +32,10 @@ function createHarness({
     async downloadInstagram() {
       calls.push("download");
 
+      if (downloadError) {
+        throw downloadError;
+      }
+
       return {
         success: true,
         filePath: "/tmp/job-video.mp4",
@@ -43,6 +47,10 @@ function createHarness({
 
     async downloadTikTok() {
       calls.push("download");
+
+      if (downloadError) {
+        throw downloadError;
+      }
 
       return {
         success: true,
@@ -151,6 +159,7 @@ function createHarness({
   return {
     processJob: worker.processJob,
     calls,
+    dependencies,
   };
 }
 
@@ -238,6 +247,7 @@ test("credit consumption failure preserves reservation and leaves job in SENDING
 
   assert.equal(calls.includes("credit:release:101"), false);
   assert.equal(calls.includes("job:failed"), false);
+
   assert.equal(
     calls.some((call) => call.startsWith("job:completed:")),
     false
@@ -282,6 +292,7 @@ test("completion failure for a free job leaves it for recovery", async () => {
   assert.equal(calls.includes("credit:consume:101"), false);
   assert.equal(calls.includes("credit:release:101"), false);
   assert.equal(calls.includes("job:failed"), false);
+
   assert.ok(calls.includes("job:completed:101:0"));
 });
 
@@ -319,40 +330,21 @@ test("Telegram send failure marks delivery UNKNOWN and releases reserved credit"
 });
 
 test("download failure releases reserved credit and marks job failed", async () => {
-  const { processJob, calls } = createHarness();
-
-  const error = new Error("Download failed");
-
-  const worker = createJobWorker({
-    ...createHarness().dependencies,
-  });
-
-  assert.equal(typeof worker.processJob, "function");
-
-  const failingWorker = createJobWorker({
-    async downloadInstagram() {
-      throw error;
-    },
-    userRepository: {
-      async findById() {
-        return { telegram_user_id: 9001 };
-      },
-    },
-    async releaseCredit(jobId) {
-      calls.push(`credit:release:${jobId}`);
-    },
-    async markFailed() {
-      calls.push("job:failed");
-    },
+  const { processJob, calls } = createHarness({
+    downloadError: new Error("Download failed"),
   });
 
   await assert.rejects(
-    () => failingWorker.processJob(validJob),
+    () => processJob(validJob),
     /Download failed/
   );
 
+  assert.ok(calls.includes("download"));
   assert.ok(calls.includes("credit:release:101"));
   assert.ok(calls.includes("job:failed"));
+
+  assert.equal(calls.includes("send"), false);
+  assert.equal(calls.includes("credit:consume:101"), false);
 });
 
 test("worker deletes downloaded file after normal completion", async () => {
@@ -366,12 +358,14 @@ test("worker deletes downloaded file after normal completion", async () => {
 });
 
 test("worker preserves a file successfully queued for review", async () => {
-  const { processJob, calls } = createHarness();
+  const calls = [];
 
   const worker = createJobWorker({
     userRepository: {
       async findById() {
-        return { telegram_user_id: 9001 };
+        return {
+          telegram_user_id: 9001,
+        };
       },
     },
 
@@ -401,6 +395,7 @@ test("worker preserves a file successfully queued for review", async () => {
     },
 
     async markSending() {},
+
     async consumeCredit() {},
 
     async enqueueForReview() {
@@ -420,6 +415,7 @@ test("worker preserves a file successfully queued for review", async () => {
   const result = await worker.processJob(validJob);
 
   assert.equal(result.zekaMediaQueued, true);
+
   assert.equal(
     calls.includes("delete:/tmp/review-video.mp4"),
     false
