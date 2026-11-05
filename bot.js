@@ -77,6 +77,11 @@ const {
 } = require("./scheduler/pro-purchase-notification.scheduler");
 
 const {
+  startDeliveryRecoveryScheduler,
+  stopDeliveryRecoveryScheduler,
+} = require("./scheduler/delivery-recovery.scheduler");
+
+const {
   createDownloadHandler,
 } = require("./handlers/download.handler");
 
@@ -217,6 +222,7 @@ function createBot() {
   register(async () => {
     stopScheduledPublishing();
     stopProPurchaseNotificationScheduler();
+    stopDeliveryRecoveryScheduler();
 
     cleanupQuizTimers();
 
@@ -249,6 +255,8 @@ async function startBot() {
 
   console.log("Delivery recovery finished.");
 
+  startDeliveryRecoveryScheduler();
+
   console.log("Starting queue recovery...");
 
   await recoverJobs();
@@ -271,6 +279,7 @@ async function startBot() {
     if (!isPollingConflict) {
       stopScheduledPublishing();
       stopProPurchaseNotificationScheduler();
+      stopDeliveryRecoveryScheduler();
 
       throw error;
     }
