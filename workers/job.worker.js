@@ -1,4 +1,3 @@
-
 const userRepository = require("../repositories/user.repository");
 
 const {
@@ -249,6 +248,26 @@ async function processJob(job) {
         delivered: true,
         creditConsumed: false,
         creditPending: true,
+        jobId: jobLabel,
+      };
+    }
+
+    // تحویل موفق و مصرف اعتبار انجام شده (یا Job رایگان است)،
+    // اما ثبت COMPLETED شکست خورده؛ Recovery باید آن را تکمیل کند.
+    if (
+      deliveryConfirmed &&
+      (!consumeCreditForJob || creditConsumed)
+    ) {
+      console.error(
+        `CRITICAL: Job ${jobLabel} was delivered and credited, but completion failed. Job remains in SENDING for recovery.`,
+        error
+      );
+
+      return {
+        success: false,
+        delivered: true,
+        creditConsumed,
+        reconciliationPending: true,
         jobId: jobLabel,
       };
     }
