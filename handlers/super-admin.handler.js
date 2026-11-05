@@ -30,6 +30,8 @@ const PLATFORMS = [
   { key: "platform.pinterest", name: "پینترست" },
 ];
 
+const ENTERTAINMENT_BUTTON = "🎮 سرگرمی";
+
 async function getSuperAdmin(ctx) {
   const telegramUserId = ctx.from?.id;
 
@@ -57,13 +59,11 @@ function buildSuperAdminMenu() {
     ["👥 کاربران", "💰 مالی"],
     ["⚙️ تنظیمات"],
     ["📥 مدیریت درخواست‌ها"],
-    ["🎁 مدیریت جوایز", "🌐 مدیریت پلتفرم‌ها"],
+    [ENTERTAINMENT_BUTTON, "🌐 مدیریت پلتفرم‌ها"],
     ["🍪 کوکی اینستاگرام"],
     ["✨ مدیریت امکانات", "🆘 پشتیبانی"],
     ["📊 مانیتورینگ", "🛠 مدیریت ادمین"],
     ["📋 گزارش‌ها", "🐞 گزارش مشکلات"],
-    ["🧠 مدیریت مسابقه"],
-    ["🔮 مدیریت فال"],
     ["🔙 خروج از پنل Super Admin"],
   ])
     .resize()
@@ -101,6 +101,29 @@ async function handleSuperAdminCommand(ctx) {
   }
 }
 
+async function handleEntertainmentMenu(ctx) {
+  const admin = await getSuperAdmin(ctx);
+
+  if (!admin) {
+    await ctx.reply(
+      "⛔ فقط Super Admin به بخش سرگرمی دسترسی دارد."
+    );
+    return;
+  }
+
+  await ctx.reply(
+    "🎮 مدیریت سرگرمی\n\nبخش موردنظر را انتخاب کنید.",
+    Markup.keyboard([
+      ["🧠 مدیریت مسابقه"],
+      ["🔮 مدیریت فال"],
+      ["🎁 مدیریت جوایز"],
+      ["🔙 پنل Super Admin"],
+    ])
+      .resize()
+      .oneTime(false)
+  );
+}
+
 async function handleSuperAdminQuizMenu(ctx) {
   const admin = await getSuperAdmin(ctx);
 
@@ -116,7 +139,7 @@ async function handleSuperAdminQuizMenu(ctx) {
     Markup.keyboard([
       ["➕ افزودن سؤال"],
       ["🚨 گزارش‌های سؤالات"],
-      ["🔙 پنل Super Admin"],
+      ["🔙 سرگرمی"],
     ])
       .resize()
       .oneTime(false)
@@ -317,6 +340,10 @@ async function handleBackToSuperAdmin(ctx) {
   );
 }
 
+async function handleBackToEntertainment(ctx) {
+  await handleEntertainmentMenu(ctx);
+}
+
 async function handleSuperAdminExit(ctx) {
   const telegramUserId = ctx.from?.id;
 
@@ -346,14 +373,17 @@ async function handleSuperAdminExit(ctx) {
 }
 
 function createSuperAdminHandler(bot) {
-  // دستور ورود قبل از Middlewareهای متنی مالی ثبت می‌شود.
   bot.command(
     "superadmin",
     handleSuperAdminCommand
   );
 
-  // Handlerهای مالی قبل از سایر منوهای متنی ثبت می‌شوند.
   createSuperAdminFinanceHandler(bot);
+
+  bot.hears(
+    ENTERTAINMENT_BUTTON,
+    handleEntertainmentMenu
+  );
 
   bot.hears(
     "🌐 مدیریت پلتفرم‌ها",
@@ -381,6 +411,11 @@ function createSuperAdminHandler(bot) {
   );
 
   bot.hears(
+    "🔙 سرگرمی",
+    handleBackToEntertainment
+  );
+
+  bot.hears(
     "🔙 پنل Super Admin",
     handleBackToSuperAdmin
   );
@@ -394,4 +429,5 @@ function createSuperAdminHandler(bot) {
 module.exports = {
   handleSuperAdminCommand,
   createSuperAdminHandler,
+  handleEntertainmentMenu,
 };
