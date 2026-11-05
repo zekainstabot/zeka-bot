@@ -1,4 +1,3 @@
-
 const adminService = require("../services/admin.service");
 
 const {
@@ -57,6 +56,23 @@ const {
   createZekaMediaHandler,
 } = require("./zeka-media.handler");
 
+const ENTERTAINMENT_BUTTON = "🎮 سرگرمی";
+
+const ENTERTAINMENT_SECTIONS = [
+  {
+    permission: "games.quiz",
+    button: "🧠 مدیریت مسابقه",
+  },
+  {
+    permission: "features.fortune.manage",
+    button: "🔮 مدیریت فال",
+  },
+  {
+    permission: "rewards",
+    button: "🎁 مدیریت جوایز",
+  },
+];
+
 const PERMISSION_BUTTONS = [
   {
     permission: "zeka_media",
@@ -77,10 +93,6 @@ const PERMISSION_BUTTONS = [
   {
     permission: "credits",
     button: "💳 مدیریت اعتبار",
-  },
-  {
-    permission: "rewards",
-    button: "🎁 مدیریت جوایز",
   },
   {
     permission: "platforms",
@@ -111,22 +123,14 @@ const PERMISSION_BUTTONS = [
     button: "🐞 گزارش مشکلات",
   },
   {
-    permission: "games.quiz",
-    button: "🧠 مدیریت مسابقه",
-  },
-  {
     permission: "pro",
     button: "💎 مدیریت Pro",
   },
-  {
-    permission: "features.fortune.manage",
-    button: "🔮 مدیریت فال",
-  },
+  ...ENTERTAINMENT_SECTIONS,
 ];
 
 const UNIMPLEMENTED_BUTTONS = [
   "⚙️ تنظیمات",
-  "🎁 مدیریت جوایز",
   "✨ مدیریت امکانات",
   "🆘 پشتیبانی",
 ];
@@ -142,9 +146,27 @@ function buildAdminMenu(permissions) {
   const buttons = [];
 
   for (const item of PERMISSION_BUTTONS) {
+    if (
+      ENTERTAINMENT_SECTIONS.some(
+        (section) =>
+          section.permission === item.permission
+      )
+    ) {
+      continue;
+    }
+
     if (permissions[item.permission]) {
       buttons.push(item.button);
     }
+  }
+
+  const hasEntertainmentPermission =
+    ENTERTAINMENT_SECTIONS.some(
+      (section) => permissions[section.permission]
+    );
+
+  if (hasEntertainmentPermission) {
+    buttons.push(ENTERTAINMENT_BUTTON);
   }
 
   buttons.push("🔙 خروج از پنل مدیریت");
@@ -152,9 +174,7 @@ function buildAdminMenu(permissions) {
   const rows = [];
 
   for (let i = 0; i < buttons.length; i += 2) {
-    rows.push(
-      buttons.slice(i, i + 2)
-    );
+    rows.push(buttons.slice(i, i + 2));
   }
 
   return rows;
@@ -205,17 +225,14 @@ async function getAdminPanelData(telegramUserId) {
 }
 
 async function showAdminPanel(ctx) {
-  const telegramUserId =
-    ctx.from?.id;
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
   }
 
   const data =
-    await getAdminPanelData(
-      telegramUserId
-    );
+    await getAdminPanelData(telegramUserId);
 
   if (!data) {
     await ctx.reply(
@@ -229,15 +246,81 @@ async function showAdminPanel(ctx) {
     "🛠 پنل مدیریت ادمین",
     {
       reply_markup: {
-        keyboard:
-          buildAdminMenu(
-            data.permissions
-          ),
+        keyboard: buildAdminMenu(
+          data.permissions
+        ),
         resize_keyboard: true,
         one_time_keyboard: false,
       },
     }
   );
+}
+
+async function showEntertainmentMenu(ctx) {
+  const telegramUserId = ctx.from?.id;
+
+  if (!telegramUserId) {
+    return;
+  }
+
+  try {
+    const admin =
+      await adminService.getAdminByTelegramId(
+        telegramUserId
+      );
+
+    if (!admin || !admin.is_active) {
+      await ctx.reply(
+        "⛔ دسترسی به پنل مدیریت ندارید."
+      );
+
+      return;
+    }
+
+    const buttons = [];
+
+    for (const section of ENTERTAINMENT_SECTIONS) {
+      const allowed =
+        await adminService.hasPermission(
+          admin.user_id,
+          section.permission
+        );
+
+      if (allowed) {
+        buttons.push([section.button]);
+      }
+    }
+
+    if (buttons.length === 0) {
+      await ctx.reply(
+        "⛔ شما به بخش‌های سرگرمی دسترسی ندارید."
+      );
+
+      return;
+    }
+
+    buttons.push(["🔙 پنل ادمین"]);
+
+    await ctx.reply(
+      "🎮 سرگرمی\n\nبخش موردنظر را انتخاب کنید:",
+      {
+        reply_markup: {
+          keyboard: buttons,
+          resize_keyboard: true,
+          one_time_keyboard: false,
+        },
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Entertainment menu failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت منوی سرگرمی انجام نشد."
+    );
+  }
 }
 
 async function handleAdminCommand(ctx) {
@@ -255,8 +338,7 @@ async function handleAdminExit(ctx) {
 }
 
 async function handleUnavailableAdminSection(ctx) {
-  const button =
-    ctx.message?.text;
+  const button = ctx.message?.text;
 
   const permission =
     BUTTON_PERMISSIONS.get(button);
@@ -265,8 +347,7 @@ async function handleUnavailableAdminSection(ctx) {
     return;
   }
 
-  const telegramUserId =
-    ctx.from?.id;
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
@@ -327,6 +408,11 @@ function createAdminHandler(bot) {
   );
 
   bot.hears(
+    ENTERTAINMENT_BUTTON,
+    showEntertainmentMenu
+  );
+
+  bot.hears(
     "🔙 خروج از پنل مدیریت",
     handleAdminExit
   );
@@ -348,9 +434,7 @@ function createAdminHandler(bot) {
   createAdminReportsHandler(bot);
   createZekaMediaHandler(bot);
 
-  for (
-    const button of UNIMPLEMENTED_BUTTONS
-  ) {
+  for (const button of UNIMPLEMENTED_BUTTONS) {
     bot.hears(
       button,
       handleUnavailableAdminSection
@@ -361,6 +445,7 @@ function createAdminHandler(bot) {
 module.exports = {
   createAdminHandler,
   showAdminPanel,
+  showEntertainmentMenu,
   getAdminPanelData,
   buildAdminMenu,
   PERMISSION_BUTTONS,
