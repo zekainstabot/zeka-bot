@@ -10,11 +10,8 @@ const adminManagementService = require(
   "../../services/admin-management.service"
 );
 
-async function quizAdminMenu(
-  ctx
-) {
-  const telegramUserId =
-    ctx.from?.id;
+async function quizAdminMenu(ctx) {
+  const telegramUserId = ctx.from?.id;
 
   let isSuperAdmin = false;
   let canViewReports = false;
@@ -27,8 +24,7 @@ async function quizAdminMenu(
         );
 
       isSuperAdmin =
-        admin.role_key ===
-        "super_admin";
+        admin.role_key === "super_admin";
     } catch {}
 
     try {
@@ -55,13 +51,11 @@ async function quizAdminMenu(
 
   buttons.push([
     isSuperAdmin
-      ? "🔙 پنل Super Admin"
-      : "🔙 پنل مدیریت",
+      ? "🔙 سرگرمی"
+      : "🔙 پنل ادمین",
   ]);
 
-  return Markup.keyboard(
-    buttons
-  ).resize();
+  return Markup.keyboard(buttons).resize();
 }
 
 module.exports = {
