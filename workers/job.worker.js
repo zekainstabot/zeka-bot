@@ -155,8 +155,6 @@ async function processJob(job) {
         queueError
       );
 
-      // اگر صف قبلاً ثبت شده باشد، فایلِ در انتظار بررسی
-      // نباید به‌اشتباه پاک شود.
       try {
         const existingItem =
           await mediaRepository.findByJobId(job.id);
@@ -230,6 +228,27 @@ async function processJob(job) {
         delivered: false,
         deliveryUnknown: true,
         creditConsumed: false,
+        jobId: jobLabel,
+      };
+    }
+
+    // تحویل قطعی انجام شده اما مصرف اعتبار شکست خورده است.
+    // رزرو نباید آزاد شود و Job نباید FAILED شود.
+    if (
+      deliveryConfirmed &&
+      consumeCreditForJob &&
+      !creditConsumed
+    ) {
+      console.error(
+        `CRITICAL: Job ${jobLabel} was delivered but credit consumption failed. Credit reservation is preserved. Job remains in SENDING for reconciliation.`,
+        error
+      );
+
+      return {
+        success: false,
+        delivered: true,
+        creditConsumed: false,
+        creditPending: true,
         jobId: jobLabel,
       };
     }
