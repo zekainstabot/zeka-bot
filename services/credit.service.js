@@ -27,9 +27,14 @@ async function reserveCredit({
     throw new Error("User ID is required");
   }
 
-  if (amount <= 0) {
+  const normalizedAmount = Number(amount);
+
+  if (
+    !Number.isFinite(normalizedAmount) ||
+    normalizedAmount <= 0
+  ) {
     throw new Error(
-      "Credit amount must be greater than zero"
+      "Credit amount must be a valid number greater than zero"
     );
   }
 
@@ -45,7 +50,7 @@ async function reserveCredit({
         client
       );
 
-    let remainingToReserve = Number(amount);
+    let remainingToReserve = normalizedAmount;
     const reservations = [];
 
     for (const account of accounts) {
@@ -405,9 +410,14 @@ async function reserveGameCredit({
     throw new Error("Game session ID is required");
   }
 
-  if (amount <= 0) {
+  const normalizedAmount = Number(amount);
+
+  if (
+    !Number.isFinite(normalizedAmount) ||
+    normalizedAmount <= 0
+  ) {
     throw new Error(
-      "Credit amount must be greater than zero"
+      "Credit amount must be a valid number greater than zero"
     );
   }
 
@@ -423,7 +433,7 @@ async function reserveGameCredit({
         client
       );
 
-    let remainingToReserve = Number(amount);
+    let remainingToReserve = normalizedAmount;
     const reservations = [];
 
     for (const account of accounts) {
