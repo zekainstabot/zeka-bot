@@ -10,6 +10,7 @@ const {
   setImportState,
   clearImportState,
 } = require("./admin-quiz/state");
+
 const adminQuizService = require(
   "../services/admin-quiz.service"
 );
@@ -30,22 +31,28 @@ const {
   "./admin-quiz/reports.handler"
 );
 
+const {
+  quizAdminMenu,
+} = require(
+  "./admin-quiz/menu"
+);
+
 const CANCEL_TEXT = "❌ لغو";
-
 const IMPORT_BUTTON = "📥 ورود سؤال از سایت";
-
 const BANK_PAGE_SIZE = 5;
+
+const BACK_BUTTONS = [
+  "🔙 سرگرمی",
+  "🔙 پنل ادمین",
+  "🔙 پنل Super Admin",
+];
 
 function importCancelMenu() {
   return Markup.keyboard([
     ["❌ لغو"],
   ]).resize();
 }
-const {
-  quizAdminMenu,
-} = require(
-  "./admin-quiz/menu"
-);
+
 const cancelMenu = Markup.keyboard([
   [CANCEL_TEXT],
 ]).resize();
@@ -74,16 +81,10 @@ function formatQuestion(question) {
    QUESTION BANK
 ========================================================= */
 
-function getBankState(
-  telegramUserId
-) {
-  const state =
-    getState(telegramUserId);
+function getBankState(telegramUserId) {
+  const state = getState(telegramUserId);
 
-  if (
-    state &&
-    state.mode === "BANK"
-  ) {
+  if (state && state.mode === "BANK") {
     return state;
   }
 
@@ -100,7 +101,7 @@ function buildBankButtons({
   questions,
   total,
   offset,
-  status
+  status,
 }) {
   const buttons = [];
 
@@ -142,10 +143,7 @@ function buildBankButtons({
     );
   }
 
-  if (
-    offset + questions.length <
-    total
-  ) {
+  if (offset + questions.length < total) {
     navigation.push(
       Markup.button.callback(
         "➡️ بعدی",
@@ -201,9 +199,7 @@ function buildBankButtons({
     ),
   ]);
 
-  return Markup.inlineKeyboard(
-    buttons
-  );
+  return Markup.inlineKeyboard(buttons);
 }
 
 async function sendQuestionBank(
@@ -215,25 +211,16 @@ async function sendQuestionBank(
     telegramUserId
   );
 
-  const state =
-    getBankState(
-      telegramUserId
-    );
+  const state = getBankState(telegramUserId);
 
-  const safeOffset =
-    Math.max(
-      0,
-      Number(offset) || 0
-    );
+  const safeOffset = Math.max(
+    0,
+    Number(offset) || 0
+  );
 
-  const status =
-    state.status || "ACTIVE";
-
-  const search =
-    state.search || "";
-
-  const categoryId =
-    state.categoryId || null;
+  const status = state.status || "ACTIVE";
+  const search = state.search || "";
+  const categoryId = state.categoryId || null;
 
   const questions =
     await adminQuizService.listQuestions(
@@ -263,70 +250,51 @@ async function sendQuestionBank(
   state.search = search;
   state.categoryId = categoryId;
 
-  setState(
-    telegramUserId,
-    state
-  );
+  setState(telegramUserId, state);
 
-  if (
-    !questions ||
-    questions.length === 0
-  ) {
-    const searchText =
-      search
-        ? `\n\n🔎 جستجو: ${search}`
-        : "";
+  if (!questions || questions.length === 0) {
+    const searchText = search
+      ? `\n\n🔎 جستجو: ${search}`
+      : "";
 
     const text =
       "📚 بانک سؤالات\n\n" +
       "❌ هیچ سؤالی با این فیلتر پیدا نشد." +
       searchText;
 
-    const buttons =
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback(
-            "🔎 جستجوی سؤال",
-            "quiz_admin_bank_search"
-          ),
-        ],
-        [
-          Markup.button.callback(
-            "🔄 نمایش سؤالات فعال",
-            "quiz_admin_bank_filter:ACTIVE"
-          ),
-        ],
-        [
-          Markup.button.callback(
-            "🔙 منوی مدیریت مسابقه",
-            "quiz_admin_bank_back"
-          ),
-        ],
-      ]);
+    const buttons = Markup.inlineKeyboard([
+      [
+        Markup.button.callback(
+          "🔎 جستجوی سؤال",
+          "quiz_admin_bank_search"
+        ),
+      ],
+      [
+        Markup.button.callback(
+          "🔄 نمایش سؤالات فعال",
+          "quiz_admin_bank_filter:ACTIVE"
+        ),
+      ],
+      [
+        Markup.button.callback(
+          "🔙 منوی مدیریت مسابقه",
+          "quiz_admin_bank_back"
+        ),
+      ],
+    ]);
 
-    if (
-      ctx.callbackQuery &&
-      ctx.callbackQuery.message
-    ) {
-      await ctx.editMessageText(
-        text,
-        buttons
-      );
+    if (ctx.callbackQuery && ctx.callbackQuery.message) {
+      await ctx.editMessageText(text, buttons);
     } else {
-      await ctx.reply(
-        text,
-        buttons
-      );
+      await ctx.reply(text, buttons);
     }
 
     return;
   }
 
-  let text =
-    "📚 بانک سؤالات\n\n";
+  let text = "📚 بانک سؤالات\n\n";
 
-  text +=
-    `📊 تعداد: ${total}\n`;
+  text += `📊 تعداد: ${total}\n`;
 
   text +=
     `📌 فیلتر: ${
@@ -338,15 +306,13 @@ async function sendQuestionBank(
     }\n`;
 
   if (search) {
-    text +=
-      `🔎 جستجو: ${search}\n`;
+    text += `🔎 جستجو: ${search}\n`;
   }
 
   text +=
     `📄 نمایش ${safeOffset + 1} تا ${
       Math.min(
-        safeOffset +
-          questions.length,
+        safeOffset + questions.length,
         total
       )
     } از ${total}\n\n`;
@@ -356,66 +322,44 @@ async function sendQuestionBank(
     i < questions.length;
     i++
   ) {
-    const question =
-      questions[i];
+    const question = questions[i];
 
     text +=
-      `${i + 1}. 🆔 ${
-        question.id
-      }\n`;
+      `${i + 1}. 🆔 ${question.id}\n`;
 
     text +=
-      `❓ ${
-        String(
-          question.question_text || ""
-        ).slice(0, 100)
-      }\n`;
+      `❓ ${String(
+        question.question_text || ""
+      ).slice(0, 100)}\n`;
 
     text +=
       `📌 ${
-        question.status ===
-        "ACTIVE"
+        question.status === "ACTIVE"
           ? "🟢 فعال"
           : "🔴 غیرفعال"
       }`;
 
     text +=
-      ` | 🎯 ${
-        question.difficulty ||
-        "نامشخص"
-      }\n\n`;
+      ` | 🎯 ${question.difficulty || "نامشخص"}\n\n`;
   }
 
-  const buttons =
-    buildBankButtons({
-      questions,
-      total,
-      offset: safeOffset,
-      status,
-    });
+  const buttons = buildBankButtons({
+    questions,
+    total,
+    offset: safeOffset,
+    status,
+  });
 
-  if (
-    ctx.callbackQuery &&
-    ctx.callbackQuery.message
-  ) {
-    await ctx.editMessageText(
-      text,
-      buttons
-    );
+  if (ctx.callbackQuery && ctx.callbackQuery.message) {
+    await ctx.editMessageText(text, buttons);
   } else {
-    await ctx.reply(
-      text,
-      buttons
-    );
+    await ctx.reply(text, buttons);
   }
 }
 
-async function handleQuestionBankMenu(
-  ctx
-) {
+async function handleQuestionBankMenu(ctx) {
   try {
-    const telegramUserId =
-      ctx.from?.id;
+    const telegramUserId = ctx.from?.id;
 
     if (!telegramUserId) {
       return;
@@ -425,15 +369,12 @@ async function handleQuestionBankMenu(
       telegramUserId
     );
 
-    setState(
-      telegramUserId,
-      {
-        mode: "BANK",
-        offset: 0,
-        status: "ACTIVE",
-        search: "",
-      }
-    );
+    setState(telegramUserId, {
+      mode: "BANK",
+      offset: 0,
+      status: "ACTIVE",
+      search: "",
+    });
 
     await sendQuestionBank(
       ctx,
@@ -446,10 +387,7 @@ async function handleQuestionBankMenu(
       error
     );
 
-    if (
-      error.code ===
-      "PERMISSION_DENIED"
-    ) {
+    if (error.code === "PERMISSION_DENIED") {
       await ctx.reply(
         "⛔ شما دسترسی مدیریت بانک سؤالات را ندارید."
       );
@@ -463,12 +401,9 @@ async function handleQuestionBankMenu(
   }
 }
 
-async function handleBankSearchStart(
-  ctx
-) {
+async function handleBankSearchStart(ctx) {
   try {
-    const telegramUserId =
-      ctx.from?.id;
+    const telegramUserId = ctx.from?.id;
 
     if (!telegramUserId) {
       return;
@@ -480,15 +415,12 @@ async function handleBankSearchStart(
       telegramUserId
     );
 
-    setState(
-      telegramUserId,
-      {
-        mode: "BANK_SEARCH",
-        offset: 0,
-        status: "ACTIVE",
-        search: "",
-      }
-    );
+    setState(telegramUserId, {
+      mode: "BANK_SEARCH",
+      offset: 0,
+      status: "ACTIVE",
+      search: "",
+    });
 
     await ctx.reply(
       "🔎 جستجوی سؤال\n\n" +
@@ -526,15 +458,12 @@ async function handleBankSearchText(
     telegramUserId
   );
 
-  setState(
-    telegramUserId,
-    {
-      mode: "BANK",
-      offset: 0,
-      status: "ACTIVE",
-      search: text,
-    }
-  );
+  setState(telegramUserId, {
+    mode: "BANK",
+    offset: 0,
+    status: "ACTIVE",
+    search: text,
+  });
 
   await sendQuestionBank(
     ctx,
@@ -543,13 +472,9 @@ async function handleBankSearchText(
   );
 }
 
-async function handleBankFilter(
-  ctx,
-  filter
-) {
+async function handleBankFilter(ctx, filter) {
   try {
-    const telegramUserId =
-      ctx.from?.id;
+    const telegramUserId = ctx.from?.id;
 
     if (!telegramUserId) {
       return;
@@ -561,10 +486,7 @@ async function handleBankFilter(
       telegramUserId
     );
 
-    const state =
-      getBankState(
-        telegramUserId
-      );
+    const state = getBankState(telegramUserId);
 
     state.mode = "BANK";
     state.offset = 0;
@@ -573,10 +495,7 @@ async function handleBankFilter(
         ? "ALL"
         : "ACTIVE";
 
-    setState(
-      telegramUserId,
-      state
-    );
+    setState(telegramUserId, state);
 
     await sendQuestionBank(
       ctx,
@@ -605,8 +524,7 @@ async function handleBankView(
   questionId
 ) {
   try {
-    const telegramUserId =
-      ctx.from?.id;
+    const telegramUserId = ctx.from?.id;
 
     if (!telegramUserId) {
       return;
@@ -630,9 +548,7 @@ async function handleBankView(
 
     const text =
       "👀 مشاهده سؤال\n\n" +
-      formatQuestion(
-        question
-      );
+      formatQuestion(question);
 
     await ctx.editMessageText(
       text,
@@ -645,13 +561,11 @@ async function handleBankView(
         ],
         [
           Markup.button.callback(
-            question.status ===
-              "ACTIVE"
+            question.status === "ACTIVE"
               ? "🔴 غیرفعال کردن"
               : "🟢 فعال کردن",
             `quiz_admin_bank_status:${question.id}:${
-              question.status ===
-              "ACTIVE"
+              question.status === "ACTIVE"
                 ? "INACTIVE"
                 : "ACTIVE"
             }`
@@ -688,8 +602,7 @@ async function handleBankStatus(
   status
 ) {
   try {
-    const telegramUserId =
-      ctx.from?.id;
+    const telegramUserId = ctx.from?.id;
 
     if (!telegramUserId) {
       return;
@@ -697,16 +610,14 @@ async function handleBankStatus(
 
     await ctx.answerCbQuery();
 
-    const normalizedStatus =
-      String(status || "")
-        .trim()
-        .toUpperCase();
+    const normalizedStatus = String(status || "")
+      .trim()
+      .toUpperCase();
 
     if (
-      ![
-        "ACTIVE",
-        "INACTIVE",
-      ].includes(normalizedStatus)
+      !["ACTIVE", "INACTIVE"].includes(
+        normalizedStatus
+      )
     ) {
       await ctx.answerCbQuery(
         "❌ وضعیت نامعتبر است.",
@@ -722,8 +633,7 @@ async function handleBankStatus(
       await adminQuizService.updateQuestionStatus({
         telegramUserId,
         questionId,
-        status:
-          normalizedStatus,
+        status: normalizedStatus,
       });
 
     if (!updated) {
@@ -735,8 +645,7 @@ async function handleBankStatus(
     }
 
     await ctx.editMessageText(
-      normalizedStatus ===
-        "ACTIVE"
+      normalizedStatus === "ACTIVE"
         ? "🟢 سؤال فعال شد."
         : "🔴 سؤال غیرفعال شد.",
       Markup.inlineKeyboard([
@@ -775,11 +684,8 @@ async function handleBankStatus(
    DIRECT QUESTION EDIT
 ========================================================= */
 
-async function startAddQuestion(
-  ctx
-) {
-  const telegramUserId =
-    ctx.from?.id;
+async function startAddQuestion(ctx) {
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
@@ -790,14 +696,11 @@ async function startAddQuestion(
       telegramUserId
     );
 
-    setState(
-      telegramUserId,
-      {
-        mode: "ADD",
-        step: "question",
-        data: {},
-      }
-    );
+    setState(telegramUserId, {
+      mode: "ADD",
+      step: "question",
+      data: {},
+    });
 
     await ctx.reply(
       "➕ افزودن سؤال مسابقه\n\n" +
@@ -811,10 +714,7 @@ async function startAddQuestion(
       error
     );
 
-    if (
-      error.code ===
-      "PERMISSION_DENIED"
-    ) {
+    if (error.code === "PERMISSION_DENIED") {
       await ctx.reply(
         "⛔ شما دسترسی مدیریت سؤالات مسابقه را ندارید."
       );
@@ -836,9 +736,7 @@ async function handleAddQuestionStep(
 ) {
   switch (state.step) {
     case "question": {
-      state.data.questionText =
-        text;
-
+      state.data.questionText = text;
       state.step = "optionA";
 
       await ctx.reply(
@@ -850,9 +748,7 @@ async function handleAddQuestionStep(
     }
 
     case "optionA": {
-      state.data.optionA =
-        text;
-
+      state.data.optionA = text;
       state.step = "optionB";
 
       await ctx.reply(
@@ -864,9 +760,7 @@ async function handleAddQuestionStep(
     }
 
     case "optionB": {
-      state.data.optionB =
-        text;
-
+      state.data.optionB = text;
       state.step = "optionC";
 
       await ctx.reply(
@@ -878,9 +772,7 @@ async function handleAddQuestionStep(
     }
 
     case "optionC": {
-      state.data.optionC =
-        text;
-
+      state.data.optionC = text;
       state.step = "optionD";
 
       await ctx.reply(
@@ -892,11 +784,8 @@ async function handleAddQuestionStep(
     }
 
     case "optionD": {
-      state.data.optionD =
-        text;
-
-      state.step =
-        "correctOption";
+      state.data.optionD = text;
+      state.step = "correctOption";
 
       await ctx.reply(
         "✅ کدام گزینه پاسخ صحیح است؟",
@@ -911,17 +800,9 @@ async function handleAddQuestionStep(
     }
 
     case "correctOption": {
-      const correctOption =
-        text.toUpperCase();
+      const correctOption = text.toUpperCase();
 
-      if (
-        ![
-          "A",
-          "B",
-          "C",
-          "D",
-        ].includes(correctOption)
-      ) {
+      if (!["A", "B", "C", "D"].includes(correctOption)) {
         await ctx.reply(
           "❌ فقط یکی از گزینه‌های A، B، C یا D را انتخاب کنید."
         );
@@ -929,9 +810,7 @@ async function handleAddQuestionStep(
         return;
       }
 
-      state.data.correctOption =
-        correctOption;
-
+      state.data.correctOption = correctOption;
       state.step = "category";
 
       await ctx.reply(
@@ -944,9 +823,7 @@ async function handleAddQuestionStep(
     }
 
     case "category": {
-      state.data.category =
-        text;
-
+      state.data.category = text;
       state.step = "difficulty";
 
       await ctx.reply(
@@ -962,29 +839,18 @@ async function handleAddQuestionStep(
     }
 
     case "difficulty": {
-      const difficulty =
-        text.toUpperCase();
+      const difficulty = text.toUpperCase();
 
-      if (
-        ![
-          "EASY",
-          "MEDIUM",
-          "HARD",
-        ].includes(difficulty)
-      ) {
+      if (!["EASY", "MEDIUM", "HARD"].includes(difficulty)) {
         await ctx.reply(
           "❌ سطح سختی باید یکی از این موارد باشد:\n\n" +
-            "EASY\n" +
-            "MEDIUM\n" +
-            "HARD"
+            "EASY\nMEDIUM\nHARD"
         );
 
         return;
       }
 
-      state.data.difficulty =
-        difficulty;
-
+      state.data.difficulty = difficulty;
       state.step = "explanation";
 
       await ctx.reply(
@@ -998,14 +864,11 @@ async function handleAddQuestionStep(
 
     case "explanation": {
       state.data.explanation =
-        text === "-"
-          ? null
-          : text;
+        text === "-" ? null : text;
 
       state.step = "confirm";
 
-      const data =
-        state.data;
+      const data = state.data;
 
       await ctx.reply(
         "📋 پیش‌نمایش سؤال\n\n" +
@@ -1017,14 +880,11 @@ async function handleAddQuestionStep(
           `✅ پاسخ صحیح: ${data.correctOption}\n` +
           `🏷️ دسته‌بندی: ${data.category}\n` +
           `🎯 سختی: ${data.difficulty}\n` +
-          `💡 توضیح: ${
-            data.explanation ||
-            "ندارد"
-          }\n\n` +
+          `💡 توضیح: ${data.explanation || "ندارد"}\n\n` +
           "آیا سؤال ثبت شود؟",
         Markup.keyboard([
           ["✅ ثبت سؤال"],
-          ["❌ لغو"],
+          [CANCEL_TEXT],
         ]).resize()
       );
 
@@ -1032,10 +892,7 @@ async function handleAddQuestionStep(
     }
 
     case "confirm": {
-      if (
-        text !==
-        "✅ ثبت سؤال"
-      ) {
+      if (text !== "✅ ثبت سؤال") {
         await ctx.reply(
           "برای ثبت سؤال روی «✅ ثبت سؤال» بزنید یا «❌ لغو» را انتخاب کنید."
         );
@@ -1043,37 +900,24 @@ async function handleAddQuestionStep(
         return;
       }
 
-      const data =
-        state.data;
+      const data = state.data;
 
       const question =
         await adminQuizService.createQuestion({
           telegramUserId,
-          languageCode:
-            "fa",
-          category:
-            data.category,
-          difficulty:
-            data.difficulty,
-          questionText:
-            data.questionText,
-          optionA:
-            data.optionA,
-          optionB:
-            data.optionB,
-          optionC:
-            data.optionC,
-          optionD:
-            data.optionD,
-          correctOption:
-            data.correctOption,
-          explanation:
-            data.explanation,
+          languageCode: "fa",
+          category: data.category,
+          difficulty: data.difficulty,
+          questionText: data.questionText,
+          optionA: data.optionA,
+          optionB: data.optionB,
+          optionC: data.optionC,
+          optionD: data.optionD,
+          correctOption: data.correctOption,
+          explanation: data.explanation,
         });
 
-      clearState(
-        telegramUserId
-      );
+      clearState(telegramUserId);
 
       const total =
         await adminQuizService.countActiveQuestions(
@@ -1091,9 +935,7 @@ async function handleAddQuestionStep(
     }
 
     default: {
-      clearState(
-        telegramUserId
-      );
+      clearState(telegramUserId);
 
       await ctx.reply(
         "⚠️ وضعیت افزودن سؤال نامعتبر بود و از ابتدا پاک شد.",
@@ -1117,9 +959,7 @@ async function handleEditQuestionStep(
 ) {
   switch (state.step) {
     case "question": {
-      state.data.questionText =
-        text;
-
+      state.data.questionText = text;
       state.step = "optionA";
 
       await ctx.reply(
@@ -1132,9 +972,7 @@ async function handleEditQuestionStep(
     }
 
     case "optionA": {
-      state.data.optionA =
-        text;
-
+      state.data.optionA = text;
       state.step = "optionB";
 
       await ctx.reply(
@@ -1147,9 +985,7 @@ async function handleEditQuestionStep(
     }
 
     case "optionB": {
-      state.data.optionB =
-        text;
-
+      state.data.optionB = text;
       state.step = "optionC";
 
       await ctx.reply(
@@ -1162,9 +998,7 @@ async function handleEditQuestionStep(
     }
 
     case "optionC": {
-      state.data.optionC =
-        text;
-
+      state.data.optionC = text;
       state.step = "optionD";
 
       await ctx.reply(
@@ -1177,11 +1011,8 @@ async function handleEditQuestionStep(
     }
 
     case "optionD": {
-      state.data.optionD =
-        text;
-
-      state.step =
-        "correctOption";
+      state.data.optionD = text;
+      state.step = "correctOption";
 
       await ctx.reply(
         "✅ پاسخ صحیح را انتخاب کنید.\n\n" +
@@ -1197,17 +1028,9 @@ async function handleEditQuestionStep(
     }
 
     case "correctOption": {
-      const correctOption =
-        text.toUpperCase();
+      const correctOption = text.toUpperCase();
 
-      if (
-        ![
-          "A",
-          "B",
-          "C",
-          "D",
-        ].includes(correctOption)
-      ) {
+      if (!["A", "B", "C", "D"].includes(correctOption)) {
         await ctx.reply(
           "❌ فقط A، B، C یا D را انتخاب کنید."
         );
@@ -1215,9 +1038,7 @@ async function handleEditQuestionStep(
         return;
       }
 
-      state.data.correctOption =
-        correctOption;
-
+      state.data.correctOption = correctOption;
       state.step = "category";
 
       await ctx.reply(
@@ -1230,9 +1051,7 @@ async function handleEditQuestionStep(
     }
 
     case "category": {
-      state.data.category =
-        text;
-
+      state.data.category = text;
       state.step = "difficulty";
 
       await ctx.reply(
@@ -1249,38 +1068,24 @@ async function handleEditQuestionStep(
     }
 
     case "difficulty": {
-      const difficulty =
-        text.toUpperCase();
+      const difficulty = text.toUpperCase();
 
-      if (
-        ![
-          "EASY",
-          "MEDIUM",
-          "HARD",
-        ].includes(difficulty)
-      ) {
+      if (!["EASY", "MEDIUM", "HARD"].includes(difficulty)) {
         await ctx.reply(
           "❌ سطح سختی باید یکی از این موارد باشد:\n\n" +
-            "EASY\n" +
-            "MEDIUM\n" +
-            "HARD"
+            "EASY\nMEDIUM\nHARD"
         );
 
         return;
       }
 
-      state.data.difficulty =
-        difficulty;
-
+      state.data.difficulty = difficulty;
       state.step = "explanation";
 
       await ctx.reply(
         "💡 توضیح جدید را ارسال کنید.\n\n" +
           "برای حذف توضیح، «-» بفرستید.\n\n" +
-          `مقدار فعلی: ${
-            state.data.explanation ||
-            "ندارد"
-          }`,
+          `مقدار فعلی: ${state.data.explanation || "ندارد"}`,
         cancelMenu
       );
 
@@ -1289,14 +1094,11 @@ async function handleEditQuestionStep(
 
     case "explanation": {
       state.data.explanation =
-        text === "-"
-          ? null
-          : text;
+        text === "-" ? null : text;
 
       state.step = "confirm";
 
-      const data =
-        state.data;
+      const data = state.data;
 
       await ctx.reply(
         "📋 پیش‌نمایش اصلاحات\n\n" +
@@ -1309,14 +1111,11 @@ async function handleEditQuestionStep(
           `✅ پاسخ صحیح: ${data.correctOption}\n` +
           `🏷️ دسته‌بندی: ${data.category}\n` +
           `🎯 سختی: ${data.difficulty}\n` +
-          `💡 توضیح: ${
-            data.explanation ||
-            "ندارد"
-          }\n\n` +
+          `💡 توضیح: ${data.explanation || "ندارد"}\n\n` +
           "آیا این اصلاحات ذخیره شوند؟",
         Markup.keyboard([
           ["💾 ذخیره اصلاحات"],
-          ["❌ لغو"],
+          [CANCEL_TEXT],
         ]).resize()
       );
 
@@ -1324,10 +1123,7 @@ async function handleEditQuestionStep(
     }
 
     case "confirm": {
-      if (
-        text !==
-        "💾 ذخیره اصلاحات"
-      ) {
+      if (text !== "💾 ذخیره اصلاحات") {
         await ctx.reply(
           "برای ذخیره روی «💾 ذخیره اصلاحات» بزنید یا «❌ لغو» را انتخاب کنید."
         );
@@ -1335,67 +1131,41 @@ async function handleEditQuestionStep(
         return;
       }
 
-      const data =
-        state.data;
+      const data = state.data;
 
       const updated =
-  state.mode === "EDIT_REPORT"
-    ? await adminQuizService.updateQuestionFromReport({
-        telegramUserId,
-        questionId:
-          state.questionId,
-        category:
-          data.category,
-        difficulty:
-          data.difficulty,
-        questionText:
-          data.questionText,
-        optionA:
-          data.optionA,
-        optionB:
-          data.optionB,
-        optionC:
-          data.optionC,
-        optionD:
-          data.optionD,
-        correctOption:
-          data.correctOption,
-        explanation:
-          data.explanation,
-      })
-    : await adminQuizService.updateQuestion({
-        telegramUserId,
-        questionId:
-          state.questionId,
-        category:
-          data.category,
-        difficulty:
-          data.difficulty,
-        questionText:
-          data.questionText,
-        optionA:
-          data.optionA,
-        optionB:
-          data.optionB,
-        optionC:
-          data.optionC,
-        optionD:
-          data.optionD,
-        correctOption:
-          data.correctOption,
-        explanation:
-          data.explanation,
-      });
+        state.mode === "EDIT_REPORT"
+          ? await adminQuizService.updateQuestionFromReport({
+              telegramUserId,
+              questionId: state.questionId,
+              category: data.category,
+              difficulty: data.difficulty,
+              questionText: data.questionText,
+              optionA: data.optionA,
+              optionB: data.optionB,
+              optionC: data.optionC,
+              optionD: data.optionD,
+              correctOption: data.correctOption,
+              explanation: data.explanation,
+            })
+          : await adminQuizService.updateQuestion({
+              telegramUserId,
+              questionId: state.questionId,
+              category: data.category,
+              difficulty: data.difficulty,
+              questionText: data.questionText,
+              optionA: data.optionA,
+              optionB: data.optionB,
+              optionC: data.optionC,
+              optionD: data.optionD,
+              correctOption: data.correctOption,
+              explanation: data.explanation,
+            });
 
-      const mode =
-        state.mode;
+      const mode = state.mode;
+      const reportId = state.reportId;
 
-      const reportId =
-        state.reportId;
-
-      clearState(
-        telegramUserId
-      );
+      clearState(telegramUserId);
 
       if (!updated) {
         await ctx.reply(
@@ -1406,10 +1176,7 @@ async function handleEditQuestionStep(
         return;
       }
 
-      if (
-        mode ===
-        "EDIT_DIRECT"
-      ) {
+      if (mode === "EDIT_DIRECT") {
         await ctx.reply(
           "✅ سؤال با موفقیت اصلاح شد.\n\n" +
             `🆔 شناسه سؤال: ${updated.id}`,
@@ -1463,9 +1230,7 @@ async function handleEditQuestionStep(
     }
 
     default: {
-      clearState(
-        telegramUserId
-      );
+      clearState(telegramUserId);
 
       await ctx.reply(
         "⚠️ وضعیت ویرایش نامعتبر بود و فرایند لغو شد.",
@@ -1481,29 +1246,29 @@ async function handleEditQuestionStep(
    TEXT STATE HANDLER
 ========================================================= */
 
-async function handleAdminQuizText(
-  ctx,
-  next
-) {
-  const telegramUserId =
-    ctx.from?.id;
+async function handleAdminQuizText(ctx, next) {
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return next();
   }
 
-  const state =
-    getState(telegramUserId);
+  const text =
+    typeof ctx.message?.text === "string"
+      ? ctx.message.text.trim()
+      : "";
+
+  if (BACK_BUTTONS.includes(text)) {
+    clearState(telegramUserId);
+    clearImportState(telegramUserId);
+    return next();
+  }
+
+  const state = getState(telegramUserId);
 
   if (!state) {
     return next();
   }
-
-  const text =
-    typeof ctx.message?.text ===
-    "string"
-      ? ctx.message.text.trim()
-      : "";
 
   if (!text) {
     return;
@@ -1514,17 +1279,14 @@ async function handleAdminQuizText(
     text === "/cancel"
   ) {
     const wasEditing =
-  state.mode === "EDIT" ||
-  state.mode === "EDIT_DIRECT" ||
-  state.mode === "EDIT_REPORT";
+      state.mode === "EDIT" ||
+      state.mode === "EDIT_DIRECT" ||
+      state.mode === "EDIT_REPORT";
 
     const wasSearching =
-      state.mode ===
-      "BANK_SEARCH";
+      state.mode === "BANK_SEARCH";
 
-    clearState(
-      telegramUserId
-    );
+    clearState(telegramUserId);
 
     if (wasSearching) {
       await ctx.reply(
@@ -1546,10 +1308,7 @@ async function handleAdminQuizText(
   }
 
   try {
-    if (
-      state.mode ===
-      "BANK_SEARCH"
-    ) {
+    if (state.mode === "BANK_SEARCH") {
       await handleBankSearchText(
         ctx,
         telegramUserId,
@@ -1560,19 +1319,19 @@ async function handleAdminQuizText(
     }
 
     if (
-  state.mode === "EDIT" ||
-  state.mode === "EDIT_DIRECT" ||
-  state.mode === "EDIT_REPORT"
-) {
-  await handleEditQuestionStep(
-    ctx,
-    telegramUserId,
-    state,
-    text
-  );
+      state.mode === "EDIT" ||
+      state.mode === "EDIT_DIRECT" ||
+      state.mode === "EDIT_REPORT"
+    ) {
+      await handleEditQuestionStep(
+        ctx,
+        telegramUserId,
+        state,
+        text
+      );
 
-  return;
-}
+      return;
+    }
 
     await handleAddQuestionStep(
       ctx,
@@ -1586,9 +1345,7 @@ async function handleAdminQuizText(
       error
     );
 
-    clearState(
-      telegramUserId
-    );
+    clearState(telegramUserId);
 
     await ctx.reply(
       "❌ هنگام پردازش سؤال خطایی رخ داد.\n\n" +
@@ -1599,14 +1356,11 @@ async function handleAdminQuizText(
 }
 
 /* =========================================================
-   HANDLER REGISTRATION
+   IMPORT QUESTIONS
 ========================================================= */
 
-async function handleImportQuestionsMenu(
-  ctx
-) {
-  const telegramUserId =
-    ctx.from?.id;
+async function handleImportQuestionsMenu(ctx) {
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
@@ -1624,13 +1378,10 @@ async function handleImportQuestionsMenu(
     return;
   }
 
-  setImportState(
-    telegramUserId,
-    {
-      step: "URL",
-      createdAt: Date.now(),
-    }
-  );
+  setImportState(telegramUserId, {
+    step: "URL",
+    createdAt: Date.now(),
+  });
 
   await ctx.reply(
     "📥 ورود سؤال از سایت\n\n" +
@@ -1642,42 +1393,37 @@ async function handleImportQuestionsMenu(
   );
 }
 
-async function handleImportQuestionsText(
-  ctx,
-  next
-) {
-  const telegramUserId =
-    ctx.from?.id;
+async function handleImportQuestionsText(ctx, next) {
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return next();
   }
 
-  const state =
-    getImportState(
-      telegramUserId
-    );
+  const text = String(
+    ctx.message?.text || ""
+  ).trim();
+
+  if (BACK_BUTTONS.includes(text)) {
+    clearImportState(telegramUserId);
+    return next();
+  }
+
+  const state = getImportState(telegramUserId);
 
   if (!state) {
     return next();
   }
-
-  const text =
-    String(
-      ctx.message?.text || ""
-    ).trim();
 
   if (!text) {
     return;
   }
 
   if (
-    text === "❌ لغو" ||
+    text === CANCEL_TEXT ||
     text === "/cancel"
   ) {
-    clearImportState(
-      telegramUserId
-    );
+    clearImportState(telegramUserId);
 
     await ctx.reply(
       "❌ ورود سؤال‌ها لغو شد.",
@@ -1688,13 +1434,10 @@ async function handleImportQuestionsText(
   }
 
   if (
-    Date.now() -
-      state.createdAt >
+    Date.now() - state.createdAt >
     10 * 60 * 1000
   ) {
-    clearImportState(
-      telegramUserId
-    );
+    clearImportState(telegramUserId);
 
     await ctx.reply(
       "⏱️ زمان ورود سؤال‌ها تمام شده است.",
@@ -1709,9 +1452,7 @@ async function handleImportQuestionsText(
       telegramUserId
     );
   } catch {
-    clearImportState(
-      telegramUserId
-    );
+    clearImportState(telegramUserId);
 
     await ctx.reply(
       "⛔ دسترسی شما به این بخش وجود ندارد."
@@ -1720,9 +1461,7 @@ async function handleImportQuestionsText(
     return;
   }
 
-  if (
-    !/^https?:\/\//i.test(text)
-  ) {
+  if (!/^https?:\/\//i.test(text)) {
     await ctx.reply(
       "❌ لینک معتبر نیست.\n\n" +
         "لینک باید با http:// یا https:// شروع شود.",
@@ -1737,18 +1476,11 @@ async function handleImportQuestionsText(
   );
 
   try {
-    const result =
-      await importFromUrl(
-        text
-      );
+    const result = await importFromUrl(text);
 
-    clearImportState(
-      telegramUserId
-    );
+    clearImportState(telegramUserId);
 
-    if (
-      !result.total
-    ) {
+    if (!result.total) {
       await ctx.reply(
         "❌ هیچ سؤال چهارگزینه‌ای قابل استخراج پیدا نشد.\n\n" +
           "ممکن است ساختار این سایت با فرمت فعلی سازگار نباشد.",
@@ -1758,44 +1490,32 @@ async function handleImportQuestionsText(
       return;
     }
 
-    const preview =
-      result.questions
-        .slice(0, 5)
-        .map(
-          (question, index) => {
-            const options =
-              question.options
-                .map(
-                  (
-                    option,
-                    optionIndex
-                  ) =>
-                    `${String.fromCharCode(
-                      65 +
-                        optionIndex
-                    )}) ${option}`
-                )
-                .join("\n");
+    const preview = result.questions
+      .slice(0, 5)
+      .map((question, index) => {
+        const options = question.options
+          .map(
+            (option, optionIndex) =>
+              `${String.fromCharCode(
+                65 + optionIndex
+              )}) ${option}`
+          )
+          .join("\n");
 
-            const answer =
-              question.correctOption ===
-              null
-                ? "نامشخص"
-                : String.fromCharCode(
-                    65 +
-                      question.correctOption
-                  );
+        const answer =
+          question.correctOption === null
+            ? "نامشخص"
+            : String.fromCharCode(
+                65 + question.correctOption
+              );
 
-            return (
-              `${index + 1}. ${question.question}\n\n` +
-              `${options}\n\n` +
-              `✅ پاسخ استخراج‌شده: ${answer}`
-            );
-          }
-        )
-        .join(
-          "\n\n────────────\n\n"
+        return (
+          `${index + 1}. ${question.question}\n\n` +
+          `${options}\n\n` +
+          `✅ پاسخ استخراج‌شده: ${answer}`
         );
+      })
+      .join("\n\n────────────\n\n");
 
     await ctx.reply(
       `📥 نتیجه استخراج\n\n` +
@@ -1812,30 +1532,26 @@ async function handleImportQuestionsText(
       error
     );
 
-    clearImportState(
-      telegramUserId
-    );
+    clearImportState(telegramUserId);
 
     await ctx.reply(
       "❌ استخراج سؤال‌ها انجام نشد.\n\n" +
-        `خطا: ${
-          error.message ||
-          "خطای نامشخص"
-        }`,
+        `خطا: ${error.message || "خطای نامشخص"}`,
       await quizAdminMenu(ctx)
     );
   }
 }
 
-function createAdminQuizHandler(
-  bot
-) {
+/* =========================================================
+   HANDLER REGISTRATION
+========================================================= */
+
+function createAdminQuizHandler(bot) {
   createReportsHandler({
-  bot,
-  quizAdminMenu,
-  startEditQuestion:
-    startDirectEditQuestion,
-});
+    bot,
+    quizAdminMenu,
+    startEditQuestion: startDirectEditQuestion,
+  });
 
   bot.hears(
     "➕ افزودن سؤال",
@@ -1848,16 +1564,15 @@ function createAdminQuizHandler(
   );
 
   bot.hears(
-  IMPORT_BUTTON,
-  handleImportQuestionsMenu
-);
+    IMPORT_BUTTON,
+    handleImportQuestionsMenu
+  );
 
   bot.action(
     /^quiz_admin_bank:(\d+)$/,
     async (ctx) => {
       try {
-        const telegramUserId =
-          ctx.from?.id;
+        const telegramUserId = ctx.from?.id;
 
         if (!telegramUserId) {
           return;
@@ -1868,9 +1583,7 @@ function createAdminQuizHandler(
         await sendQuestionBank(
           ctx,
           telegramUserId,
-          Number(
-            ctx.match[1]
-          )
+          Number(ctx.match[1])
         );
       } catch (error) {
         console.error(
@@ -1911,18 +1624,14 @@ function createAdminQuizHandler(
       try {
         await ctx.answerCbQuery();
 
-        const telegramUserId =
-          ctx.from.id;
+        const telegramUserId = ctx.from.id;
 
         const categories =
           await adminQuizService.listCategories(
             telegramUserId
           );
 
-        if (
-          !categories ||
-          categories.length === 0
-        ) {
+        if (!categories || categories.length === 0) {
           await ctx.reply(
             "📚 هیچ دسته‌بندی‌ای پیدا نشد."
           );
@@ -1930,15 +1639,14 @@ function createAdminQuizHandler(
           return;
         }
 
-        const buttons =
-          categories.map(
-            (category) => [
-              Markup.button.callback(
-                `🏷️ ${category.name_fa}`,
-                `quiz_admin_bank_category:${category.id}`
-              ),
-            ]
-          );
+        const buttons = categories.map(
+          (category) => [
+            Markup.button.callback(
+              `🏷️ ${category.name_fa}`,
+              `quiz_admin_bank_category:${category.id}`
+            ),
+          ]
+        );
 
         buttons.push([
           Markup.button.callback(
@@ -1956,9 +1664,7 @@ function createAdminQuizHandler(
 
         await ctx.reply(
           "🏷️ دسته‌بندی را انتخاب کن:",
-          Markup.inlineKeyboard(
-            buttons
-          )
+          Markup.inlineKeyboard(buttons)
         );
       } catch (error) {
         console.error(
@@ -1979,31 +1685,19 @@ function createAdminQuizHandler(
       try {
         await ctx.answerCbQuery();
 
-        const telegramUserId =
-          ctx.from.id;
+        const telegramUserId = ctx.from.id;
+        const selectedCategory = ctx.match[1];
 
-        const selectedCategory =
-          ctx.match[1];
-
-        const state =
-          getBankState(
-            telegramUserId
-          );
+        const state = getBankState(telegramUserId);
 
         state.categoryId =
-          selectedCategory ===
-          "CLEAR"
+          selectedCategory === "CLEAR"
             ? null
-            : Number(
-                selectedCategory
-              );
+            : Number(selectedCategory);
 
         state.offset = 0;
 
-        setState(
-          telegramUserId,
-          state
-        );
+        setState(telegramUserId, state);
 
         await sendQuestionBank(
           ctx,
@@ -2028,9 +1722,7 @@ function createAdminQuizHandler(
     async (ctx) => {
       await handleBankView(
         ctx,
-        Number(
-          ctx.match[1]
-        )
+        Number(ctx.match[1])
       );
     }
   );
@@ -2040,9 +1732,7 @@ function createAdminQuizHandler(
     async (ctx) => {
       await startDirectEditQuestion(
         ctx,
-        Number(
-          ctx.match[1]
-        )
+        Number(ctx.match[1])
       );
     }
   );
@@ -2052,9 +1742,7 @@ function createAdminQuizHandler(
     async (ctx) => {
       await handleBankStatus(
         ctx,
-        Number(
-          ctx.match[1]
-        ),
+        Number(ctx.match[1]),
         ctx.match[2]
       );
     }
@@ -2064,8 +1752,7 @@ function createAdminQuizHandler(
     "quiz_admin_bank_back_list",
     async (ctx) => {
       try {
-        const telegramUserId =
-          ctx.from?.id;
+        const telegramUserId = ctx.from?.id;
 
         if (!telegramUserId) {
           return;
@@ -2073,10 +1760,7 @@ function createAdminQuizHandler(
 
         await ctx.answerCbQuery();
 
-        const state =
-          getBankState(
-            telegramUserId
-          );
+        const state = getBankState(telegramUserId);
 
         await sendQuestionBank(
           ctx,
@@ -2096,8 +1780,7 @@ function createAdminQuizHandler(
     "quiz_admin_bank_back",
     async (ctx) => {
       try {
-        const telegramUserId =
-          ctx.from?.id;
+        const telegramUserId = ctx.from?.id;
 
         if (!telegramUserId) {
           return;
@@ -2105,15 +1788,13 @@ function createAdminQuizHandler(
 
         await ctx.answerCbQuery();
 
-        clearState(
-          telegramUserId
-        );
+        clearState(telegramUserId);
 
         await ctx.reply(
-  "🧠 مدیریت مسابقه\n\n" +
-    "بخش موردنظر را انتخاب کنید.",
-  await quizAdminMenu(ctx)
-);
+          "🧠 مدیریت مسابقه\n\n" +
+            "بخش موردنظر را انتخاب کنید.",
+          await quizAdminMenu(ctx)
+        );
       } catch (error) {
         console.error(
           "Quiz bank back failed:",
@@ -2123,15 +1804,17 @@ function createAdminQuizHandler(
     }
   );
 
+  // ترتیب این دو Handler مهم است:
+  // ابتدا حالت ورود از سایت بررسی می‌شود.
   bot.on(
-  "text",
-  handleImportQuestionsText
-);
+    "text",
+    handleImportQuestionsText
+  );
 
-bot.on(
-  "text",
-  handleAdminQuizText
-);
+  bot.on(
+    "text",
+    handleAdminQuizText
+  );
 }
 
 module.exports = {
