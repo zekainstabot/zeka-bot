@@ -1,5 +1,6 @@
 const jobRepository = require("../repositories/job.repository");
 const requestRepository = require("../repositories/request.repository");
+const { getPool } = require("../database/pool");
 
 async function updateRequest(jobId, updates) {
   const job = await jobRepository.findById(jobId);
@@ -74,21 +75,66 @@ async function markCompleted(jobId, data = {}) {
     throw new Error("Job ID is required");
   }
 
+  const pool = getPool();
+  const client = await pool.connect();
+
   const completedAt = new Date();
+  const finalCost = data.finalCost ?? null;
 
-  const job = await jobRepository.update(jobId, {
-    status: "COMPLETED",
-    completed_at: completedAt,
-    final_cost: data.finalCost ?? null,
-  });
+  try {
+    await client.query("BEGIN");
 
-  await updateRequest(jobId, {
-    status: "COMPLETED",
-    final_cost: data.finalCost ?? null,
-    completed_at: completedAt,
-  });
+    const job = await jobRepository.update(
+      jobId,
+      {
+        status: "COMPLETED",
+        completed_at: completedAt,
+        final_cost: finalCost,
+      },
+      client
+    );
 
-  return job;
+    if (!job) {
+      throw new Error(
+        `Job not found while completing: ${jobId}`
+      );
+    }
+
+    if (job.request_id) {
+      const request = await requestRepository.update(
+        job.request_id,
+        {
+          status: "COMPLETED",
+          final_cost: finalCost,
+          completed_at: completedAt,
+        },
+        client
+      );
+
+      if (!request) {
+        throw new Error(
+          `Request not found while completing job: ${jobId}`
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+
+    return job;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Failed to rollback job completion transaction:",
+        rollbackError
+      );
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function markFailed(
