@@ -346,13 +346,14 @@ async function handleSuperAdminExit(ctx) {
 }
 
 function createSuperAdminHandler(bot) {
-  // ثبت Handler مالی قبل از سایر Handlerهای متنی
-  createSuperAdminFinanceHandler(bot);
-
+  // دستور ورود قبل از Middlewareهای متنی مالی ثبت می‌شود.
   bot.command(
     "superadmin",
     handleSuperAdminCommand
   );
+
+  // Handlerهای مالی قبل از سایر منوهای متنی ثبت می‌شوند.
+  createSuperAdminFinanceHandler(bot);
 
   bot.hears(
     "🌐 مدیریت پلتفرم‌ها",
