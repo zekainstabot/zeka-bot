@@ -119,6 +119,30 @@ function getUserLabel(item) {
   return "بدون نام ثبت‌شده";
 }
 
+function getCouponReleaseLabel(item) {
+  if (item.released_at) {
+    return (
+      "🔓 زمان آزادسازی کد: " +
+      formatDate(item.released_at)
+    );
+  }
+
+  if (
+    item.purchase_status === "APPROVED"
+  ) {
+    return "🔒 وضعیت کد: مصرف‌شده و آزاد نشده";
+  }
+
+  if (
+    item.purchase_status === "REJECTED" ||
+    item.purchase_status === "CANCELLED"
+  ) {
+    return "⚠️ زمان آزادسازی در تاریخچه ثبت نشده";
+  }
+
+  return "⏳ کد هنوز در انتظار تعیین تکلیف است";
+}
+
 function buildPageKeyboard(
   couponId,
   page,
@@ -222,7 +246,8 @@ function buildReportMessage(
           )}\n` +
           `📅 زمان ثبت درخواست: ${formatDate(
             item.purchase_created_at
-          )}`
+          )}\n` +
+          `${getCouponReleaseLabel(item)}`
         );
       }
     );
