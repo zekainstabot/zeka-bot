@@ -10,6 +10,39 @@ const PLAN_DURATIONS = [1, 2, 3, 6, 12];
 const FLOW_TTL_MS = 10 * 60 * 1000;
 const MAX_BASE_PRICE = 1000000000;
 
+const NAVIGATION_BUTTONS = [
+  "💰 مالی",
+  "💳 تراکنش‌ها",
+  "💳 مدیریت اعتبار",
+  "💎 مدیریت Pro",
+  "⭐ درآمد Pro",
+  "🔄 تازه‌سازی درآمد Pro",
+  "🏷️ تخفیف عمومی Pro",
+  "📊 مشاهده قیمت پلن‌ها",
+  "💰 تغییر قیمت پلن‌ها",
+  "✏️ تغییر تخفیف عمومی",
+  "🎟️ کدهای تخفیف",
+  "➕ ساخت کد تخفیف",
+  "📋 مشاهده کدهای تخفیف",
+  "🔄 تازه‌سازی کدها",
+  "🔙 مدیریت کدهای تخفیف",
+  "🔙 مشاهده کدهای تخفیف",
+  "💰 درآمدها",
+  "💸 هزینه‌ها",
+  "📊 گزارش مالی",
+  "🔎 کاربر دیگر",
+  "➕ افزایش اعتبار مالی",
+  "➖ کاهش اعتبار مالی",
+  "📜 تاریخچه اعتبار مالی",
+  "🔙 بخش مالی",
+  "🔙 پنل Super Admin",
+  "🔙 خروج از پنل Super Admin",
+  "🔙 پنل مدیریت",
+  "🌐 مدیریت پلتفرم‌ها",
+  "🧠 مدیریت مسابقه",
+  "🔄 تازه‌سازی وضعیت پلتفرم‌ها",
+];
+
 function normalizeDigits(value) {
   return String(value ?? "")
     .replace(/[۰-۹]/g, (digit) =>
@@ -60,6 +93,21 @@ function setFlow(ctx, state) {
 
 function clearFlow(ctx) {
   flows.delete(getFlowKey(ctx));
+}
+
+function isCouponNavigationButton(text) {
+  return (
+    /^🔴 غیرفعال‌کردن کد \d+$/.test(text) ||
+    /^🟢 فعال‌کردن کد \d+$/.test(text) ||
+    /^👥 کاربران کد \d+$/.test(text)
+  );
+}
+
+function isNavigationButton(text) {
+  return (
+    NAVIGATION_BUTTONS.includes(text) ||
+    isCouponNavigationButton(text)
+  );
 }
 
 async function getSuperAdmin(ctx) {
@@ -512,16 +560,23 @@ async function handlePricingText(ctx, next) {
     ctx.message?.text || ""
   ).trim();
 
+  // دستورات بات نباید به‌عنوان ورودی قیمت پردازش شوند.
+  if (text.startsWith("/")) {
+    clearFlow(ctx);
+    return next();
+  }
+
   // خروج از جریان قیمت‌گذاری
   if (
     text === "🔙 بخش مالی" ||
-    text === "🔙 پنل Super Admin"
+    text === "🔙 پنل Super Admin" ||
+    text === "🔙 خروج از پنل Super Admin"
   ) {
     clearFlow(ctx);
     return next();
   }
 
-  // لغو عملیات
+  // لغو عملیات جاری
   if (text === "❌ لغو عملیات") {
     clearFlow(ctx);
 
@@ -533,15 +588,8 @@ async function handlePricingText(ctx, next) {
     return;
   }
 
-  // تغییر منو باید جریان قبلی را متوقف کند.
-  const navigationButtons = [
-    "🏷️ تخفیف عمومی Pro",
-    "📊 مشاهده قیمت پلن‌ها",
-    "💰 تغییر قیمت پلن‌ها",
-    "✏️ تغییر تخفیف عمومی",
-  ];
-
-  if (navigationButtons.includes(text)) {
+  // تغییر بخش، جریان قبلی را متوقف می‌کند.
+  if (isNavigationButton(text)) {
     clearFlow(ctx);
     return next();
   }
