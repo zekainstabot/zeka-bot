@@ -20,12 +20,19 @@ const FEATURES = [
   },
 ];
 
-function mainMenu() {
+function mainMenu(admin) {
+  const isSuperAdmin =
+    admin?.role_key === "super_admin";
+
   return Markup.keyboard([
     ["👥 Referral", "🎯 مأموریت‌ها"],
     ["🎰 شانس"],
     ["🔄 بروزرسانی وضعیت"],
-    ["🔙 پنل ادمین"],
+    [
+      isSuperAdmin
+        ? "🔙 سرگرمی"
+        : "🔙 پنل ادمین",
+    ],
   ]).resize();
 }
 
@@ -87,7 +94,9 @@ function statusIcon(enabled) {
 }
 
 async function showRewardsPanel(ctx) {
-  if (!(await requirePermission(ctx))) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
     return;
   }
 
@@ -115,7 +124,7 @@ async function showRewardsPanel(ctx) {
         luck ? "فعال" : "غیرفعال"
       }\n\n` +
       "برای تغییر وضعیت، بخش موردنظر را انتخاب کنید.",
-    mainMenu()
+    mainMenu(admin)
   );
 }
 
@@ -124,7 +133,9 @@ async function toggleFeature(
   featureKey,
   title
 ) {
-  if (!(await requirePermission(ctx))) {
+  const admin = await requirePermission(ctx);
+
+  if (!admin) {
     return;
   }
 
@@ -147,7 +158,7 @@ async function toggleFeature(
         `وضعیت جدید: ${
           next ? "فعال" : "غیرفعال"
         }`,
-      mainMenu()
+      mainMenu(admin)
     );
   } catch (error) {
     console.error(
