@@ -1,6 +1,10 @@
 const adminService = require("../services/admin.service");
 
 const {
+  quizAdminMenu,
+} = require("./admin-quiz/menu");
+
+const {
   createAdminManagementHandler,
 } = require("./admin-management.handler");
 
@@ -146,12 +150,13 @@ function buildAdminMenu(permissions) {
   const buttons = [];
 
   for (const item of PERMISSION_BUTTONS) {
-    if (
+    const isEntertainmentSection =
       ENTERTAINMENT_SECTIONS.some(
         (section) =>
           section.permission === item.permission
-      )
-    ) {
+      );
+
+    if (isEntertainmentSection) {
       continue;
     }
 
@@ -162,7 +167,8 @@ function buildAdminMenu(permissions) {
 
   const hasEntertainmentPermission =
     ENTERTAINMENT_SECTIONS.some(
-      (section) => permissions[section.permission]
+      (section) =>
+        permissions[section.permission]
     );
 
   if (hasEntertainmentPermission) {
@@ -209,15 +215,6 @@ async function getAdminPanelData(telegramUserId) {
     }
   }
 
-  console.log(
-    "ADMIN PANEL PERMISSIONS:",
-    {
-      userId: admin.user_id,
-      role: admin.role_key,
-      permissions,
-    }
-  );
-
   return {
     admin,
     permissions,
@@ -231,29 +228,40 @@ async function showAdminPanel(ctx) {
     return;
   }
 
-  const data =
-    await getAdminPanelData(telegramUserId);
+  try {
+    const data =
+      await getAdminPanelData(telegramUserId);
 
-  if (!data) {
+    if (!data) {
+      await ctx.reply(
+        "❌ شما دسترسی به پنل مدیریت ندارید."
+      );
+
+      return;
+    }
+
     await ctx.reply(
-      "❌ شما دسترسی به پنل مدیریت ندارید."
+      "🛠 پنل مدیریت ادمین",
+      {
+        reply_markup: {
+          keyboard: buildAdminMenu(
+            data.permissions
+          ),
+          resize_keyboard: true,
+          one_time_keyboard: false,
+        },
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Show admin panel failed:",
+      error
     );
 
-    return;
+    await ctx.reply(
+      "❌ دریافت پنل مدیریت انجام نشد."
+    );
   }
-
-  await ctx.reply(
-    "🛠 پنل مدیریت ادمین",
-    {
-      reply_markup: {
-        keyboard: buildAdminMenu(
-          data.permissions
-        ),
-        resize_keyboard: true,
-        one_time_keyboard: false,
-      },
-    }
-  );
 }
 
 async function showEntertainmentMenu(ctx) {
@@ -299,7 +307,12 @@ async function showEntertainmentMenu(ctx) {
       return;
     }
 
-    buttons.push(["🔙 پنل ادمین"]);
+    const backButton =
+      admin.role_key === "super_admin"
+        ? "🔙 پنل Super Admin"
+        : "🔙 پنل ادمین";
+
+    buttons.push([backButton]);
 
     await ctx.reply(
       "🎮 سرگرمی\n\nبخش موردنظر را انتخاب کنید:",
@@ -319,6 +332,57 @@ async function showEntertainmentMenu(ctx) {
 
     await ctx.reply(
       "❌ دریافت منوی سرگرمی انجام نشد."
+    );
+  }
+}
+
+async function showAdminQuizMenu(ctx) {
+  const telegramUserId = ctx.from?.id;
+
+  if (!telegramUserId) {
+    return;
+  }
+
+  try {
+    const admin =
+      await adminService.getAdminByTelegramId(
+        telegramUserId
+      );
+
+    if (!admin || !admin.is_active) {
+      await ctx.reply(
+        "⛔ دسترسی مدیریت ندارید."
+      );
+
+      return;
+    }
+
+    const allowed =
+      await adminService.hasPermission(
+        admin.user_id,
+        "games.quiz"
+      );
+
+    if (!allowed) {
+      await ctx.reply(
+        "⛔ دسترسی مدیریت مسابقه ندارید."
+      );
+
+      return;
+    }
+
+    await ctx.reply(
+      "🧠 مدیریت مسابقه\n\nبخش موردنظر را انتخاب کنید.",
+      await quizAdminMenu(ctx)
+    );
+  } catch (error) {
+    console.error(
+      "Admin quiz menu failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت منوی مسابقه انجام نشد."
     );
   }
 }
@@ -382,7 +446,8 @@ async function handleUnavailableAdminSection(ctx) {
     }
 
     await ctx.reply(
-      `⏳ بخش «${button}» هنوز Handler عملیاتی ندارد.\n\nPermission این بخش فعال است، اما منطق مدیریتی آن باید در Handler اختصاصی خودش پیاده‌سازی شود.`
+      `⏳ بخش «${button}» هنوز Handler عملیاتی ندارد.\n\n` +
+        "Permission این بخش فعال است، اما منطق مدیریتی آن باید در Handler اختصاصی خودش پیاده‌سازی شود."
     );
   } catch (error) {
     console.error(
@@ -410,6 +475,11 @@ function createAdminHandler(bot) {
   bot.hears(
     ENTERTAINMENT_BUTTON,
     showEntertainmentMenu
+  );
+
+  bot.hears(
+    "🧠 مدیریت مسابقه",
+    showAdminQuizMenu
   );
 
   bot.hears(
@@ -446,6 +516,7 @@ module.exports = {
   createAdminHandler,
   showAdminPanel,
   showEntertainmentMenu,
+  showAdminQuizMenu,
   getAdminPanelData,
   buildAdminMenu,
   PERMISSION_BUTTONS,
