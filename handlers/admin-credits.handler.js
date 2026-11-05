@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
@@ -45,10 +44,9 @@ async function requirePermission(ctx) {
     return null;
   }
 
-  const admin =
-    await adminService.getAdminByTelegramId(
-      telegramUserId
-    );
+  const admin = await adminService.getAdminByTelegramId(
+    telegramUserId
+  );
 
   if (!admin || !admin.is_active) {
     await ctx.reply(
@@ -57,11 +55,15 @@ async function requirePermission(ctx) {
     return null;
   }
 
-  const allowed =
-    await adminService.hasPermission(
-      admin.user_id,
-      "credits"
-    );
+  // Super Admin از پنل مالی اختصاصی خودش استفاده می‌کند.
+  if (admin.role_key === "super_admin") {
+    return admin;
+  }
+
+  const allowed = await adminService.hasPermission(
+    admin.user_id,
+    "credits"
+  );
 
   if (!allowed) {
     await ctx.reply(
@@ -92,16 +94,14 @@ async function findUser(value) {
   }
 
   if (/^\d+$/.test(query)) {
-    let user =
-      await userRepository.findByTelegramId(
-        query
-      );
+    let user = await userRepository.findByTelegramId(
+      query
+    );
 
     if (!user) {
-      user =
-        await userRepository.findById(
-          Number(query)
-        );
+      user = await userRepository.findById(
+        Number(query)
+      );
     }
 
     return user;
@@ -119,10 +119,9 @@ async function showBalance(ctx, user) {
     return;
   }
 
-  const balance =
-    await creditService.getBalance(
-      user.id
-    );
+  const balance = await creditService.getBalance(
+    user.id
+  );
 
   const username = user.username
     ? `@${user.username}`
@@ -198,8 +197,7 @@ async function processUser(ctx, value) {
     state.step === "remove_user" ||
     state.step === "balance_user"
   ) {
-    const user =
-      await findUser(value);
+    const user = await findUser(value);
 
     if (!user) {
       await ctx.reply(
@@ -261,13 +259,11 @@ async function processUser(ctx, value) {
 
     try {
       if (state.step === "add_amount") {
-        const result =
-          await adminCreditService.addCredits({
-            userId: state.userId,
-            amount,
-          });
+        const result = await adminCreditService.addCredits({
+          userId: state.userId,
+          amount,
+        });
 
-        // ثبت تاریخچه افزایش اعتبار
         await logAdminAction({
           adminUserId: admin.user_id,
           adminTelegramUserId: ctx.from.id,
@@ -296,13 +292,11 @@ async function processUser(ctx, value) {
         return true;
       }
 
-      const result =
-        await adminCreditService.removeCredits({
-          userId: state.userId,
-          amount,
-        });
+      const result = await adminCreditService.removeCredits({
+        userId: state.userId,
+        amount,
+      });
 
-      // ثبت تاریخچه کاهش اعتبار
       await logAdminAction({
         adminUserId: admin.user_id,
         adminTelegramUserId: ctx.from.id,
@@ -357,46 +351,120 @@ async function processUser(ctx, value) {
   return false;
 }
 
-async function handleText(ctx) {
-  const state = getState(ctx.from?.id);
+async function handleText(ctx, next) {
+  const telegramUserId = ctx.from?.id;
 
-  if (!state) {
-    return false;
+  if (!telegramUserId) {
+    return next();
   }
 
-  const text =
-    ctx.message?.text?.trim();
+  const state = getState(telegramUserId);
+
+  if (!state) {
+    return next();
+  }
+
+  const text = ctx.message?.text?.trim();
+
+  if (!text) {
+    return next();
+  }
+
+  // دستورات بات نباید به‌عنوان شناسه یا مبلغ پردازش شوند.
+  if (text.startsWith("/")) {
+    clearState(telegramUserId);
+    return next();
+  }
+
+  // دکمه‌های خروج و جابه‌جایی بین منوها
+  const navigationButtons = [
+    "🔙 پنل Super Admin",
+    "🔙 خروج از پنل Super Admin",
+    "🔙 پنل ادمین",
+    "💰 مالی",
+    "💎 مدیریت Pro",
+    "⭐ درآمد Pro",
+    "🏷️ تخفیف عمومی Pro",
+    "📊 مشاهده قیمت پلن‌ها",
+    "💰 تغییر قیمت پلن‌ها",
+    "✏️ تغییر تخفیف عمومی",
+    "🎟️ کدهای تخفیف",
+    "➕ ساخت کد تخفیف",
+    "📋 مشاهده کدهای تخفیف",
+    "🔙 بخش مالی",
+  ];
+
+  if (navigationButtons.includes(text)) {
+    clearState(telegramUserId);
+    return next();
+  }
 
   if (text === "❌ لغو") {
-    clearState(ctx.from.id);
+    clearState(telegramUserId);
 
     await ctx.reply(
       "❌ عملیات لغو شد.",
       mainMenu()
     );
 
-    return true;
+    return;
   }
 
   if (text === "🔙 مدیریت اعتبار") {
-    clearState(ctx.from.id);
+    clearState(telegramUserId);
 
     await ctx.reply(
       "💳 مدیریت اعتبار",
       mainMenu()
     );
 
-    return true;
+    return;
   }
 
-  return processUser(
+  const handled = await processUser(
     ctx,
     text
   );
+
+  if (handled) {
+    return;
+  }
+
+  return next();
 }
 
-async function handleMenu(ctx) {
-  if (!(await requirePermission(ctx))) {
+async function handleMenu(ctx, next) {
+  const telegramUserId = ctx.from?.id;
+
+  if (!telegramUserId) {
+    return next();
+  }
+
+  const admin = await adminService.getAdminByTelegramId(
+    telegramUserId
+  );
+
+  if (!admin || !admin.is_active) {
+    await ctx.reply(
+      "⛔ حساب مدیریتی شما فعال نیست."
+    );
+    return;
+  }
+
+  // دکمه مشترک است؛ Super Admin باید وارد پنل مالی شود.
+  if (admin.role_key === "super_admin") {
+    return next();
+  }
+
+  const allowed = await adminService.hasPermission(
+    admin.user_id,
+    "credits"
+  );
+
+  if (!allowed) {
+    await ctx.reply(
+      "⛔ شما دسترسی مدیریت اعتبار را ندارید."
+    );
     return;
   }
 
@@ -432,16 +500,7 @@ function createAdminCreditsHandler(bot) {
 
   bot.on(
     "text",
-    async (ctx, next) => {
-      const handled =
-        await handleText(ctx);
-
-      if (handled) {
-        return;
-      }
-
-      return next();
-    }
+    handleText
   );
 }
 
