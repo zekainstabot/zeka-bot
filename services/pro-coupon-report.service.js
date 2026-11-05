@@ -1,29 +1,64 @@
 const { getPool } = require("../database/pool");
 
-async function getCouponUsageReport(
-  couponId,
-  { limit = 10, offset = 0 } = {}
-) {
-  const db = getPool();
+const {
+  validateCouponId,
+} = require("./pro-coupon.service");
 
-  const safeCouponId = Number(couponId);
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 50;
+
+function validatePagination(limit, offset) {
+  const parsedLimit = Number(limit);
+  const parsedOffset = Number(offset);
 
   if (
-    !Number.isSafeInteger(safeCouponId) ||
-    safeCouponId < 1
+    !Number.isSafeInteger(parsedLimit) ||
+    parsedLimit < 1
   ) {
-    throw new Error("INVALID_COUPON_ID");
+    throw new Error("INVALID_REPORT_LIMIT");
   }
 
-  const safeLimit = Math.max(
-    1,
-    Math.min(Math.floor(Number(limit) || 10), 50)
+  if (
+    !Number.isSafeInteger(parsedOffset) ||
+    parsedOffset < 0
+  ) {
+    throw new Error("INVALID_REPORT_OFFSET");
+  }
+
+  return {
+    limit: Math.min(parsedLimit, MAX_LIMIT),
+    offset: parsedOffset,
+  };
+}
+
+function parseCount(value) {
+  const count = Number(value ?? 0);
+
+  if (
+    !Number.isSafeInteger(count) ||
+    count < 0
+  ) {
+    throw new Error("INVALID_COUPON_REPORT_COUNT");
+  }
+
+  return count;
+}
+
+async function getCouponUsageReport(
+  couponId,
+  {
+    limit = DEFAULT_LIMIT,
+    offset = 0,
+  } = {}
+) {
+  const safeCouponId = validateCouponId(couponId);
+
+  const pagination = validatePagination(
+    limit,
+    offset
   );
 
-  const safeOffset = Math.max(
-    0,
-    Math.floor(Number(offset) || 0)
-  );
+  const db = getPool();
 
   const couponResult = await db.query(
     `
@@ -92,19 +127,19 @@ async function getCouponUsageReport(
       [
         safeCouponId,
         coupon.code,
-        safeLimit,
-        safeOffset,
+        pagination.limit,
+        pagination.offset,
       ]
     ),
 
     db.query(
       `
         SELECT
-          COUNT(*)::INTEGER AS total,
+          COUNT(*) AS total,
 
           COUNT(*) FILTER (
             WHERE status = 'APPROVED'
-          )::INTEGER AS approved_count,
+          ) AS approved_count,
 
           COUNT(*) FILTER (
             WHERE status IN (
@@ -112,15 +147,15 @@ async function getCouponUsageReport(
               'WAITING_RECEIPT',
               'RECEIPT_SUBMITTED'
             )
-          )::INTEGER AS pending_count,
+          ) AS pending_count,
 
           COUNT(*) FILTER (
             WHERE status = 'REJECTED'
-          )::INTEGER AS rejected_count,
+          ) AS rejected_count,
 
           COUNT(*) FILTER (
             WHERE status = 'CANCELLED'
-          )::INTEGER AS cancelled_count
+          ) AS cancelled_count
 
         FROM pro_purchase_requests
 
@@ -134,19 +169,20 @@ async function getCouponUsageReport(
 
   return {
     coupon,
+
     redemptions: usageResult.rows,
 
-    total: Number(summary.total || 0),
+    total: parseCount(summary.total),
 
     summary: {
-      approved: Number(summary.approved_count || 0),
-      pending: Number(summary.pending_count || 0),
-      rejected: Number(summary.rejected_count || 0),
-      cancelled: Number(summary.cancelled_count || 0),
+      approved: parseCount(summary.approved_count),
+      pending: parseCount(summary.pending_count),
+      rejected: parseCount(summary.rejected_count),
+      cancelled: parseCount(summary.cancelled_count),
     },
 
-    limit: safeLimit,
-    offset: safeOffset,
+    limit: pagination.limit,
+    offset: pagination.offset,
   };
 }
 
