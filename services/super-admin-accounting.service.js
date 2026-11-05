@@ -39,6 +39,7 @@ async function createExpense({
   ).trim();
 
   const normalizedAmount = Number(amount);
+
   const normalizedCreator = String(
     createdByTelegramId || ""
   ).trim();
@@ -99,6 +100,7 @@ async function createExpense({
 
 async function getFinanceReport(period = "all") {
   const safePeriod = normalizePeriod(period);
+
   const db = getClient();
 
   const result = await db.query(
@@ -121,7 +123,16 @@ async function getFinanceReport(period = "all") {
       ),
 
       income_events AS (
-        -- درآمد اشتراک‌های Pro تأییدشده
+        /*
+         * درآمد Pro
+         *
+         * اشتراک فقط زمانی در این جدول ثبت می‌شود
+         * که مدیر رسید خرید را تأیید کرده باشد.
+         *
+         * خریدهای Pro از payments خوانده نمی‌شوند
+         * تا درآمد دوبار محاسبه نشود.
+         */
+
         SELECT
           subscription.price AS amount,
 
@@ -136,41 +147,12 @@ async function getFinanceReport(period = "all") {
 
         WHERE subscription.source_type = 'PURCHASE'
           AND subscription.price > 0
-
-        UNION ALL
-
-        -- پرداخت‌های واقعی خرید اعتبار
-        -- خرید Pro در این قسمت محاسبه نمی‌شود
-        SELECT
-          payment.amount,
-
-          COALESCE(
-            NULLIF(payment.currency, ''),
-            'IRT'
-          ) AS currency,
-
-          COALESCE(
-            payment.paid_at,
-            payment.updated_at,
-            payment.created_at
-          ) AS event_at
-
-        FROM payments payment
-
-        WHERE payment.payment_type = 'CREDIT_PURCHASE'
-          AND payment.status IN (
-            'PAID',
-            'SUCCESS',
-            'SUCCEEDED',
-            'COMPLETED',
-            'VERIFIED'
-          )
-          AND payment.amount > 0
       ),
 
       filtered_income AS (
         SELECT *
         FROM income_events
+
         CROSS JOIN time_boundaries boundaries
 
         WHERE
@@ -190,7 +172,9 @@ async function getFinanceReport(period = "all") {
       filtered_expenses AS (
         SELECT
           expense.amount,
+
           expense.currency,
+
           expense.created_at AS event_at
 
         FROM finance_expenses expense
@@ -214,7 +198,9 @@ async function getFinanceReport(period = "all") {
       income_summary AS (
         SELECT
           currency,
+
           SUM(amount) AS total_income,
+
           COUNT(*) AS income_count
 
         FROM filtered_income
@@ -225,7 +211,9 @@ async function getFinanceReport(period = "all") {
       expense_summary AS (
         SELECT
           currency,
+
           SUM(amount) AS total_expenses,
+
           COUNT(*) AS expense_count
 
         FROM filtered_expenses
@@ -270,16 +258,30 @@ async function getFinanceReport(period = "all") {
   );
 
   return result.rows.map((row) => {
-    const income = Number(row.total_income || 0);
-    const expenses = Number(row.total_expenses || 0);
+    const income = Number(
+      row.total_income || 0
+    );
+
+    const expenses = Number(
+      row.total_expenses || 0
+    );
 
     return {
       currency: row.currency,
+
       totalIncome: income,
+
       totalExpenses: expenses,
+
       netProfit: income - expenses,
-      incomeCount: Number(row.income_count || 0),
-      expenseCount: Number(row.expense_count || 0),
+
+      incomeCount: Number(
+        row.income_count || 0
+      ),
+
+      expenseCount: Number(
+        row.expense_count || 0
+      ),
     };
   });
 }
@@ -290,6 +292,7 @@ async function getFinanceReport(period = "all") {
 
 async function getLatestExpenses(limit = 10) {
   const db = getClient();
+
   const safeLimit = normalizeLimit(limit);
 
   const result = await db.query(
