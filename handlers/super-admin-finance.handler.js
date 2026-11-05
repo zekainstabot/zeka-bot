@@ -51,6 +51,7 @@ const COUPON_NAVIGATION_BUTTONS = [
   "➕ افزایش اعتبار مالی",
   "➖ کاهش اعتبار مالی",
   "📜 تاریخچه اعتبار مالی",
+  "❌ لغو عملیات",
   "🔙 بخش مالی",
   "🔙 پنل Super Admin",
   "🔙 خروج از پنل Super Admin",
@@ -940,6 +941,18 @@ async function handleCouponCreationInput(ctx, next) {
     ctx.message?.text || ""
   ).trim();
 
+  // پیام خالی نباید وارد جریان ساخت کد شود.
+  if (!text) {
+    return next();
+  }
+
+  // دستورهای بات نباید به‌عنوان ورودی کد یا اطلاعات کوپن پردازش شوند.
+  if (text.startsWith("/")) {
+    clearCouponCreationState(telegramUserId);
+    return next();
+  }
+
+  // لغو مستقیم ساخت کد
   if (text === "❌ لغو ساخت کد") {
     clearCouponCreationState(telegramUserId);
 
@@ -951,12 +964,12 @@ async function handleCouponCreationInput(ctx, next) {
     return;
   }
 
+  // دکمه‌های ناوبری و عملیات بخش‌های دیگر
   if (
     COUPON_NAVIGATION_BUTTONS.includes(text) ||
     /^🔴 غیرفعال‌کردن کد \d+$/.test(text) ||
     /^🟢 فعال‌کردن کد \d+$/.test(text) ||
-    /^👥 کاربران کد \d+$/.test(text) ||
-    text === "/superadmin"
+    /^👥 کاربران کد \d+$/.test(text)
   ) {
     clearCouponCreationState(telegramUserId);
     return next();
