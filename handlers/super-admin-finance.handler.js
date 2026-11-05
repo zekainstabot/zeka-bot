@@ -47,10 +47,16 @@ const COUPON_NAVIGATION_BUTTONS = [
   "💰 درآمدها",
   "💸 هزینه‌ها",
   "📊 گزارش مالی",
+  "🔎 کاربر دیگر",
+  "➕ افزایش اعتبار مالی",
+  "➖ کاهش اعتبار مالی",
+  "📜 تاریخچه اعتبار مالی",
   "🔙 بخش مالی",
   "🔙 پنل Super Admin",
+  "🔙 خروج از پنل Super Admin",
   "👥 کاربران",
   "🔙 پنل مدیریت",
+  "🔄 تازه‌سازی وضعیت پلتفرم‌ها",
 ];
 
 function getCouponCreationState(telegramUserId) {
@@ -212,10 +218,8 @@ function parseCouponDate(dateText, endOfDay = false) {
     ? "23:59:59.999"
     : "00:00:00.000";
 
-  const offset = "+03:30";
-
   const result = new Date(
-    `${normalized}T${time}${offset}`
+    `${normalized}T${time}+03:30`
   );
 
   if (Number.isNaN(result.getTime())) {
@@ -949,9 +953,10 @@ async function handleCouponCreationInput(ctx, next) {
 
   if (
     COUPON_NAVIGATION_BUTTONS.includes(text) ||
-    text.startsWith("🔴 غیرفعال‌کردن کد ") ||
-    text.startsWith("🟢 فعال‌کردن کد ") ||
-    text.startsWith("👥 کاربران کد ")
+    /^🔴 غیرفعال‌کردن کد \d+$/.test(text) ||
+    /^🟢 فعال‌کردن کد \d+$/.test(text) ||
+    /^👥 کاربران کد \d+$/.test(text) ||
+    text === "/superadmin"
   ) {
     clearCouponCreationState(telegramUserId);
     return next();
@@ -1013,8 +1018,6 @@ async function handleUnimplementedFinanceSection(ctx) {
 // --------------------------------------------------
 
 function createSuperAdminFinanceHandler(bot) {
-  // ابتدا جریان ساخت کوپن ثبت می‌شود تا بتواند
-  // خروج از جریان را قبل از اجرای منوها تشخیص دهد.
   bot.on(
     "text",
     handleCouponCreationInput
