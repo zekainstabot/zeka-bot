@@ -38,25 +38,49 @@ const COUPON_NAVIGATION_BUTTONS = [
   "📊 مشاهده قیمت پلن‌ها",
   "💰 تغییر قیمت پلن‌ها",
   "✏️ تغییر تخفیف عمومی",
+
   "🎟️ کدهای تخفیف",
   "➕ ساخت کد تخفیف",
   "📋 مشاهده کدهای تخفیف",
   "🔄 تازه‌سازی کدها",
   "🔙 مدیریت کدهای تخفیف",
   "🔙 مشاهده کدهای تخفیف",
+
   "💰 درآمدها",
   "💸 هزینه‌ها",
   "📊 گزارش مالی",
+
   "🔎 کاربر دیگر",
   "➕ افزایش اعتبار مالی",
   "➖ کاهش اعتبار مالی",
   "📜 تاریخچه اعتبار مالی",
+
   "❌ لغو عملیات",
   "🔙 بخش مالی",
   "🔙 پنل Super Admin",
   "🔙 خروج از پنل Super Admin",
-  "👥 کاربران",
+  "🔙 پنل ادمین",
+  "🔙 خروج از پنل مدیریت",
   "🔙 پنل مدیریت",
+
+  "👥 کاربران",
+  "⚙️ تنظیمات",
+  "📥 مدیریت درخواست‌ها",
+  "🎁 مدیریت جوایز",
+  "🌐 مدیریت پلتفرم‌ها",
+  "🍪 کوکی اینستاگرام",
+  "✨ مدیریت امکانات",
+  "🆘 پشتیبانی",
+  "📊 مانیتورینگ",
+  "🛠 مدیریت ادمین",
+  "📋 گزارش‌ها",
+  "🐞 گزارش مشکلات",
+  "🧠 مدیریت مسابقه",
+  "🔮 مدیریت فال",
+  "📺 مدیریت زکا مدیا",
+  "👥 مدیریت کاربران",
+  "📊 گزارش سؤالات",
+
   "🔄 تازه‌سازی وضعیت پلتفرم‌ها",
 ];
 
@@ -87,6 +111,21 @@ function updateCouponCreationState(telegramUserId, state) {
 
 function clearCouponCreationState(telegramUserId) {
   couponCreationFlow.delete(telegramUserId);
+}
+
+function isCouponReportNavigationButton(text) {
+  return (
+    /^(⬅️ صفحه قبل کد|صفحه بعد کد) \d+ صفحه \d+(?: ➡️)?$/.test(text) ||
+    /^🔄 تازه‌سازی گزارش کد \d+ صفحه \d+$/.test(text)
+  );
+}
+
+function isCouponManagementButton(text) {
+  return (
+    /^🔴 غیرفعال‌کردن کد \d+$/.test(text) ||
+    /^🟢 فعال‌کردن کد \d+$/.test(text) ||
+    /^👥 کاربران کد \d+$/.test(text)
+  );
 }
 
 async function getSuperAdmin(ctx) {
@@ -137,7 +176,11 @@ function buildCouponMenu() {
 }
 
 function formatAmount(amount, currency) {
-  const value = Number(amount || 0);
+  const value = Number(amount ?? 0);
+
+  if (!Number.isFinite(value)) {
+    return "نامشخص";
+  }
 
   return (
     new Intl.NumberFormat("en-US", {
@@ -637,7 +680,7 @@ async function handleCouponToggle(ctx) {
   }
 
   const isActive = match[1] === "🟢 فعال‌کردن";
-  const couponId = Number(match[2]);
+  const couponId = match[2];
 
   try {
     const coupon = await couponService.setCouponActive({
@@ -941,19 +984,21 @@ async function handleCouponCreationInput(ctx, next) {
     ctx.message?.text || ""
   ).trim();
 
-  // پیام خالی نباید وارد جریان ساخت کد شود.
   if (!text) {
     return next();
   }
 
-  // دستورهای بات نباید به‌عنوان ورودی کد یا اطلاعات کوپن پردازش شوند.
+  // دستورات بات نباید به‌عنوان ورودی کوپن پردازش شوند.
   if (text.startsWith("/")) {
     clearCouponCreationState(telegramUserId);
     return next();
   }
 
-  // لغو مستقیم ساخت کد
-  if (text === "❌ لغو ساخت کد") {
+  // لغو ساخت کوپن
+  if (
+    text === "❌ لغو ساخت کد" ||
+    text === "❌ لغو عملیات"
+  ) {
     clearCouponCreationState(telegramUserId);
 
     await ctx.reply(
@@ -967,9 +1012,8 @@ async function handleCouponCreationInput(ctx, next) {
   // دکمه‌های ناوبری و عملیات بخش‌های دیگر
   if (
     COUPON_NAVIGATION_BUTTONS.includes(text) ||
-    /^🔴 غیرفعال‌کردن کد \d+$/.test(text) ||
-    /^🟢 فعال‌کردن کد \d+$/.test(text) ||
-    /^👥 کاربران کد \d+$/.test(text)
+    isCouponReportNavigationButton(text) ||
+    isCouponManagementButton(text)
   ) {
     clearCouponCreationState(telegramUserId);
     return next();
