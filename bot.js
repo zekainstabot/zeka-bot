@@ -114,10 +114,6 @@ const {
   createFortuneHandler,
 } = require("./handlers/fortune.handler");
 
-const {
-  createAdminFortuneHandler,
-} = require("./handlers/admin-fortune.handler");
-
 let bot = null;
 
 function createBot() {
@@ -205,8 +201,6 @@ function createBot() {
   createFortuneHandler({
     bot,
   });
-
-  createAdminFortuneHandler(bot);
 
   createDownloadHandler({
     bot,
