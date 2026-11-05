@@ -1,8 +1,5 @@
-const jobRepository =
-  require("../repositories/job.repository");
-
-const deliveryRepository =
-  require("../repositories/job.delivery.repository");
+const jobRepository = require("../repositories/job.repository");
+const deliveryRepository = require("../repositories/job.delivery.repository");
 
 const {
   consumeCredit,
@@ -12,104 +9,147 @@ const {
   markCompleted,
 } = require("./download.service");
 
-async function recoverDeliveredJobs(limit = 100) {
-  const jobs =
-    await jobRepository.findSending(limit);
+const {
+  getPool,
+} = require("../database/pool");
 
-  if (!jobs.length) {
-    return {
-      recovered: 0,
-      jobs: [],
-    };
-  }
+const RECOVERY_LOCK_ID = 724198331002;
 
-  let recovered = 0;
-  const recoveredJobs = [];
+function createDeliveryRecoveryService(dependencies = {}) {
+  const jobs = dependencies.jobRepository || jobRepository;
+  const deliveries =
+    dependencies.deliveryRepository || deliveryRepository;
+  const consume =
+    dependencies.consumeCredit || consumeCredit;
+  const complete =
+    dependencies.markCompleted || markCompleted;
+  const poolProvider = dependencies.getPool || getPool;
 
-  for (const job of jobs) {
+  return async function recoverDeliveredJobs(limit = 100) {
+    const pool = poolProvider();
+    const lockClient = await pool.connect();
+
+    let lockAcquired = false;
+
     try {
-      const delivery =
-        await deliveryRepository.findByJobId(
-          job.id
-        );
+      const lockResult = await lockClient.query(
+        "SELECT pg_try_advisory_lock($1) AS locked",
+        [RECOVERY_LOCK_ID]
+      );
 
-      if (!delivery) {
-        console.log(
-          `Delivery recovery: no delivery record for job ${
-            job.job_id || job.id
-          }. Leaving job in SENDING.`
-        );
+      lockAcquired = lockResult.rows[0]?.locked === true;
 
-        continue;
+      if (!lockAcquired) {
+        return {
+          recovered: 0,
+          jobs: [],
+          skipped: true,
+        };
       }
 
-      if (delivery.status !== "SENT") {
-        console.log(
-          `Delivery recovery: job ${
-            job.job_id || job.id
-          } has delivery status ${delivery.status}. No resend.`
-        );
+      const sendingJobs = await jobs.findSending(limit);
 
-        continue;
+      if (!sendingJobs.length) {
+        return {
+          recovered: 0,
+          jobs: [],
+        };
       }
 
-      const reservedCost =
-        Number(job.reserved_cost || 0);
+      let recovered = 0;
+      const recoveredJobs = [];
 
-      if (
-        Number.isFinite(reservedCost) &&
-        reservedCost > 0
-      ) {
-        await consumeCredit(
-          job.id
-        );
-      }
+      for (const job of sendingJobs) {
+        try {
+          const delivery = await deliveries.findByJobId(job.id);
 
-      const completedJob =
-        await markCompleted(
-          job.id,
-          {
-            finalCost:
-              reservedCost > 0
-                ? reservedCost
-                : 0,
+          if (!delivery) {
+            console.log(
+              `Delivery recovery: no delivery record for job ${
+                job.job_id || job.id
+              }. Leaving job in SENDING.`
+            );
+            continue;
           }
-        );
 
-      if (!completedJob) {
-        throw new Error(
-          "Failed to mark delivered job as completed"
-        );
+          if (delivery.status !== "SENT") {
+            console.log(
+              `Delivery recovery: job ${
+                job.job_id || job.id
+              } has delivery status ${delivery.status}. No resend.`
+            );
+            continue;
+          }
+
+          const reservedCost = Number(job.reserved_cost || 0);
+
+          if (!Number.isFinite(reservedCost) || reservedCost < 0) {
+            throw new Error(
+              `Invalid reserved cost for job ${job.job_id || job.id}`
+            );
+          }
+
+          if (reservedCost > 0) {
+            await consume(job.id);
+          }
+
+          const completedJob = await complete(job.id, {
+            finalCost: reservedCost,
+          });
+
+          if (!completedJob) {
+            throw new Error(
+              "Failed to mark delivered job as completed"
+            );
+          }
+
+          recovered += 1;
+          recoveredJobs.push(completedJob);
+
+          console.log(
+            `Delivery recovery: job ${
+              job.job_id || job.id
+            } finalized without resend. Telegram message ID: ${
+              delivery.telegram_message_id
+            }`
+          );
+        } catch (error) {
+          console.error(
+            `Delivery recovery failed for job ${
+              job.job_id || job.id
+            }:`,
+            error
+          );
+        }
       }
 
-      recovered += 1;
-      recoveredJobs.push(
-        completedJob
-      );
+      return {
+        recovered,
+        jobs: recoveredJobs,
+      };
+    } finally {
+      if (lockAcquired) {
+        try {
+          await lockClient.query(
+            "SELECT pg_advisory_unlock($1)",
+            [RECOVERY_LOCK_ID]
+          );
+        } catch (unlockError) {
+          console.error(
+            "Failed to release delivery recovery lock:",
+            unlockError
+          );
+        }
+      }
 
-      console.log(
-        `Delivery recovery: job ${
-          job.job_id || job.id
-        } finalized without resend. Telegram message ID: ${
-          delivery.telegram_message_id
-        }`
-      );
-    } catch (error) {
-      console.error(
-        `Delivery recovery failed for job ${
-          job.job_id || job.id
-        }:`,
-        error
-      );
+      lockClient.release();
     }
-  }
-
-  return {
-    recovered,
-    jobs: recoveredJobs,
   };
 }
 
+const recoverDeliveredJobs = createDeliveryRecoveryService();
+
 module.exports = {
   recoverDeliveredJobs,
+  createDeliveryRecoveryService,
 };
