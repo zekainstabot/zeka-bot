@@ -99,21 +99,63 @@ async function getCouponUsageReport(
           request.duration_months,
           request.price_amount,
           request.base_price_amount,
-          request.coupon_discount_percent AS discount_percent,
+          request.plan_discount_percent,
+          request.extra_discount_percent,
+          request.applied_discount_percent,
+
+          request.coupon_discount_percent
+            AS discount_percent,
+
           request.status AS purchase_status,
           request.created_at AS purchase_created_at,
           request.reviewed_at,
 
           COALESCE(
-            redemption.created_at,
+            redemption.redemption_created_at,
             request.created_at
-          ) AS redemption_created_at
+          ) AS redemption_created_at,
+
+          redemption.released_at
 
         FROM pro_purchase_requests request
 
-        LEFT JOIN pro_discount_redemptions redemption
-          ON redemption.purchase_request_id = request.id
-          AND redemption.coupon_id = $1
+        LEFT JOIN LATERAL (
+          SELECT
+            events.redemption_created_at,
+            events.released_at
+
+          FROM (
+            SELECT
+              active.created_at
+                AS redemption_created_at,
+
+              NULL::TIMESTAMPTZ
+                AS released_at,
+
+              1 AS source_priority
+
+            FROM pro_discount_redemptions active
+
+            WHERE active.purchase_request_id = request.id
+              AND active.coupon_id = $1
+
+            UNION ALL
+
+            SELECT
+              history.redemption_created_at,
+              history.released_at,
+              2 AS source_priority
+
+            FROM pro_discount_redemption_history history
+
+            WHERE history.purchase_request_id = request.id
+              AND history.coupon_id = $1
+          ) events
+
+          ORDER BY events.source_priority DESC
+
+          LIMIT 1
+        ) redemption ON TRUE
 
         WHERE request.coupon_code = $2
 
