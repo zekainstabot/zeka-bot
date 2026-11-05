@@ -21,10 +21,6 @@ const {
   createSuperAdminFinanceHandler,
 } = require("./super-admin-finance.handler");
 
-const {
-  quizAdminMenu,
-} = require("./admin-quiz/menu");
-
 const PLATFORMS = [
   { key: "platform.instagram", name: "اینستاگرام" },
   { key: "platform.tiktok", name: "تیک‌تاک" },
@@ -43,9 +39,10 @@ async function getSuperAdmin(ctx) {
     return null;
   }
 
-  const admin = await adminService.getAdminByTelegramId(
-    telegramUserId
-  );
+  const admin =
+    await adminService.getAdminByTelegramId(
+      telegramUserId
+    );
 
   if (
     !admin ||
@@ -97,7 +94,10 @@ async function handleSuperAdminCommand(ctx) {
       buildSuperAdminMenu()
     );
   } catch (error) {
-    console.error("Super Admin command failed:", error);
+    console.error(
+      "Super Admin command failed:",
+      error
+    );
 
     await ctx.reply(
       "❌ دریافت پنل Super Admin انجام نشد."
@@ -105,6 +105,10 @@ async function handleSuperAdminCommand(ctx) {
   }
 }
 
+/*
+ * این تابع فقط برای بازگشت از زیرمنوی سرگرمی استفاده می‌شود.
+ * ورود اصلی به سرگرمی توسط admin.handler مدیریت می‌شود.
+ */
 async function handleEntertainmentMenu(ctx) {
   const admin = await getSuperAdmin(ctx);
 
@@ -128,33 +132,6 @@ async function handleEntertainmentMenu(ctx) {
   );
 }
 
-async function handleSuperAdminQuizMenu(ctx) {
-  const admin = await getSuperAdmin(ctx);
-
-  if (!admin) {
-    await ctx.reply(
-      "⛔ فقط Super Admin به این بخش دسترسی دارد."
-    );
-    return;
-  }
-
-  try {
-    await ctx.reply(
-      "🧠 مدیریت مسابقه\n\nبخش موردنظر را انتخاب کنید.",
-      await quizAdminMenu(ctx)
-    );
-  } catch (error) {
-    console.error(
-      "Super Admin quiz menu failed:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ دریافت منوی مدیریت مسابقه انجام نشد."
-    );
-  }
-}
-
 async function handleProAdminMenu(ctx) {
   const telegramUserId = ctx.from?.id;
 
@@ -163,9 +140,10 @@ async function handleProAdminMenu(ctx) {
   }
 
   try {
-    const admin = await adminService.getAdminByTelegramId(
-      telegramUserId
-    );
+    const admin =
+      await adminService.getAdminByTelegramId(
+        telegramUserId
+      );
 
     if (!admin || !admin.is_active) {
       await ctx.reply(
@@ -210,7 +188,10 @@ async function handleProAdminMenu(ctx) {
         .oneTime(false)
     );
   } catch (error) {
-    console.error("Pro admin menu failed:", error);
+    console.error(
+      "Pro admin menu failed:",
+      error
+    );
 
     await ctx.reply(
       "❌ دریافت منوی مدیریت Pro انجام نشد."
@@ -261,7 +242,10 @@ async function handlePlatformMenu(ctx) {
         .oneTime(false)
     );
   } catch (error) {
-    console.error("Platform menu failed:", error);
+    console.error(
+      "Platform menu failed:",
+      error
+    );
 
     await ctx.reply(
       "❌ دریافت وضعیت پلتفرم‌ها انجام نشد."
@@ -325,7 +309,10 @@ async function handlePlatformToggle(ctx) {
 
     await handlePlatformMenu(ctx);
   } catch (error) {
-    console.error("Platform setting update failed:", error);
+    console.error(
+      "Platform setting update failed:",
+      error
+    );
 
     await ctx.reply(
       `❌ تغییر وضعیت ${platform.name} انجام نشد. خطای ثبت تنظیمات را بررسی کنید.`
@@ -389,10 +376,10 @@ function createSuperAdminHandler(bot) {
 
   createSuperAdminFinanceHandler(bot);
 
-  bot.hears(
-    ENTERTAINMENT_BUTTON,
-    handleEntertainmentMenu
-  );
+  /*
+   * دکمه 🎮 سرگرمی اینجا ثبت نمی‌شود.
+   * admin.handler آن را برای هر دو نقش مدیریت می‌کند.
+   */
 
   bot.hears(
     "🌐 مدیریت پلتفرم‌ها",
@@ -409,10 +396,9 @@ function createSuperAdminHandler(bot) {
     handlePlatformMenu
   );
 
-  bot.hears(
-    "🧠 مدیریت مسابقه",
-    handleSuperAdminQuizMenu
-  );
+  /*
+   * دکمه 🧠 مدیریت مسابقه هم فقط در admin.handler ثبت می‌شود.
+   */
 
   bot.hears(
     "💎 مدیریت Pro",
