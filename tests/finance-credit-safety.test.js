@@ -17,6 +17,28 @@ function readProjectFile(relativePath) {
   return fs.readFileSync(filePath, "utf8");
 }
 
+function extractFunction(source, functionName) {
+  const functionStart = source.indexOf(
+    `async function ${functionName}`
+  );
+
+  assert.notEqual(
+    functionStart,
+    -1,
+    `Missing function: ${functionName}`
+  );
+
+  const nextFunction = source.indexOf(
+    "\nasync function ",
+    functionStart + 1
+  );
+
+  return source.slice(
+    functionStart,
+    nextFunction === -1 ? undefined : nextFunction
+  );
+}
+
 // --------------------------------------------------
 // Finance accounting safety
 // --------------------------------------------------
@@ -137,6 +159,68 @@ test(
     assert.match(
       source,
       /INSERT INTO finance_expenses/i
+    );
+  }
+);
+
+// --------------------------------------------------
+// Credit amount validation
+// --------------------------------------------------
+
+test(
+  "download credit reservation validates numeric amount",
+  () => {
+    const source = readProjectFile(
+      "services/credit.service.js"
+    );
+
+    const reserveFunction = extractFunction(
+      source,
+      "reserveCredit"
+    );
+
+    assert.match(
+      reserveFunction,
+      /Number\.isFinite\(normalizedAmount\)/
+    );
+
+    assert.match(
+      reserveFunction,
+      /normalizedAmount\s*<=\s*0/
+    );
+
+    assert.match(
+      reserveFunction,
+      /let remainingToReserve\s*=\s*normalizedAmount/
+    );
+  }
+);
+
+test(
+  "game credit reservation validates numeric amount",
+  () => {
+    const source = readProjectFile(
+      "services/credit.service.js"
+    );
+
+    const reserveFunction = extractFunction(
+      source,
+      "reserveGameCredit"
+    );
+
+    assert.match(
+      reserveFunction,
+      /Number\.isFinite\(normalizedAmount\)/
+    );
+
+    assert.match(
+      reserveFunction,
+      /normalizedAmount\s*<=\s*0/
+    );
+
+    assert.match(
+      reserveFunction,
+      /let remainingToReserve\s*=\s*normalizedAmount/
     );
   }
 );
