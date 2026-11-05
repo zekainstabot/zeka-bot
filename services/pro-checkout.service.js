@@ -1,4 +1,3 @@
-
 const { getClient } = require("../database/client");
 
 const {
@@ -7,6 +6,10 @@ const {
   calculateFinalPrice,
 } = require("./pro-pricing.service");
 
+const {
+  validateTelegramUserId,
+} = require("./pro-coupon.service");
+
 const OPEN_STATUSES = [
   "PENDING",
   "WAITING_RECEIPT",
@@ -14,7 +17,7 @@ const OPEN_STATUSES = [
 ];
 
 function normalizeCouponCode(code) {
-  return String(code || "")
+  return String(code ?? "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "");
@@ -26,7 +29,11 @@ function getCouponError(reason) {
   return error;
 }
 
-function validateCouponRow(row, telegramUserId) {
+function validateCheckoutUserId(telegramUserId) {
+  return validateTelegramUserId(telegramUserId);
+}
+
+function validateCouponRow(row) {
   if (!row) {
     return "NOT_FOUND";
   }
@@ -60,6 +67,18 @@ function validateCouponRow(row, telegramUserId) {
 
   if (row.already_used) {
     return "ALREADY_USED";
+  }
+
+  const discountPercent = Number(
+    row.discount_percent
+  );
+
+  if (
+    !Number.isInteger(discountPercent) ||
+    discountPercent < 1 ||
+    discountPercent > 90
+  ) {
+    return "INVALID_DISCOUNT";
   }
 
   return null;
@@ -98,16 +117,13 @@ async function getCouponForQuote(
     `,
     [
       normalizedCode,
-      String(telegramUserId),
+      telegramUserId,
     ]
   );
 
   const row = result.rows[0];
 
-  const reason = validateCouponRow(
-    row,
-    telegramUserId
-  );
+  const reason = validateCouponRow(row);
 
   if (reason) {
     return {
@@ -138,6 +154,18 @@ function buildQuote(pricing, coupon = null) {
     couponDiscountPercent
   );
 
+  const priceAmount = calculateFinalPrice(
+    pricing.basePriceAmount,
+    appliedDiscountPercent
+  );
+
+  if (
+    !Number.isSafeInteger(priceAmount) ||
+    priceAmount < 1
+  ) {
+    throw new Error("INVALID_FINAL_PRO_PRICE");
+  }
+
   return {
     valid: true,
 
@@ -157,10 +185,7 @@ function buildQuote(pricing, coupon = null) {
 
     appliedDiscountPercent,
 
-    priceAmount: calculateFinalPrice(
-      pricing.basePriceAmount,
-      appliedDiscountPercent
-    ),
+    priceAmount,
   };
 }
 
@@ -169,7 +194,12 @@ async function getCheckoutQuote({
   telegramUserId,
   couponCode = null,
 }) {
-  const pricing = await getProPricing(durationMonths);
+  const normalizedTelegramId =
+    validateCheckoutUserId(telegramUserId);
+
+  const pricing = await getProPricing(
+    durationMonths
+  );
 
   let coupon = null;
 
@@ -179,7 +209,7 @@ async function getCheckoutQuote({
     const result = await getCouponForQuote(
       db,
       couponCode,
-      telegramUserId
+      normalizedTelegramId
     );
 
     if (!result.valid) {
@@ -199,9 +229,8 @@ async function createPricedPurchaseRequest({
   durationMonths,
   couponCode = null,
 }) {
-  const normalizedTelegramId = String(
-    telegramUserId
-  );
+  const normalizedTelegramId =
+    validateCheckoutUserId(telegramUserId);
 
   const normalizedCouponCode = couponCode
     ? normalizeCouponCode(couponCode)
@@ -289,8 +318,7 @@ async function createPricedPurchaseRequest({
       couponRow = couponResult.rows[0];
 
       const couponError = validateCouponRow(
-        couponRow,
-        normalizedTelegramId
+        couponRow
       );
 
       if (couponError) {
