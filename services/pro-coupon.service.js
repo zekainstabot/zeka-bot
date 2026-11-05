@@ -5,8 +5,11 @@ const MAX_DISCOUNT = 90;
 const MAX_CODE_LENGTH = 50;
 const MAX_INTEGER = 2147483647;
 
+// PostgreSQL BIGINT maximum.
+const MAX_BIGINT = "9223372036854775807";
+
 function normalizeCode(code) {
-  return String(code || "")
+  return String(code ?? "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "");
@@ -26,27 +29,60 @@ function validateCode(code) {
   return normalized;
 }
 
-function validateCouponId(couponId) {
-  const value = Number(couponId);
-
+/**
+ * Validates a positive PostgreSQL BIGINT identifier.
+ * Returns a string to prevent JavaScript precision loss.
+ */
+function validateBigIntId(value, errorCode) {
   if (
-    !Number.isSafeInteger(value) ||
-    value < 1
+    value === null ||
+    value === undefined ||
+    value === ""
   ) {
-    throw new Error("INVALID_COUPON_ID");
+    throw new Error(errorCode);
   }
 
-  return value;
+  if (
+    typeof value === "number" &&
+    !Number.isSafeInteger(value)
+  ) {
+    throw new Error(errorCode);
+  }
+
+  let normalized = String(value).trim();
+
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(errorCode);
+  }
+
+  normalized = normalized.replace(/^0+(?=\d)/, "");
+
+  if (
+    normalized === "0" ||
+    normalized.length > MAX_BIGINT.length ||
+    (
+      normalized.length === MAX_BIGINT.length &&
+      normalized > MAX_BIGINT
+    )
+  ) {
+    throw new Error(errorCode);
+  }
+
+  return normalized;
+}
+
+function validateCouponId(couponId) {
+  return validateBigIntId(
+    couponId,
+    "INVALID_COUPON_ID"
+  );
 }
 
 function validateTelegramUserId(telegramUserId) {
-  const value = String(telegramUserId ?? "").trim();
-
-  if (!/^\d{1,20}$/.test(value)) {
-    throw new Error("INVALID_TELEGRAM_USER_ID");
-  }
-
-  return value;
+  return validateBigIntId(
+    telegramUserId,
+    "INVALID_TELEGRAM_USER_ID"
+  );
 }
 
 function validateDiscountPercent(percent) {
@@ -90,11 +126,19 @@ function validateBoolean(value) {
     return value;
   }
 
-  if (value === 1 || value === "1" || value === "true") {
+  if (
+    value === 1 ||
+    value === "1" ||
+    value === "true"
+  ) {
     return true;
   }
 
-  if (value === 0 || value === "0" || value === "false") {
+  if (
+    value === 0 ||
+    value === "0" ||
+    value === "false"
+  ) {
     return false;
   }
 
@@ -110,7 +154,44 @@ function parseOptionalDate(value, errorCode) {
     return null;
   }
 
-  const date = new Date(value);
+  let date;
+
+  if (value instanceof Date) {
+    date = new Date(value.getTime());
+  } else if (typeof value === "string") {
+    const normalized = value.trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    // Validate YYYY-MM-DD strictly to prevent date rollover.
+    const dateOnlyMatch = normalized.match(
+      /^(\d{4})-(\d{2})-(\d{2})$/
+    );
+
+    if (dateOnlyMatch) {
+      const year = Number(dateOnlyMatch[1]);
+      const month = Number(dateOnlyMatch[2]);
+      const day = Number(dateOnlyMatch[3]);
+
+      const check = new Date(
+        Date.UTC(year, month - 1, day)
+      );
+
+      if (
+        check.getUTCFullYear() !== year ||
+        check.getUTCMonth() !== month - 1 ||
+        check.getUTCDate() !== day
+      ) {
+        throw new Error(errorCode);
+      }
+    }
+
+    date = new Date(normalized);
+  } else {
+    throw new Error(errorCode);
+  }
 
   if (Number.isNaN(date.getTime())) {
     throw new Error(errorCode);
@@ -123,15 +204,25 @@ function validatePagination(limit, offset) {
   const parsedLimit = Number(limit);
   const parsedOffset = Number(offset);
 
-  const safeLimit =
-    Number.isSafeInteger(parsedLimit)
-      ? Math.max(1, Math.min(parsedLimit, 100))
-      : 30;
+  let safeLimit = 30;
 
-  const safeOffset =
-    Number.isSafeInteger(parsedOffset)
-      ? Math.max(0, parsedOffset)
-      : 0;
+  if (Number.isFinite(parsedLimit)) {
+    safeLimit = Math.floor(parsedLimit);
+
+    safeLimit = Math.max(
+      1,
+      Math.min(safeLimit, 100)
+    );
+  }
+
+  let safeOffset = 0;
+
+  if (
+    Number.isSafeInteger(parsedOffset) &&
+    parsedOffset >= 0
+  ) {
+    safeOffset = parsedOffset;
+  }
 
   return {
     limit: safeLimit,
