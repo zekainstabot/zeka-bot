@@ -1,4 +1,3 @@
-
 const {
   Markup,
 } = require("telegraf");
@@ -347,6 +346,9 @@ async function handleSuperAdminExit(ctx) {
 }
 
 function createSuperAdminHandler(bot) {
+  // ثبت Handler مالی قبل از سایر Handlerهای متنی
+  createSuperAdminFinanceHandler(bot);
+
   bot.command(
     "superadmin",
     handleSuperAdminCommand
@@ -386,8 +388,6 @@ function createSuperAdminHandler(bot) {
     "🔙 خروج از پنل Super Admin",
     handleSuperAdminExit
   );
-
-  createSuperAdminFinanceHandler(bot);
 }
 
 module.exports = {
