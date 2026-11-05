@@ -22,6 +22,10 @@ const {
   createSuperAdminFinanceCouponReportHandler,
 } = require("./super-admin-finance-coupon-report.handler");
 
+const {
+  createSuperAdminAccountingHandler,
+} = require("./super-admin-accounting.handler");
+
 const couponCreationFlow = new Map();
 
 const COUPON_FLOW_TTL_MS = 10 * 60 * 1000;
@@ -49,6 +53,11 @@ const COUPON_NAVIGATION_BUTTONS = [
   "💰 درآمدها",
   "💸 هزینه‌ها",
   "📊 گزارش مالی",
+  "➕ ثبت هزینه",
+  "📋 هزینه‌های اخیر",
+  "📅 گزارش امروز",
+  "🗓 گزارش ماه جاری",
+  "📚 گزارش کل دوره",
 
   "🔎 کاربر دیگر",
   "➕ افزایش اعتبار مالی",
@@ -321,7 +330,10 @@ async function handleFinanceMenu(ctx) {
       "💎 مدیریت Pro: فعال‌سازی، تمدید و بررسی خریدها\n" +
       "⭐ درآمد Pro: گزارش درآمد اشتراک‌ها\n" +
       "🏷️ تخفیف عمومی Pro: تنظیم درصد تخفیف همه پلن‌ها\n" +
-      "🎟️ کدهای تخفیف: ساخت و مدیریت کدهای خرید Pro\n\n" +
+      "🎟️ کدهای تخفیف: ساخت و مدیریت کدهای خرید Pro\n" +
+      "💰 درآمدها: مشاهده درآمدهای ثبت‌شده\n" +
+      "💸 هزینه‌ها: ثبت و مدیریت هزینه‌ها\n" +
+      "📊 گزارش مالی: مشاهده سود و زیان\n\n" +
       "یک بخش را انتخاب کن.",
     buildFinanceMenu()
   );
@@ -1053,42 +1065,35 @@ async function handleCouponCreationInput(ctx, next) {
 }
 
 // --------------------------------------------------
-// Other finance sections
-// --------------------------------------------------
-
-async function handleUnimplementedFinanceSection(ctx) {
-  const admin = await getSuperAdmin(ctx);
-
-  if (!admin) {
-    await ctx.reply("⛔ دسترسی غیرمجاز.");
-    return;
-  }
-
-  await ctx.reply(
-    "⏳ این قسمت در مرحله بعد پیاده‌سازی می‌شود.",
-    buildFinanceMenu()
-  );
-}
-
-// --------------------------------------------------
 // Register handlers
 // --------------------------------------------------
 
 function createSuperAdminFinanceHandler(bot) {
+  // ابتدا Middleware ساخت کوپن
   bot.on(
     "text",
     handleCouponCreationInput
   );
 
+  // مدیریت اعتبار
   createSuperAdminFinanceCreditHandler(bot);
+
+  // مدیریت قیمت و تخفیف Pro
   createSuperAdminFinancePricingHandler(bot);
+
+  // گزارش کدهای تخفیف
   createSuperAdminFinanceCouponReportHandler(bot);
 
+  // حسابداری: درآمدها، هزینه‌ها و گزارش مالی
+  createSuperAdminAccountingHandler(bot);
+
+  // منوی اصلی مالی
   bot.hears(
     "💰 مالی",
     handleFinanceMenu
   );
 
+  // تراکنش‌ها
   bot.hears(
     "💳 تراکنش‌ها",
     handleTransactions
@@ -1099,6 +1104,7 @@ function createSuperAdminFinanceHandler(bot) {
     handleFinanceMenu
   );
 
+  // مدیریت کوپن‌ها
   bot.hears(
     "🎟️ کدهای تخفیف",
     handleCouponMenu
@@ -1134,6 +1140,7 @@ function createSuperAdminFinanceHandler(bot) {
     handleCouponToggle
   );
 
+  // گزارش درآمد Pro
   bot.hears(
     "⭐ درآمد Pro",
     handleProRevenue
@@ -1142,11 +1149,6 @@ function createSuperAdminFinanceHandler(bot) {
   bot.hears(
     "🔄 تازه‌سازی درآمد Pro",
     handleProRevenue
-  );
-
-  bot.hears(
-    /^(💰 درآمدها|💸 هزینه‌ها|📊 گزارش مالی)$/,
-    handleUnimplementedFinanceSection
   );
 }
 
