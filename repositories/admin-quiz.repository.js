@@ -34,20 +34,9 @@ async function createQuestion({
         updated_by
       )
       VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        $6,
-        $7,
-        $8,
-        $9,
-        $10,
-        'ACTIVE',
-        'ADMIN',
-        $11,
-        $11
+        $1, $2, $3, $4, $5, $6,
+        $7, $8, $9, $10, 'ACTIVE',
+        'ADMIN', $11, $11
       )
       RETURNING *
     `,
@@ -69,6 +58,245 @@ async function createQuestion({
   return result.rows[0] || null;
 }
 
+/**
+ * ثبت گروهی سؤال‌های واردشده از سایت.
+ *
+ * ویژگی‌ها:
+ * - حداکثر ۱۰۰ سؤال در هر درخواست
+ * - رد سؤال‌های تکراری
+ * - رد سؤال‌های ناقص یا بدون پاسخ صحیح
+ * - ثبت تمام سؤال‌ها در یک تراکنش
+ * - لغو کامل تراکنش در صورت بروز خطا
+ */
+async function importQuestions({
+  questions,
+  languageCode = "fa",
+  category,
+  categoryId,
+  difficulty,
+  createdBy,
+}) {
+  if (
+    !Array.isArray(questions) ||
+    questions.length === 0
+  ) {
+    throw new Error(
+      "Questions list is empty"
+    );
+  }
+
+  if (questions.length > 100) {
+    throw new Error(
+      "Maximum 100 questions can be imported at once"
+    );
+  }
+
+  if (
+    !category ||
+    typeof category !== "string"
+  ) {
+    throw new Error(
+      "Invalid quiz category"
+    );
+  }
+
+  if (
+    !["EASY", "MEDIUM", "HARD"].includes(
+      String(difficulty).toUpperCase()
+    )
+  ) {
+    throw new Error(
+      "Invalid quiz difficulty"
+    );
+  }
+
+  if (
+    !Number.isInteger(Number(categoryId)) ||
+    Number(categoryId) <= 0
+  ) {
+    throw new Error(
+      "Invalid category ID"
+    );
+  }
+
+  if (
+    !Number.isInteger(Number(createdBy)) ||
+    Number(createdBy) <= 0
+  ) {
+    throw new Error(
+      "Invalid creator ID"
+    );
+  }
+
+  const db = getClient();
+  const client = await db.connect();
+
+  const result = {
+    inserted: 0,
+    duplicates: 0,
+    invalid: 0,
+    questions: [],
+  };
+
+  try {
+    await client.query("BEGIN");
+
+    // جلوگیری از تداخل ثبت هم‌زمان سؤال‌ها
+    // هنگام بررسی تکراری بودن.
+    await client.query(
+      `
+        LOCK TABLE quiz_questions
+        IN SHARE ROW EXCLUSIVE MODE
+      `
+    );
+
+    const normalizedQuestions = [];
+
+    for (const question of questions) {
+      if (!question) {
+        result.invalid++;
+        continue;
+      }
+
+      const questionText = String(
+        question.questionText || ""
+      ).trim();
+
+      const options = [
+        question.optionA,
+        question.optionB,
+        question.optionC,
+        question.optionD,
+      ].map((value) =>
+        String(value || "").trim()
+      );
+
+      const correctOption = String(
+        question.correctOption || ""
+      ).trim().toUpperCase();
+
+      if (
+        questionText.length < 5 ||
+        questionText.length > 2000 ||
+        options.some(
+          (option) =>
+            !option ||
+            option.length > 500
+        ) ||
+        new Set(options).size !== 4 ||
+        !["A", "B", "C", "D"].includes(
+          correctOption
+        )
+      ) {
+        result.invalid++;
+        continue;
+      }
+
+      normalizedQuestions.push({
+        questionText,
+        optionA: options[0],
+        optionB: options[1],
+        optionC: options[2],
+        optionD: options[3],
+        correctOption,
+        explanation:
+          question.explanation
+            ? String(question.explanation).trim().slice(0, 2000)
+            : null,
+      });
+    }
+
+    for (const question of normalizedQuestions) {
+      const normalizedText = question.questionText
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const existing = await client.query(
+        `
+          SELECT id
+          FROM quiz_questions
+          WHERE LOWER(
+            REGEXP_REPLACE(
+              BTRIM(question_text),
+              '\\s+',
+              ' ',
+              'g'
+            )
+          ) = $1
+          LIMIT 1
+        `,
+        [normalizedText]
+      );
+
+      if (existing.rows.length > 0) {
+        result.duplicates++;
+        continue;
+      }
+
+      const inserted = await client.query(
+        `
+          INSERT INTO quiz_questions (
+            language_code,
+            category,
+            category_id,
+            difficulty,
+            question_text,
+            option_a,
+            option_b,
+            option_c,
+            option_d,
+            correct_option,
+            explanation,
+            status,
+            source_type,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1, $2, $3, $4, $5,
+            $6, $7, $8, $9, $10,
+            $11, 'ACTIVE', 'ADMIN',
+            $12, $12
+          )
+          RETURNING id
+        `,
+        [
+          languageCode,
+          category,
+          Number(categoryId),
+          String(difficulty).toUpperCase(),
+          question.questionText,
+          question.optionA,
+          question.optionB,
+          question.optionC,
+          question.optionD,
+          question.correctOption,
+          question.explanation,
+          Number(createdBy),
+        ]
+      );
+
+      if (inserted.rows[0]) {
+        result.inserted++;
+
+        result.questions.push(
+          inserted.rows[0].id
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 async function countActiveQuestions() {
   const db = getClient();
 
@@ -85,9 +313,7 @@ async function countActiveQuestions() {
   );
 }
 
-async function getQuestionById(
-  questionId
-) {
+async function getQuestionById(questionId) {
   const db = getClient();
 
   const result = await db.query(
@@ -114,10 +340,7 @@ async function listQuestions({
 
   const safeLimit = Math.max(
     1,
-    Math.min(
-      Number(limit) || 10,
-      50
-    )
+    Math.min(Number(limit) || 10, 50)
   );
 
   const safeOffset = Math.max(
@@ -128,14 +351,9 @@ async function listQuestions({
   const values = [];
   const conditions = [];
 
-  if (
-    status &&
-    status !== "ALL"
-  ) {
+  if (status && status !== "ALL") {
     values.push(
-      String(status)
-        .trim()
-        .toUpperCase()
+      String(status).trim().toUpperCase()
     );
 
     conditions.push(
@@ -143,30 +361,20 @@ async function listQuestions({
     );
   }
 
-  if (
-  categoryId &&
-  Number(categoryId)
-) {
-  values.push(
-    Number(categoryId)
-  );
+  if (categoryId && Number(categoryId)) {
+    values.push(Number(categoryId));
 
-  conditions.push(
-    `qq.category_id = $${values.length}`
-  );
-}
+    conditions.push(
+      `qq.category_id = $${values.length}`
+    );
+  }
 
-  if (
-    search &&
-    String(search).trim()
-  ) {
-    const searchValue =
-      `%${String(search).trim()}%`;
+  if (search && String(search).trim()) {
+    values.push(
+      `%${String(search).trim()}%`
+    );
 
-    values.push(searchValue);
-
-    const index =
-      values.length;
+    const index = values.length;
 
     conditions.push(`
       (
@@ -180,29 +388,22 @@ async function listQuestions({
     `);
   }
 
-  const whereClause =
-    conditions.length > 0
-      ? `WHERE ${conditions.join(
-          " AND "
-        )}`
-      : "";
+  const whereClause = conditions.length
+    ? `WHERE ${conditions.join(" AND ")}`
+    : "";
 
   values.push(safeLimit);
-  const limitIndex =
-    values.length;
+  const limitIndex = values.length;
 
   values.push(safeOffset);
-  const offsetIndex =
-    values.length;
+  const offsetIndex = values.length;
 
   const result = await db.query(
     `
-      SELECT
-        qq.*
+      SELECT qq.*
       FROM quiz_questions qq
       ${whereClause}
-      ORDER BY
-        qq.id DESC
+      ORDER BY qq.id DESC
       LIMIT $${limitIndex}
       OFFSET $${offsetIndex}
     `,
@@ -222,14 +423,9 @@ async function countQuestions({
   const values = [];
   const conditions = [];
 
-  if (
-    status &&
-    status !== "ALL"
-  ) {
+  if (status && status !== "ALL") {
     values.push(
-      String(status)
-        .trim()
-        .toUpperCase()
+      String(status).trim().toUpperCase()
     );
 
     conditions.push(
@@ -237,29 +433,20 @@ async function countQuestions({
     );
   }
 
-  if (
-  categoryId &&
-  Number(categoryId)
-) {
-  values.push(
-    Number(categoryId)
-  );
+  if (categoryId && Number(categoryId)) {
+    values.push(Number(categoryId));
 
-  conditions.push(
-    `qq.category_id = $${values.length}`
-  );
-}
-  if (
-    search &&
-    String(search).trim()
-  ) {
-    const searchValue =
-      `%${String(search).trim()}%`;
+    conditions.push(
+      `qq.category_id = $${values.length}`
+    );
+  }
 
-    values.push(searchValue);
+  if (search && String(search).trim()) {
+    values.push(
+      `%${String(search).trim()}%`
+    );
 
-    const index =
-      values.length;
+    const index = values.length;
 
     conditions.push(`
       (
@@ -273,17 +460,13 @@ async function countQuestions({
     `);
   }
 
-  const whereClause =
-    conditions.length > 0
-      ? `WHERE ${conditions.join(
-          " AND "
-        )}`
-      : "";
+  const whereClause = conditions.length
+    ? `WHERE ${conditions.join(" AND ")}`
+    : "";
 
   const result = await db.query(
     `
-      SELECT
-        COUNT(*)::INTEGER AS count
+      SELECT COUNT(*)::INTEGER AS count
       FROM quiz_questions qq
       ${whereClause}
     `,
@@ -353,16 +536,12 @@ async function updateQuestionStatus({
 }) {
   const db = getClient();
 
-  const normalizedStatus =
-    String(status || "")
-      .trim()
-      .toUpperCase();
+  const normalizedStatus = String(status || "")
+    .trim()
+    .toUpperCase();
 
   if (
-    ![
-      "ACTIVE",
-      "INACTIVE",
-    ].includes(
+    !["ACTIVE", "INACTIVE"].includes(
       normalizedStatus
     )
   ) {
@@ -402,22 +581,21 @@ async function listCategories() {
         name_en,
         slug
       FROM quiz_categories
-      ORDER BY
-        name_fa ASC
+      ORDER BY name_fa ASC
     `
   );
 
   return result.rows;
 }
 
-
 module.exports = {
   createQuestion,
+  importQuestions,
   countActiveQuestions,
   getQuestionById,
   listQuestions,
   countQuestions,
-listCategories,
+  listCategories,
   updateQuestion,
   updateQuestionStatus,
 };
