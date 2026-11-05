@@ -6,6 +6,10 @@ const couponReportService = require(
   "../services/pro-coupon-report.service"
 );
 
+const {
+  validateCouponId,
+} = require("../services/pro-coupon.service");
+
 const PAGE_SIZE = 10;
 
 async function getSuperAdmin(ctx) {
@@ -30,6 +34,28 @@ async function getSuperAdmin(ctx) {
   return admin;
 }
 
+function validatePage(page) {
+  const value = Number(page);
+
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 1
+  ) {
+    throw new Error("INVALID_COUPON_REPORT_PAGE");
+  }
+
+  const offset = (value - 1) * PAGE_SIZE;
+
+  if (!Number.isSafeInteger(offset)) {
+    throw new Error("INVALID_COUPON_REPORT_PAGE");
+  }
+
+  return {
+    page: value,
+    offset,
+  };
+}
+
 function formatDate(date) {
   if (!date) {
     return "ثبت نشده";
@@ -49,7 +75,14 @@ function formatDate(date) {
 }
 
 function formatAmount(amount) {
-  const value = Number(amount || 0);
+  const value = Number(amount ?? 0);
+
+  if (
+    !Number.isFinite(value) ||
+    value < 0
+  ) {
+    return "نامشخص";
+  }
 
   return (
     new Intl.NumberFormat("en-US", {
@@ -136,48 +169,109 @@ function buildSummaryMessage(report) {
   );
 }
 
+function buildReportMessage(
+  report,
+  page,
+  totalPages,
+  offset
+) {
+  const coupon = report.coupon;
+
+  const maxUses =
+    coupon.max_uses === null
+      ? "نامحدود"
+      : Number(coupon.max_uses);
+
+  let message =
+    "👥 گزارش کاربران کد تخفیف\n\n" +
+    `🎟️ کد: ${coupon.code}\n` +
+    `🏷️ درصد تخفیف: ${coupon.discount_percent}٪\n` +
+    `📊 سقف استفاده: ${maxUses}\n` +
+    `📈 شمارنده مصرف کوپن: ${coupon.usage_count}\n` +
+    `📅 شروع اعتبار: ${formatDate(coupon.starts_at)}\n` +
+    `⏰ انقضا: ${formatDate(coupon.expires_at)}\n` +
+    `📌 وضعیت: ${
+      coupon.is_active ? "🟢 فعال" : "🔴 غیرفعال"
+    }\n\n` +
+    "━━━━━━━━━━━━━━\n\n" +
+    buildSummaryMessage(report) +
+    "━━━━━━━━━━━━━━\n\n";
+
+  if (!report.redemptions.length) {
+    message +=
+      "هنوز هیچ درخواستی با این کد تخفیف ثبت نشده است.";
+  } else {
+    const lines = report.redemptions.map(
+      (item, index) => {
+        const rowNumber = offset + index + 1;
+
+        return (
+          `${rowNumber}. 👤 ${getUserLabel(item)}\n` +
+          `🆔 Telegram ID: ${item.telegram_user_id}\n` +
+          `🧾 شماره درخواست: ${
+            item.purchase_request_id || "نامشخص"
+          }\n` +
+          `📦 مدت پلن: ${
+            item.duration_months || "نامشخص"
+          } ماه\n` +
+          `🏷️ تخفیف ثبت‌شده: ${item.discount_percent}٪\n` +
+          `💰 مبلغ نهایی: ${formatAmount(item.price_amount)}\n` +
+          `📌 وضعیت خرید: ${getStatusLabel(item.purchase_status)}\n` +
+          `📅 زمان استفاده از کد: ${formatDate(
+            item.redemption_created_at
+          )}\n` +
+          `📅 زمان ثبت درخواست: ${formatDate(
+            item.purchase_created_at
+          )}`
+        );
+      }
+    );
+
+    message += lines.join(
+      "\n\n━━━━━━━━━━━━━━\n\n"
+    );
+  }
+
+  message +=
+    "\n\n━━━━━━━━━━━━━━\n" +
+    `📄 صفحه ${page} از ${totalPages}`;
+
+  return message;
+}
+
+async function fetchReport(couponId, offset) {
+  return couponReportService.getCouponUsageReport(
+    couponId,
+    {
+      limit: PAGE_SIZE,
+      offset,
+    }
+  );
+}
+
 async function showCouponUsageReport(
   ctx,
   couponId,
   page = 1
 ) {
-  const admin = await getSuperAdmin(ctx);
-
-  if (!admin) {
-    await ctx.reply(
-      "⛔ فقط Super Admin به این گزارش دسترسی دارد."
-    );
-    return;
-  }
-
-  const safeCouponId = Number(couponId);
-
-  const safePage = Math.max(
-    1,
-    Math.floor(Number(page) || 1)
-  );
-
-  if (
-    !Number.isSafeInteger(safeCouponId) ||
-    safeCouponId < 1
-  ) {
-    await ctx.reply(
-      "❌ شناسه کد تخفیف معتبر نیست."
-    );
-    return;
-  }
-
   try {
-    const offset = (safePage - 1) * PAGE_SIZE;
+    const admin = await getSuperAdmin(ctx);
 
-    const report =
-      await couponReportService.getCouponUsageReport(
-        safeCouponId,
-        {
-          limit: PAGE_SIZE,
-          offset,
-        }
+    if (!admin) {
+      await ctx.reply(
+        "⛔ فقط Super Admin به این گزارش دسترسی دارد."
       );
+      return;
+    }
+
+    const safeCouponId = validateCouponId(couponId);
+
+    const pagination = validatePage(page);
+
+    let report = await fetchReport(
+      safeCouponId,
+      pagination.offset
+    );
 
     if (!report) {
       await ctx.reply(
@@ -195,74 +289,32 @@ async function showCouponUsageReport(
       Math.ceil(report.total / PAGE_SIZE)
     );
 
+    let safePage = pagination.page;
+    let safeOffset = pagination.offset;
+
     if (safePage > totalPages) {
-      return showCouponUsageReport(
-        ctx,
+      safePage = totalPages;
+      safeOffset = (safePage - 1) * PAGE_SIZE;
+
+      report = await fetchReport(
         safeCouponId,
-        totalPages
+        safeOffset
       );
+
+      if (!report) {
+        await ctx.reply(
+          "❌ کد تخفیف موردنظر پیدا نشد."
+        );
+        return;
+      }
     }
 
-    const coupon = report.coupon;
-
-    const maxUses =
-      coupon.max_uses === null
-        ? "نامحدود"
-        : Number(coupon.max_uses);
-
-    let message =
-      "👥 گزارش کاربران کد تخفیف\n\n" +
-      `🎟️ کد: ${coupon.code}\n` +
-      `🏷️ درصد تخفیف: ${coupon.discount_percent}٪\n` +
-      `📊 سقف استفاده: ${maxUses}\n` +
-      `📈 شمارنده مصرف کوپن: ${coupon.usage_count}\n` +
-      `📅 شروع اعتبار: ${formatDate(coupon.starts_at)}\n` +
-      `⏰ انقضا: ${formatDate(coupon.expires_at)}\n` +
-      `📌 وضعیت: ${
-        coupon.is_active ? "🟢 فعال" : "🔴 غیرفعال"
-      }\n\n` +
-      "━━━━━━━━━━━━━━\n\n" +
-      buildSummaryMessage(report) +
-      "━━━━━━━━━━━━━━\n\n";
-
-    if (!report.redemptions.length) {
-      message +=
-        "هنوز هیچ درخواستی با این کد تخفیف ثبت نشده است.";
-    } else {
-      const lines = report.redemptions.map(
-        (item, index) => {
-          const rowNumber = offset + index + 1;
-
-          return (
-            `${rowNumber}. 👤 ${getUserLabel(item)}\n` +
-            `🆔 Telegram ID: ${item.telegram_user_id}\n` +
-            `🧾 شماره درخواست: ${
-              item.purchase_request_id || "نامشخص"
-            }\n` +
-            `📦 مدت پلن: ${
-              item.duration_months || "نامشخص"
-            } ماه\n` +
-            `🏷️ تخفیف ثبت‌شده: ${item.discount_percent}٪\n` +
-            `💰 مبلغ نهایی: ${formatAmount(item.price_amount)}\n` +
-            `📌 وضعیت خرید: ${getStatusLabel(item.purchase_status)}\n` +
-            `📅 زمان استفاده از کد: ${formatDate(
-              item.redemption_created_at
-            )}\n` +
-            `📅 زمان ثبت درخواست: ${formatDate(
-              item.purchase_created_at
-            )}`
-          );
-        }
-      );
-
-      message += lines.join(
-        "\n\n━━━━━━━━━━━━━━\n\n"
-      );
-    }
-
-    message +=
-      "\n\n━━━━━━━━━━━━━━\n" +
-      `📄 صفحه ${safePage} از ${totalPages}`;
+    const message = buildReportMessage(
+      report,
+      safePage,
+      totalPages,
+      safeOffset
+    );
 
     await ctx.reply(
       message,
@@ -273,6 +325,16 @@ async function showCouponUsageReport(
       )
     );
   } catch (error) {
+    if (
+      error.message === "INVALID_COUPON_ID" ||
+      error.message === "INVALID_COUPON_REPORT_PAGE"
+    ) {
+      await ctx.reply(
+        "❌ شناسه کد تخفیف یا شماره صفحه معتبر نیست."
+      );
+      return;
+    }
+
     console.error(
       "Coupon usage report failed:",
       error
@@ -301,7 +363,7 @@ function createSuperAdminFinanceCouponReportHandler(bot) {
 
       await showCouponUsageReport(
         ctx,
-        Number(match[1]),
+        match[1],
         1
       );
     }
@@ -322,8 +384,8 @@ function createSuperAdminFinanceCouponReportHandler(bot) {
 
       await showCouponUsageReport(
         ctx,
-        Number(match[2]),
-        Number(match[3])
+        match[2],
+        match[3]
       );
     }
   );
@@ -343,8 +405,8 @@ function createSuperAdminFinanceCouponReportHandler(bot) {
 
       await showCouponUsageReport(
         ctx,
-        Number(match[1]),
-        Number(match[2])
+        match[1],
+        match[2]
       );
     }
   );
