@@ -22,13 +22,17 @@ const PLAN_DISCOUNTS = Object.freeze({
 });
 
 const ALLOWED_DURATIONS = Object.keys(BASE_PRICES).map(Number);
+
 const MAX_BASE_PRICE = 1000000000;
 const DISCOUNT_SETTING_KEY = "pro.extra_discount_percent";
 
 function validateDuration(durationMonths) {
   const duration = Number(durationMonths);
 
-  if (!ALLOWED_DURATIONS.includes(duration)) {
+  if (
+    !Number.isInteger(duration) ||
+    !ALLOWED_DURATIONS.includes(duration)
+  ) {
     throw new Error("INVALID_PRO_DURATION");
   }
 
@@ -65,16 +69,36 @@ function validateBasePrice(price) {
 
 function calculateFinalPrice(basePrice, discountPercent) {
   const price = validateBasePrice(basePrice);
-  const discount = validateDiscountPercent(discountPercent);
 
-  return Math.round(
+  const discount = validateDiscountPercent(
+    discountPercent
+  );
+
+  const finalPrice = Math.round(
     price * (100 - discount) / 100
   );
+
+  if (
+    !Number.isSafeInteger(finalPrice) ||
+    finalPrice < 1
+  ) {
+    throw new Error("INVALID_FINAL_PRO_PRICE");
+  }
+
+  return finalPrice;
 }
 
-function buildPricing(durationMonths, basePrice, extraDiscountPercent) {
+function buildPricing(
+  durationMonths,
+  basePrice,
+  extraDiscountPercent
+) {
   const duration = validateDuration(durationMonths);
-  const safeBasePrice = validateBasePrice(basePrice);
+
+  const safeBasePrice = validateBasePrice(
+    basePrice
+  );
+
   const safeExtraDiscount =
     validateDiscountPercent(extraDiscountPercent);
 
@@ -86,16 +110,23 @@ function buildPricing(durationMonths, basePrice, extraDiscountPercent) {
     safeExtraDiscount
   );
 
+  const priceAmount = calculateFinalPrice(
+    safeBasePrice,
+    effectiveDiscountPercent
+  );
+
   return {
     durationMonths: duration,
+
     basePriceAmount: safeBasePrice,
+
     planDiscountPercent,
+
     extraDiscountPercent: safeExtraDiscount,
+
     discountPercent: effectiveDiscountPercent,
-    priceAmount: calculateFinalPrice(
-      safeBasePrice,
-      effectiveDiscountPercent
-    ),
+
+    priceAmount,
   };
 }
 
@@ -135,7 +166,9 @@ async function readPricingSettings(queryable, durations) {
 }
 
 async function getBasePrice(durationMonths) {
-  const duration = validateDuration(durationMonths);
+  const duration = validateDuration(
+    durationMonths
+  );
 
   const value = await getSetting(
     `pro.base_price.${duration}`,
@@ -171,7 +204,10 @@ async function getAllBasePrices() {
 }
 
 async function setBasePrice(durationMonths, price) {
-  const duration = validateDuration(durationMonths);
+  const duration = validateDuration(
+    durationMonths
+  );
+
   const value = validateBasePrice(price);
 
   await setSetting(
@@ -194,16 +230,19 @@ async function getExtraDiscountPercent() {
 /**
  * خواندن قیمت و تخفیف داخل تراکنش خرید.
  *
- * FOR SHARE مانع تغییر هم‌زمان تنظیمات تا پایان
- * تراکنش خرید می‌شود.
+ * FOR SHARE مانع تغییر هم‌زمان تنظیمات موجود
+ * تا پایان تراکنش خرید می‌شود.
  */
 async function getProPricingWithClient(
   client,
   durationMonths
 ) {
-  const duration = validateDuration(durationMonths);
+  const duration = validateDuration(
+    durationMonths
+  );
 
-  const basePriceKey = `pro.base_price.${duration}`;
+  const basePriceKey =
+    `pro.base_price.${duration}`;
 
   const result = await client.query(
     `
@@ -253,7 +292,10 @@ async function getProPricingWithClient(
  * دریافت قیمت یک پلن با یک کوئری واحد.
  */
 async function getProPricing(durationMonths) {
-  const duration = validateDuration(durationMonths);
+  const duration = validateDuration(
+    durationMonths
+  );
+
   const db = getPool();
 
   const settings = await readPricingSettings(
@@ -261,7 +303,8 @@ async function getProPricing(durationMonths) {
     [duration]
   );
 
-  const basePriceKey = `pro.base_price.${duration}`;
+  const basePriceKey =
+    `pro.base_price.${duration}`;
 
   const basePrice = validateBasePrice(
     getSettingValue(
@@ -289,9 +332,6 @@ async function getProPricing(durationMonths) {
 
 /**
  * دریافت تمام پلن‌ها با یک کوئری واحد.
- *
- * این روش از ترکیب قیمت‌های قدیمی و جدید
- * هنگام تغییر هم‌زمان تنظیمات جلوگیری می‌کند.
  */
 async function getAllProPricing() {
   const db = getPool();
@@ -311,7 +351,8 @@ async function getAllProPricing() {
     );
 
   return ALLOWED_DURATIONS.map((duration) => {
-    const basePriceKey = `pro.base_price.${duration}`;
+    const basePriceKey =
+      `pro.base_price.${duration}`;
 
     const basePrice = validateBasePrice(
       getSettingValue(
@@ -341,10 +382,19 @@ async function setExtraDiscountPercent(percent) {
 }
 
 function formatToman(amount) {
+  const value = Number(amount);
+
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 0
+  ) {
+    throw new Error("INVALID_PRO_PRICE_FORMAT");
+  }
+
   return (
     new Intl.NumberFormat("fa-IR", {
       maximumFractionDigits: 0,
-    }).format(Number(amount || 0)) +
+    }).format(value) +
     " تومان"
   );
 }
