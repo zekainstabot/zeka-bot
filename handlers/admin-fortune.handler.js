@@ -3,45 +3,55 @@ const {
 } = require("telegraf");
 
 const adminFortuneService =
-  require(
-    "../services/admin-fortune.service"
-  );
+  require("../services/admin-fortune.service");
+
+const adminService =
+  require("../services/admin.service");
 
 const states = new Map();
 
-const MENU_BUTTON =
-  "🔮 مدیریت فال";
+const MENU_BUTTON = "🔮 مدیریت فال";
+const ADD_BUTTON = "➕ افزودن فال دستی";
+const IMPORT_BUTTON = "📥 ورود فال از سایت";
+const BANK_BUTTON = "📚 بانک فال‌ها";
+const STATS_BUTTON = "📊 آمار فال‌ها";
+const CANCEL_TEXT = "❌ لغو";
 
-const ADD_BUTTON =
-  "➕ افزودن فال دستی";
+async function menu(ctx) {
+  let isSuperAdmin = false;
 
-const IMPORT_BUTTON =
-  "📥 ورود فال از سایت";
+  try {
+    const admin =
+      await adminService.getAdminByTelegramId(
+        ctx.from?.id
+      );
 
-const BANK_BUTTON =
-  "📚 بانک فال‌ها";
+    isSuperAdmin =
+      Boolean(
+        admin &&
+        admin.is_active &&
+        admin.role_key === "super_admin"
+      );
+  } catch (error) {
+    console.error(
+      "Fortune menu admin lookup failed:",
+      error
+    );
+  }
 
-const STATS_BUTTON =
-  "📊 آمار فال‌ها";
-
-const CANCEL_TEXT =
-  "❌ لغو";
-
-function menu() {
   return Markup.keyboard([
     [ADD_BUTTON],
     [IMPORT_BUTTON],
+    [BANK_BUTTON, STATS_BUTTON],
     [
-      BANK_BUTTON,
-      STATS_BUTTON,
+      isSuperAdmin
+        ? "🔙 سرگرمی"
+        : "🔙 پنل ادمین",
     ],
-    [CANCEL_TEXT],
   ]).resize();
 }
 
-function categoryMenu(
-  categories
-) {
+function categoryMenu(categories) {
   return Markup.keyboard(
     categories
       .map((category) => [
@@ -53,37 +63,21 @@ function categoryMenu(
   ).resize();
 }
 
-function getState(
-  userId
-) {
+function getState(userId) {
   return (
-    states.get(
-      String(userId)
-    ) || null
+    states.get(String(userId)) || null
   );
 }
 
-function setState(
-  userId,
-  state
-) {
-  states.set(
-    String(userId),
-    state
-  );
+function setState(userId, state) {
+  states.set(String(userId), state);
 }
 
-function clearState(
-  userId
-) {
-  states.delete(
-    String(userId)
-  );
+function clearState(userId) {
+  states.delete(String(userId));
 }
 
-async function handleMenu(
-  ctx
-) {
+async function handleMenu(ctx) {
   try {
     await adminFortuneService.requireFortunePermission(
       ctx.from.id
@@ -92,7 +86,7 @@ async function handleMenu(
     await ctx.reply(
       "🔮 مدیریت فال\n\n" +
         "عملیات موردنظر را انتخاب کنید.",
-      menu()
+      await menu(ctx)
     );
   } catch (error) {
     console.error(
@@ -106,9 +100,7 @@ async function handleMenu(
   }
 }
 
-async function startManualAdd(
-  ctx
-) {
+async function startManualAdd(ctx) {
   try {
     await adminFortuneService.requireFortunePermission(
       ctx.from.id
@@ -123,25 +115,18 @@ async function startManualAdd(
       await ctx.reply(
         "❌ هیچ دسته فال فعالی وجود ندارد."
       );
-
       return;
     }
 
-    setState(
-      ctx.from.id,
-      {
-        step: "category",
-        createdAt:
-          Date.now(),
-      }
-    );
+    setState(ctx.from.id, {
+      step: "category",
+      createdAt: Date.now(),
+    });
 
     await ctx.reply(
       "➕ افزودن فال دستی\n\n" +
         "دسته فال را انتخاب کن:",
-      categoryMenu(
-        categories
-      )
+      categoryMenu(categories)
     );
   } catch (error) {
     console.error(
@@ -155,12 +140,8 @@ async function startManualAdd(
   }
 }
 
-async function handleText(
-  ctx,
-  next
-) {
-  const userId =
-    ctx.from?.id;
+async function handleText(ctx, next) {
+  const userId = ctx.from?.id;
 
   const state = userId
     ? getState(userId)
@@ -171,34 +152,29 @@ async function handleText(
   }
 
   if (
-    Date.now() -
-      state.createdAt >
+    Date.now() - state.createdAt >
     10 * 60 * 1000
   ) {
     clearState(userId);
 
     await ctx.reply(
       "⏱️ زمان این عملیات تمام شده است.",
-      menu()
+      await menu(ctx)
     );
 
     return;
   }
 
-  const text =
-    String(
-      ctx.message?.text ||
-        ""
-    ).trim();
+  const text = String(
+    ctx.message?.text || ""
+  ).trim();
 
-  if (
-    text === CANCEL_TEXT
-  ) {
+  if (text === CANCEL_TEXT) {
     clearState(userId);
 
     await ctx.reply(
       "❌ عملیات لغو شد.",
-      menu()
+      await menu(ctx)
     );
 
     return;
@@ -209,45 +185,32 @@ async function handleText(
       userId
     );
 
-    if (
-      state.step ===
-      "category"
-    ) {
+    if (state.step === "category") {
       const categories =
         await adminFortuneService.listCategories(
           userId
         );
 
-      const category =
-        categories.find(
-          (item) =>
-            text ===
-            `${item.id}️⃣ ${item.name_fa}`
-        );
+      const category = categories.find(
+        (item) =>
+          text === `${item.id}️⃣ ${item.name_fa}`
+      );
 
       if (!category) {
         await ctx.reply(
           "❌ دسته نامعتبر است. یکی از گزینه‌های منو را انتخاب کن.",
-          categoryMenu(
-            categories
-          )
+          categoryMenu(categories)
         );
 
         return;
       }
 
-      setState(
-        userId,
-        {
-          step: "title",
-          categoryId:
-            category.id,
-          categoryName:
-            category.name_fa,
-          createdAt:
-            state.createdAt,
-        }
-      );
+      setState(userId, {
+        step: "title",
+        categoryId: category.id,
+        categoryName: category.name_fa,
+        createdAt: state.createdAt,
+      });
 
       await ctx.reply(
         `📖 دسته: ${category.name_fa}\n\n` +
@@ -258,23 +221,17 @@ async function handleText(
       return;
     }
 
-    if (
-      state.step ===
-      "title"
-    ) {
+    if (state.step === "title") {
       const title =
         text === "ندارد"
           ? null
           : text;
 
-      setState(
-        userId,
-        {
-          ...state,
-          step: "content",
-          title,
-        }
-      );
+      setState(userId, {
+        ...state,
+        step: "content",
+        title,
+      });
 
       await ctx.reply(
         "📝 متن کامل فال را ارسال کن."
@@ -283,10 +240,7 @@ async function handleText(
       return;
     }
 
-    if (
-      state.step ===
-      "content"
-    ) {
+    if (state.step === "content") {
       if (!text) {
         await ctx.reply(
           "❌ متن فال نمی‌تواند خالی باشد."
@@ -296,41 +250,31 @@ async function handleText(
       }
 
       const fortune =
-        await adminFortuneService.createManualFortune(
-          {
-            telegramUserId:
-              userId,
-            categoryId:
-              state.categoryId,
-            title:
-              state.title,
-            content:
-              text,
-          }
-        );
+        await adminFortuneService.createManualFortune({
+          telegramUserId: userId,
+          categoryId: state.categoryId,
+          title: state.title,
+          content: text,
+        });
 
-      clearState(
-        userId
-      );
+      clearState(userId);
 
       await ctx.reply(
         "✅ فال با موفقیت ثبت شد.\n\n" +
           `📂 دسته: ${state.categoryName}\n` +
           `🆔 شماره: ${fortune.id}\n\n` +
           "از منوی مدیریت می‌توانی فال دیگری اضافه کنی.",
-        menu()
+        await menu(ctx)
       );
 
       return;
     }
 
-    clearState(
-      userId
-    );
+    clearState(userId);
 
     await ctx.reply(
       "❌ وضعیت عملیات نامعتبر بود.",
-      menu()
+      await menu(ctx)
     );
   } catch (error) {
     console.error(
@@ -338,20 +282,16 @@ async function handleText(
       error
     );
 
-    clearState(
-      userId
-    );
+    clearState(userId);
 
     await ctx.reply(
       "❌ ذخیره فال انجام نشد.",
-      menu()
+      await menu(ctx)
     );
   }
 }
 
-async function handleStats(
-  ctx
-) {
+async function handleStats(ctx) {
   try {
     await adminFortuneService.requireFortunePermission(
       ctx.from.id
@@ -364,9 +304,7 @@ async function handleStats(
 
     const lines = [];
 
-    for (
-      const category of categories
-    ) {
+    for (const category of categories) {
       const count =
         await adminFortuneService.countFortunes(
           ctx.from.id,
@@ -385,7 +323,7 @@ async function handleStats(
             ? lines.join("\n")
             : "هنوز فالی ثبت نشده است."
         ),
-      menu()
+      await menu(ctx)
     );
   } catch (error) {
     console.error(
@@ -399,9 +337,7 @@ async function handleStats(
   }
 }
 
-async function handleNotReady(
-  ctx
-) {
+async function handleNotReady(ctx) {
   try {
     await adminFortuneService.requireFortunePermission(
       ctx.from.id
@@ -409,7 +345,7 @@ async function handleNotReady(
 
     await ctx.reply(
       "⏳ این بخش در مرحله بعد تکمیل می‌شود.",
-      menu()
+      await menu(ctx)
     );
   } catch {
     await ctx.reply(
@@ -418,9 +354,7 @@ async function handleNotReady(
   }
 }
 
-function createAdminFortuneHandler(
-  bot
-) {
+function createAdminFortuneHandler(bot) {
   bot.hears(
     MENU_BUTTON,
     handleMenu
