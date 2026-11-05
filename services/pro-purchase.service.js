@@ -10,7 +10,15 @@ const adminService = require("./admin.service");
 const userRepository = require("../repositories/user.repository");
 const adminActionLogService = require("./admin-action-log.service");
 
-const ALLOWED_DURATIONS = [1, 2, 3, 6, 12];
+const {
+  ALLOWED_DURATIONS,
+  PLAN_DISCOUNTS,
+  validateDuration,
+} = require("./pro-pricing.service");
+
+const {
+  validateTelegramUserId,
+} = require("./pro-coupon.service");
 
 const OPEN_STATUSES = [
   "PENDING",
@@ -18,12 +26,93 @@ const OPEN_STATUSES = [
   "RECEIPT_SUBMITTED",
 ];
 
+const MAX_BIGINT = "9223372036854775807";
+
+function createError(code) {
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+function validateBigIntId(value, errorCode = "INVALID_ID") {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    throw createError(errorCode);
+  }
+
+  if (
+    typeof value === "number" &&
+    !Number.isSafeInteger(value)
+  ) {
+    throw createError(errorCode);
+  }
+
+  let normalized = String(value).trim();
+
+  if (!/^\d+$/.test(normalized)) {
+    throw createError(errorCode);
+  }
+
+  normalized = normalized.replace(/^0+(?=\d)/, "");
+
+  if (
+    normalized === "0" ||
+    normalized.length > MAX_BIGINT.length ||
+    (
+      normalized.length === MAX_BIGINT.length &&
+      normalized > MAX_BIGINT
+    )
+  ) {
+    throw createError(errorCode);
+  }
+
+  return normalized;
+}
+
+function validatePurchaseRequestId(requestId) {
+  return validateBigIntId(
+    requestId,
+    "INVALID_PURCHASE_REQUEST_ID"
+  );
+}
+
+function validateUserId(telegramUserId) {
+  return validateTelegramUserId(telegramUserId);
+}
+
+function validateReviewerId(reviewerTelegramUserId) {
+  return validateTelegramUserId(
+    reviewerTelegramUserId
+  );
+}
+
+function validatePagination(limit, offset) {
+  const parsedLimit = Number(limit);
+  const parsedOffset = Number(offset);
+
+  const safeLimit = Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.min(Math.floor(parsedLimit), 100))
+    : 5;
+
+  const safeOffset =
+    Number.isSafeInteger(parsedOffset) &&
+    parsedOffset >= 0
+      ? parsedOffset
+      : 0;
+
+  return {
+    limit: safeLimit,
+    offset: safeOffset,
+  };
+}
+
 // مسیر قدیمی خرید بدون قیمت غیرفعال است.
 // ثبت درخواست باید فقط از مسیر checkout قیمت‌گذاری‌شده انجام شود.
 async function createPurchaseRequest() {
-  const error = new Error("PRICED_CHECKOUT_REQUIRED");
-  error.code = "PRICED_CHECKOUT_REQUIRED";
-  throw error;
+  throw createError("PRICED_CHECKOUT_REQUIRED");
 }
 
 async function getProManagers() {
@@ -47,7 +136,7 @@ async function getPurchaseRequests({
     status !== null &&
     !allowedStatuses.includes(status)
   ) {
-    throw new Error("INVALID_PURCHASE_STATUS");
+    throw createError("INVALID_PURCHASE_STATUS");
   }
 
   const db = getClient();
@@ -56,14 +145,9 @@ async function getPurchaseRequests({
     ? [status]
     : OPEN_STATUSES;
 
-  const safeLimit = Math.max(
-    1,
-    Math.min(Number(limit) || 5, 100)
-  );
-
-  const safeOffset = Math.max(
-    0,
-    Math.floor(Number(offset) || 0)
+  const pagination = validatePagination(
+    limit,
+    offset
   );
 
   const result = await db.query(
@@ -78,14 +162,15 @@ async function getPurchaseRequests({
           WHEN status = 'WAITING_RECEIPT' THEN 2
           ELSE 3
         END,
-        created_at DESC
+        created_at DESC,
+        id DESC
       LIMIT $2
       OFFSET $3
     `,
     [
       statuses,
-      safeLimit,
-      safeOffset,
+      pagination.limit,
+      pagination.offset,
     ]
   );
 
@@ -93,6 +178,9 @@ async function getPurchaseRequests({
 }
 
 async function getPurchaseRequestById(requestId) {
+  const safeRequestId =
+    validatePurchaseRequestId(requestId);
+
   const db = getClient();
 
   const result = await db.query(
@@ -102,13 +190,16 @@ async function getPurchaseRequestById(requestId) {
       WHERE id = $1
       LIMIT 1
     `,
-    [requestId]
+    [safeRequestId]
   );
 
   return result.rows[0] || null;
 }
 
 async function getLatestOpenPurchaseRequest(telegramUserId) {
+  const normalizedTelegramId =
+    validateUserId(telegramUserId);
+
   const db = getClient();
 
   const result = await db.query(
@@ -117,10 +208,13 @@ async function getLatestOpenPurchaseRequest(telegramUserId) {
       FROM pro_purchase_requests
       WHERE telegram_user_id = $1
         AND status = ANY($2::varchar[])
-      ORDER BY created_at DESC
+      ORDER BY created_at DESC, id DESC
       LIMIT 1
     `,
-    [String(telegramUserId), OPEN_STATUSES]
+    [
+      normalizedTelegramId,
+      OPEN_STATUSES,
+    ]
   );
 
   return result.rows[0] || null;
@@ -130,11 +224,14 @@ async function setPaymentCardNumber({
   requestId,
   cardNumber,
 }) {
+  const safeRequestId =
+    validatePurchaseRequestId(requestId);
+
   const normalizedCardNumber =
     String(cardNumber || "").trim();
 
   if (!normalizedCardNumber) {
-    throw new Error("INVALID_PAYMENT_CARD_NUMBER");
+    throw createError("INVALID_PAYMENT_CARD_NUMBER");
   }
 
   const db = getClient();
@@ -150,7 +247,10 @@ async function setPaymentCardNumber({
         AND status = 'PENDING'
       RETURNING *
     `,
-    [requestId, normalizedCardNumber]
+    [
+      safeRequestId,
+      normalizedCardNumber,
+    ]
   );
 
   return result.rows[0] || null;
@@ -164,6 +264,9 @@ async function releaseCouponRedemption(
   client,
   purchaseRequestId
 ) {
+  const safeRequestId =
+    validatePurchaseRequestId(purchaseRequestId);
+
   const couponResult = await client.query(
     `
       SELECT coupon.id
@@ -173,7 +276,7 @@ async function releaseCouponRedemption(
       WHERE redemption.purchase_request_id = $1
       FOR UPDATE OF coupon
     `,
-    [purchaseRequestId]
+    [safeRequestId]
   );
 
   if (!couponResult.rows.length) {
@@ -189,7 +292,10 @@ async function releaseCouponRedemption(
         AND coupon_id = $2
       RETURNING id
     `,
-    [purchaseRequestId, couponId]
+    [
+      safeRequestId,
+      couponId,
+    ]
   );
 
   if (!deleteResult.rows.length) {
@@ -211,7 +317,9 @@ async function releaseCouponRedemption(
 }
 
 async function cancelPurchaseRequest(telegramUserId) {
-  const normalizedTelegramId = String(telegramUserId);
+  const normalizedTelegramId =
+    validateUserId(telegramUserId);
+
   const db = getClient();
   const client = await db.connect();
 
@@ -233,7 +341,10 @@ async function cancelPurchaseRequest(telegramUserId) {
         LIMIT 1
         FOR UPDATE
       `,
-      [normalizedTelegramId, OPEN_STATUSES]
+      [
+        normalizedTelegramId,
+        OPEN_STATUSES,
+      ]
     );
 
     const request = targetResult.rows[0];
@@ -253,7 +364,10 @@ async function cancelPurchaseRequest(telegramUserId) {
           AND status = ANY($2::varchar[])
         RETURNING *
       `,
-      [request.id, OPEN_STATUSES]
+      [
+        request.id,
+        OPEN_STATUSES,
+      ]
     );
 
     const cancelledRequest = updateResult.rows[0];
@@ -294,8 +408,14 @@ async function submitPurchaseReceipt({
   receiptText,
   receiptFileId,
 }) {
+  const safeRequestId =
+    validatePurchaseRequestId(requestId);
+
+  const normalizedTelegramId =
+    validateUserId(telegramUserId);
+
   if (!["TEXT", "PHOTO"].includes(receiptType)) {
-    throw new Error("INVALID_RECEIPT_TYPE");
+    throw createError("INVALID_RECEIPT_TYPE");
   }
 
   const normalizedReceiptText =
@@ -312,14 +432,14 @@ async function submitPurchaseReceipt({
     receiptType === "TEXT" &&
     !normalizedReceiptText
   ) {
-    throw new Error("EMPTY_RECEIPT_TEXT");
+    throw createError("EMPTY_RECEIPT_TEXT");
   }
 
   if (
     receiptType === "PHOTO" &&
     !normalizedFileId
   ) {
-    throw new Error("MISSING_RECEIPT_FILE_ID");
+    throw createError("MISSING_RECEIPT_FILE_ID");
   }
 
   const db = getClient();
@@ -379,10 +499,8 @@ async function submitPurchaseReceipt({
       const duplicateId =
         String(duplicateResult.rows[0].id);
 
-      if (duplicateId !== String(requestId)) {
-        const error = new Error("DUPLICATE_RECEIPT");
-        error.code = "DUPLICATE_RECEIPT";
-        throw error;
+      if (duplicateId !== safeRequestId) {
+        throw createError("DUPLICATE_RECEIPT");
       }
     }
 
@@ -402,8 +520,8 @@ async function submitPurchaseReceipt({
         RETURNING *
       `,
       [
-        requestId,
-        String(telegramUserId),
+        safeRequestId,
+        normalizedTelegramId,
         receiptType,
         normalizedReceiptText,
         normalizedFileId,
@@ -430,11 +548,13 @@ async function submitPurchaseReceipt({
 }
 
 function addMonths(date, months) {
+  const safeMonths = validateDuration(months);
+
   const result = new Date(date);
   const originalDay = result.getUTCDate();
 
   result.setUTCMonth(
-    result.getUTCMonth() + months
+    result.getUTCMonth() + safeMonths
   );
 
   if (result.getUTCDate() !== originalDay) {
@@ -442,6 +562,119 @@ function addMonths(date, months) {
   }
 
   return result;
+}
+
+/**
+ * Snapshot قیمت درخواست را قبل از فعال‌سازی اشتراک
+ * دوباره اعتبارسنجی می‌کند.
+ */
+function validatePurchasePriceSnapshot(request) {
+  const durationMonths = Number(
+    request.duration_months
+  );
+
+  if (!ALLOWED_DURATIONS.includes(durationMonths)) {
+    return false;
+  }
+
+  const basePrice = Number(
+    request.base_price_amount
+  );
+
+  const finalPrice = Number(
+    request.price_amount
+  );
+
+  const planDiscount = Number(
+    request.plan_discount_percent
+  );
+
+  const extraDiscount = Number(
+    request.extra_discount_percent
+  );
+
+  const couponDiscount = Number(
+    request.coupon_discount_percent
+  );
+
+  const appliedDiscount = Number(
+    request.applied_discount_percent
+  );
+
+  if (
+    !Number.isSafeInteger(basePrice) ||
+    basePrice < 1 ||
+    !Number.isSafeInteger(finalPrice) ||
+    finalPrice < 1
+  ) {
+    return false;
+  }
+
+  if (
+    !Number.isInteger(planDiscount) ||
+    !Number.isInteger(extraDiscount) ||
+    !Number.isInteger(couponDiscount) ||
+    !Number.isInteger(appliedDiscount)
+  ) {
+    return false;
+  }
+
+  if (
+    planDiscount < 0 ||
+    planDiscount > 90 ||
+    extraDiscount < 0 ||
+    extraDiscount > 90 ||
+    couponDiscount < 0 ||
+    couponDiscount > 90 ||
+    appliedDiscount < 0 ||
+    appliedDiscount > 90
+  ) {
+    return false;
+  }
+
+  // درصد تخفیف پلن باید با مدت اشتراک مطابقت داشته باشد.
+  const expectedPlanDiscount =
+    PLAN_DISCOUNTS[durationMonths];
+
+  if (planDiscount !== expectedPlanDiscount) {
+    return false;
+  }
+
+  // اگر کد کوپن وجود ندارد، تخفیف کوپن نیز باید صفر باشد.
+  if (
+    !request.coupon_code &&
+    couponDiscount !== 0
+  ) {
+    return false;
+  }
+
+  // اگر کد کوپن وجود دارد، درصد تخفیف آن باید معتبر باشد.
+  if (
+    request.coupon_code &&
+    (
+      couponDiscount < 1 ||
+      couponDiscount > 90
+    )
+  ) {
+    return false;
+  }
+
+  // تخفیف‌ها با هم جمع نمی‌شوند؛ بیشترین مقدار اعمال می‌شود.
+  const expectedAppliedDiscount = Math.max(
+    planDiscount,
+    extraDiscount,
+    couponDiscount
+  );
+
+  if (appliedDiscount !== expectedAppliedDiscount) {
+    return false;
+  }
+
+  const expectedPrice = Math.round(
+    basePrice * (100 - appliedDiscount) / 100
+  );
+
+  return finalPrice === expectedPrice;
 }
 
 async function logPurchaseReview({
@@ -528,8 +761,14 @@ async function reviewPurchaseRequest({
   reviewerTelegramUserId,
   decision,
 }) {
+  const safeRequestId =
+    validatePurchaseRequestId(requestId);
+
+  const normalizedReviewerId =
+    validateReviewerId(reviewerTelegramUserId);
+
   if (!["APPROVED", "REJECTED"].includes(decision)) {
-    throw new Error("INVALID_PURCHASE_DECISION");
+    throw createError("INVALID_PURCHASE_DECISION");
   }
 
   const db = getClient();
@@ -548,7 +787,7 @@ async function reviewPurchaseRequest({
         WHERE id = $1
         FOR UPDATE
       `,
-      [requestId]
+      [safeRequestId]
     );
 
     const request = requestResult.rows[0];
@@ -571,35 +810,8 @@ async function reviewPurchaseRequest({
       };
     }
 
-    // جلوگیری از فعال‌سازی اشتراک با مبلغ صفر یا قیمت نامعتبر
     if (decision === "APPROVED") {
-      const basePrice = Number(
-        request.base_price_amount
-      );
-
-      const finalPrice = Number(
-        request.price_amount
-      );
-
-      const discount = Number(
-        request.applied_discount_percent
-      );
-
-      const expectedPrice = Math.round(
-        basePrice * (100 - discount) / 100
-      );
-
-      const validPrice =
-        Number.isSafeInteger(basePrice) &&
-        basePrice > 0 &&
-        Number.isSafeInteger(finalPrice) &&
-        finalPrice > 0 &&
-        Number.isInteger(discount) &&
-        discount >= 0 &&
-        discount <= 90 &&
-        finalPrice === expectedPrice;
-
-      if (!validPrice) {
+      if (!validatePurchasePriceSnapshot(request)) {
         await client.query("ROLLBACK");
 
         return {
@@ -623,7 +835,7 @@ async function reviewPurchaseRequest({
       const user = userResult.rows[0];
 
       if (!user) {
-        throw new Error("PRO_PURCHASE_USER_NOT_FOUND");
+        throw createError("PRO_PURCHASE_USER_NOT_FOUND");
       }
 
       const now = new Date();
@@ -654,25 +866,26 @@ async function reviewPurchaseRequest({
 
       const metadata = {
         purchase_request_id: String(request.id),
+
         reviewer_telegram_user_id:
-          String(reviewerTelegramUserId),
+          normalizedReviewerId,
 
         base_price_amount: Number(
           request.base_price_amount
         ),
 
         plan_discount_percent: Number(
-          request.plan_discount_percent || 0
+          request.plan_discount_percent
         ),
 
         extra_discount_percent: Number(
-          request.extra_discount_percent || 0
+          request.extra_discount_percent
         ),
 
         coupon_code: request.coupon_code || null,
 
         coupon_discount_percent: Number(
-          request.coupon_discount_percent || 0
+          request.coupon_discount_percent
         ),
 
         applied_discount_percent: Number(
@@ -726,7 +939,10 @@ async function reviewPurchaseRequest({
             updated_at = NOW()
           WHERE id = $1
         `,
-        [user.id, expiresAt]
+        [
+          user.id,
+          expiresAt,
+        ]
       );
 
       subscriptionDetails = {
@@ -750,14 +966,16 @@ async function reviewPurchaseRequest({
         RETURNING *
       `,
       [
-        requestId,
+        safeRequestId,
         decision,
-        String(reviewerTelegramUserId),
+        normalizedReviewerId,
       ]
     );
 
     if (!updateResult.rows.length) {
-      throw new Error("PRO_PURCHASE_REVIEW_UPDATE_FAILED");
+      throw createError(
+        "PRO_PURCHASE_REVIEW_UPDATE_FAILED"
+      );
     }
 
     reviewedRequest = updateResult.rows[0];
@@ -826,7 +1044,7 @@ async function reviewPurchaseRequest({
 
   await logPurchaseReview({
     request: reviewedRequest,
-    reviewerTelegramUserId,
+    reviewerTelegramUserId: normalizedReviewerId,
     decision,
     subscriptionDetails,
   });
