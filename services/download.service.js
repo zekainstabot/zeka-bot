@@ -2,72 +2,101 @@ const jobRepository = require("../repositories/job.repository");
 const requestRepository = require("../repositories/request.repository");
 const { getPool } = require("../database/pool");
 
-async function updateRequest(jobId, updates) {
-  const job = await jobRepository.findById(jobId);
-
-  if (!job || !job.request_id) {
-    return null;
+async function updateJobAndRequest(
+  jobId,
+  jobUpdates,
+  requestUpdates
+) {
+  if (!jobId) {
+    throw new Error("Job ID is required");
   }
 
-  return requestRepository.update(
-    job.request_id,
-    updates
-  );
+  const pool = getPool();
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const job = await jobRepository.update(
+      jobId,
+      jobUpdates,
+      client
+    );
+
+    if (job && job.request_id && requestUpdates) {
+      const request = await requestRepository.update(
+        job.request_id,
+        requestUpdates,
+        client
+      );
+
+      if (!request) {
+        throw new Error(
+          `Request not found for job: ${jobId}`
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+
+    return job;
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackError) {
+      console.error(
+        "Failed to rollback job/request update:",
+        rollbackError
+      );
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function markDownloading(jobId) {
-  if (!jobId) {
-    throw new Error("Job ID is required");
-  }
-
   const now = new Date();
 
-  const job = await jobRepository.update(jobId, {
-    status: "DOWNLOADING",
-    started_at: now,
-    processing_at: now,
-  });
-
-  await updateRequest(jobId, {
-    status: "PROCESSING",
-    started_at: now,
-  });
-
-  return job;
+  return updateJobAndRequest(
+    jobId,
+    {
+      status: "DOWNLOADING",
+      started_at: now,
+      processing_at: now,
+    },
+    {
+      status: "PROCESSING",
+      started_at: now,
+    }
+  );
 }
 
 async function markDownloaded(jobId, data = {}) {
-  if (!jobId) {
-    throw new Error("Job ID is required");
-  }
-
-  const job = await jobRepository.update(jobId, {
-    status: "DOWNLOADED",
-    content_id: data.contentId ?? null,
-  });
-
-  await updateRequest(jobId, {
-    status: "PROCESSING",
-  });
-
-  return job;
+  return updateJobAndRequest(
+    jobId,
+    {
+      status: "DOWNLOADED",
+      content_id: data.contentId ?? null,
+    },
+    {
+      status: "PROCESSING",
+    }
+  );
 }
 
 async function markSending(jobId) {
-  if (!jobId) {
-    throw new Error("Job ID is required");
-  }
-
-  const job = await jobRepository.update(jobId, {
-    status: "SENDING",
-    sending_at: new Date(),
-  });
-
-  await updateRequest(jobId, {
-    status: "PROCESSING",
-  });
-
-  return job;
+  return updateJobAndRequest(
+    jobId,
+    {
+      status: "SENDING",
+      sending_at: new Date(),
+    },
+    {
+      status: "PROCESSING",
+    }
+  );
 }
 
 async function markCompleted(jobId, data = {}) {
@@ -142,10 +171,6 @@ async function markFailed(
   error,
   errorCode = "DOWNLOAD_ERROR"
 ) {
-  if (!jobId) {
-    throw new Error("Job ID is required");
-  }
-
   const message =
     error instanceof Error
       ? error.message
@@ -153,20 +178,20 @@ async function markFailed(
 
   const failedAt = new Date();
 
-  const job = await jobRepository.update(jobId, {
-    status: "FAILED",
-    failed_at: failedAt,
-    error_code: errorCode,
-    error_message: message,
-  });
-
-  await updateRequest(jobId, {
-    status: "FAILED",
-    error_code: errorCode,
-    error_message: message,
-  });
-
-  return job;
+  return updateJobAndRequest(
+    jobId,
+    {
+      status: "FAILED",
+      failed_at: failedAt,
+      error_code: errorCode,
+      error_message: message,
+    },
+    {
+      status: "FAILED",
+      error_code: errorCode,
+      error_message: message,
+    }
+  );
 }
 
 module.exports = {
