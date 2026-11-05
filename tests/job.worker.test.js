@@ -314,19 +314,21 @@ test("unknown Telegram delivery preserves credit and does not fail the job", asy
   assert.equal(calls.includes("job:failed"), false);
 });
 
-test("Telegram send failure marks delivery UNKNOWN and releases reserved credit", async () => {
+test("Telegram send failure preserves reserved credit when delivery is unknown", async () => {
   const { processJob, calls } = createHarness({
     sendError: new Error("Telegram network failure"),
   });
 
-  await assert.rejects(
-    () => processJob(validJob),
-    /Telegram network failure/
-  );
+  const result = await processJob(validJob);
+
+  assert.equal(result.success, false);
+  assert.equal(result.deliveryUnknown, true);
 
   assert.ok(calls.includes("delivery:unknown"));
-  assert.ok(calls.includes("credit:release:101"));
-  assert.ok(calls.includes("job:failed"));
+
+  assert.equal(calls.includes("credit:release:101"), false);
+  assert.equal(calls.includes("credit:consume:101"), false);
+  assert.equal(calls.includes("job:failed"), false);
 });
 
 test("download failure releases reserved credit and marks job failed", async () => {
@@ -407,8 +409,8 @@ test("worker preserves a file successfully queued for review", async () => {
 
     async markCompleted() {},
 
-    async deleteFile(path) {
-      calls.push(`delete:${path}`);
+    async deleteFile(filePath) {
+      calls.push(`delete:${filePath}`);
     },
   });
 
