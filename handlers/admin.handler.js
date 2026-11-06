@@ -400,15 +400,24 @@ async function showSupportMenu(ctx) {
 
     const buttons = [];
 
-    for (const section of SUPPORT_SECTIONS) {
-      const allowed =
-        await adminService.hasPermission(
-          admin.user_id,
-          section.permission
-        );
+    if (admin.role_key === "super_admin") {
+      buttons.push(
+        ["📋 گزارش‌ها"],
+        ["🐞 گزارش مشکلات"],
+        ["💬 مدیریت پشتیبانی"],
+        ["📥 مدیریت درخواست‌ها"]
+      );
+    } else {
+      for (const section of SUPPORT_SECTIONS) {
+        const allowed =
+          await adminService.hasPermission(
+            admin.user_id,
+            section.permission
+          );
 
-      if (allowed) {
-        buttons.push([section.button]);
+        if (allowed) {
+          buttons.push([section.button]);
+        }
       }
     }
 
