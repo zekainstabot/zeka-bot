@@ -1,10 +1,9 @@
-
 "use strict";
 
 const { getClient } = require("../database/client");
 
 /**
- * ایجاد یک سؤال جدید توسط ادمین
+ * ایجاد سؤال جدید
  */
 async function createQuestion({
   languageCode = "fa",
@@ -17,6 +16,7 @@ async function createQuestion({
   optionD,
   correctOption,
   explanation = null,
+  createdBy = null,
 }) {
   const db = getClient();
 
@@ -33,12 +33,13 @@ async function createQuestion({
         option_d,
         correct_option,
         explanation,
-        status
+        status,
+        created_by
       )
       VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, $10,
-        'ACTIVE'
+        'ACTIVE', $11
       )
       RETURNING *
     `,
@@ -53,6 +54,7 @@ async function createQuestion({
       optionD,
       correctOption,
       explanation,
+      createdBy,
     ]
   );
 
@@ -61,15 +63,6 @@ async function createQuestion({
 
 /**
  * واردکردن گروهی سؤال‌ها از سایت
- *
- * امکانات:
- * - حداکثر ۱۰۰ سؤال در هر درخواست
- * - بررسی اعتبار سؤال و گزینه‌ها
- * - رد سؤال‌های بدون پاسخ صحیح
- * - شناسایی سؤال‌های تکراری
- * - ثبت گروهی در یک تراکنش
- * - جلوگیری از تداخل ثبت هم‌زمان
- * - بازگرداندن آمار ثبت، تکراری و نامعتبر
  */
 async function importQuestions({
   questions,
@@ -77,11 +70,9 @@ async function importQuestions({
   category,
   categoryId,
   difficulty,
+  createdBy = null,
 }) {
-  if (
-    !Array.isArray(questions) ||
-    questions.length === 0
-  ) {
+  if (!Array.isArray(questions) || questions.length === 0) {
     throw new Error("Questions list is empty");
   }
 
@@ -91,22 +82,15 @@ async function importQuestions({
     );
   }
 
-  if (
-    typeof category !== "string" ||
-    !category.trim()
-  ) {
+  if (typeof category !== "string" || !category.trim()) {
     throw new Error("Invalid quiz category");
   }
 
-  const normalizedDifficulty = String(
-    difficulty || ""
-  ).trim().toUpperCase();
+  const normalizedDifficulty = String(difficulty || "")
+    .trim()
+    .toUpperCase();
 
-  if (
-    !["EASY", "MEDIUM", "HARD"].includes(
-      normalizedDifficulty
-    )
-  ) {
+  if (!["EASY", "MEDIUM", "HARD"].includes(normalizedDifficulty)) {
     throw new Error("Invalid quiz difficulty");
   }
 
@@ -164,7 +148,9 @@ async function importQuestions({
 
       const correctOption = String(
         question.correctOption || ""
-      ).trim().toUpperCase();
+      )
+        .trim()
+        .toUpperCase();
 
       const valid =
         questionText.length >= 5 &&
@@ -175,9 +161,7 @@ async function importQuestions({
             option.length <= 500
         ) &&
         new Set(options).size === 4 &&
-        ["A", "B", "C", "D"].includes(
-          correctOption
-        );
+        ["A", "B", "C", "D"].includes(correctOption);
 
       if (!valid) {
         result.invalid++;
@@ -192,9 +176,7 @@ async function importQuestions({
         optionD: options[3],
         correctOption,
         explanation: question.explanation
-          ? String(question.explanation)
-              .trim()
-              .slice(0, 2000)
+          ? String(question.explanation).trim().slice(0, 2000)
           : null,
       });
     }
@@ -205,7 +187,6 @@ async function importQuestions({
         .replace(/\s+/g, " ")
         .trim();
 
-      // بررسی تکراری بودن سؤال
       const existing = await client.query(
         `
           SELECT id
@@ -228,7 +209,6 @@ async function importQuestions({
         continue;
       }
 
-      // ثبت سؤال جدید
       const inserted = await client.query(
         `
           INSERT INTO quiz_questions (
@@ -243,12 +223,13 @@ async function importQuestions({
             option_d,
             correct_option,
             explanation,
-            status
+            status,
+            created_by
           )
           VALUES (
             $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10,
-            $11, 'ACTIVE'
+            $11, 'ACTIVE', $12
           )
           RETURNING id
         `,
@@ -264,15 +245,13 @@ async function importQuestions({
           question.optionD,
           question.correctOption,
           question.explanation,
+          createdBy,
         ]
       );
 
       if (inserted.rows[0]) {
         result.inserted++;
-
-        result.questions.push(
-          inserted.rows[0].id
-        );
+        result.questions.push(inserted.rows[0].id);
       }
     }
 
@@ -360,13 +339,8 @@ async function listQuestions({
   const conditions = [];
 
   if (status && status !== "ALL") {
-    values.push(
-      String(status).trim().toUpperCase()
-    );
-
-    conditions.push(
-      `qq.status = $${values.length}`
-    );
+    values.push(String(status).trim().toUpperCase());
+    conditions.push(`qq.status = $${values.length}`);
   }
 
   if (
@@ -376,29 +350,32 @@ async function listQuestions({
     Number(categoryId) > 0
   ) {
     values.push(Number(categoryId));
-
-    conditions.push(
-      `qq.category_id = $${values.length}`
-    );
+    conditions.push(`qq.category_id = $${values.length}`);
   }
 
   if (search && String(search).trim()) {
-    values.push(
-      `%${String(search).trim()}%`
-    );
+    const searchText = String(search).trim();
 
-    const index = values.length;
+    values.push(`%${searchText}%`);
+    const textIndex = values.length;
 
-    conditions.push(`
-      (
-        qq.question_text ILIKE $${index}
-        OR qq.option_a ILIKE $${index}
-        OR qq.option_b ILIKE $${index}
-        OR qq.option_c ILIKE $${index}
-        OR qq.option_d ILIKE $${index}
-        OR CAST(qq.id AS TEXT) = $${index}
-      )
-    `);
+    const searchConditions = [
+      `qq.question_text ILIKE $${textIndex}`,
+      `qq.option_a ILIKE $${textIndex}`,
+      `qq.option_b ILIKE $${textIndex}`,
+      `qq.option_c ILIKE $${textIndex}`,
+      `qq.option_d ILIKE $${textIndex}`,
+    ];
+
+    if (/^\d+$/.test(searchText)) {
+      values.push(searchText);
+      const idIndex = values.length;
+      searchConditions.push(
+        `CAST(qq.id AS TEXT) = $${idIndex}`
+      );
+    }
+
+    conditions.push(`(${searchConditions.join(" OR ")})`);
   }
 
   const whereClause = conditions.length
@@ -440,13 +417,8 @@ async function countQuestions({
   const conditions = [];
 
   if (status && status !== "ALL") {
-    values.push(
-      String(status).trim().toUpperCase()
-    );
-
-    conditions.push(
-      `qq.status = $${values.length}`
-    );
+    values.push(String(status).trim().toUpperCase());
+    conditions.push(`qq.status = $${values.length}`);
   }
 
   if (
@@ -456,29 +428,32 @@ async function countQuestions({
     Number(categoryId) > 0
   ) {
     values.push(Number(categoryId));
-
-    conditions.push(
-      `qq.category_id = $${values.length}`
-    );
+    conditions.push(`qq.category_id = $${values.length}`);
   }
 
   if (search && String(search).trim()) {
-    values.push(
-      `%${String(search).trim()}%`
-    );
+    const searchText = String(search).trim();
 
-    const index = values.length;
+    values.push(`%${searchText}%`);
+    const textIndex = values.length;
 
-    conditions.push(`
-      (
-        qq.question_text ILIKE $${index}
-        OR qq.option_a ILIKE $${index}
-        OR qq.option_b ILIKE $${index}
-        OR qq.option_c ILIKE $${index}
-        OR qq.option_d ILIKE $${index}
-        OR CAST(qq.id AS TEXT) = $${index}
-      )
-    `);
+    const searchConditions = [
+      `qq.question_text ILIKE $${textIndex}`,
+      `qq.option_a ILIKE $${textIndex}`,
+      `qq.option_b ILIKE $${textIndex}`,
+      `qq.option_c ILIKE $${textIndex}`,
+      `qq.option_d ILIKE $${textIndex}`,
+    ];
+
+    if (/^\d+$/.test(searchText)) {
+      values.push(searchText);
+      const idIndex = values.length;
+      searchConditions.push(
+        `CAST(qq.id AS TEXT) = $${idIndex}`
+      );
+    }
+
+    conditions.push(`(${searchConditions.join(" OR ")})`);
   }
 
   const whereClause = conditions.length
@@ -511,6 +486,7 @@ async function updateQuestion({
   optionD,
   correctOption,
   explanation = null,
+  updatedBy = null,
 }) {
   const db = getClient();
 
@@ -526,7 +502,9 @@ async function updateQuestion({
         option_c = $7,
         option_d = $8,
         correct_option = $9,
-        explanation = $10
+        explanation = $10,
+        updated_by = $11,
+        updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
@@ -541,6 +519,7 @@ async function updateQuestion({
       optionD,
       correctOption,
       explanation,
+      updatedBy,
     ]
   );
 
@@ -553,6 +532,7 @@ async function updateQuestion({
 async function updateQuestionStatus({
   questionId,
   status,
+  updatedBy = null,
 }) {
   const db = getClient();
 
@@ -560,24 +540,24 @@ async function updateQuestionStatus({
     .trim()
     .toUpperCase();
 
-  if (
-    !["ACTIVE", "INACTIVE"].includes(
-      normalizedStatus
-    )
-  ) {
+  if (!["ACTIVE", "INACTIVE"].includes(normalizedStatus)) {
     throw new Error("Invalid question status");
   }
 
   const result = await db.query(
     `
       UPDATE quiz_questions
-      SET status = $2
+      SET
+        status = $2,
+        updated_by = $3,
+        updated_at = NOW()
       WHERE id = $1
       RETURNING *
     `,
     [
       questionId,
       normalizedStatus,
+      updatedBy,
     ]
   );
 
