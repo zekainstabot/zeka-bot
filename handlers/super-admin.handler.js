@@ -1,17 +1,9 @@
-const {
-  Markup,
-} = require("telegraf");
 
-const {
-  mainMenu,
-} = require("../config/bot-menus");
+const { Markup } = require("telegraf");
 
+const { mainMenu } = require("../config/bot-menus");
 const adminService = require("../services/admin.service");
-
-const {
-  setUserCommands,
-} = require("../services/command.service");
-
+const { setUserCommands } = require("../services/command.service");
 const {
   getSetting,
   setSetting,
@@ -36,14 +28,10 @@ const SETTINGS_BUTTON = "⚙️ تنظیمات";
 async function getSuperAdmin(ctx) {
   const telegramUserId = ctx.from?.id;
 
-  if (!telegramUserId) {
-    return null;
-  }
+  if (!telegramUserId) return null;
 
   const admin =
-    await adminService.getAdminByTelegramId(
-      telegramUserId
-    );
+    await adminService.getAdminByTelegramId(telegramUserId);
 
   if (
     !admin ||
@@ -102,14 +90,8 @@ async function handleSuperAdminCommand(ctx) {
       buildSuperAdminMenu()
     );
   } catch (error) {
-    console.error(
-      "Super Admin command failed:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ دریافت پنل Super Admin انجام نشد."
-    );
+    console.error("Super Admin command failed:", error);
+    await ctx.reply("❌ دریافت پنل Super Admin انجام نشد.");
   }
 }
 
@@ -124,8 +106,7 @@ async function handleSettingsMenu(ctx) {
   }
 
   await ctx.reply(
-    "⚙️ تنظیمات Super Admin\n\n" +
-      "بخش موردنظر را انتخاب کن.",
+    "⚙️ تنظیمات Super Admin\n\nبخش موردنظر را انتخاب کن.",
     buildSettingsMenu()
   );
 }
@@ -160,15 +141,11 @@ async function handleEntertainmentMenu(ctx) {
 async function handleProAdminMenu(ctx) {
   const telegramUserId = ctx.from?.id;
 
-  if (!telegramUserId) {
-    return;
-  }
+  if (!telegramUserId) return;
 
   try {
     const admin =
-      await adminService.getAdminByTelegramId(
-        telegramUserId
-      );
+      await adminService.getAdminByTelegramId(telegramUserId);
 
     if (!admin || !admin.is_active) {
       await ctx.reply(
@@ -213,14 +190,8 @@ async function handleProAdminMenu(ctx) {
         .oneTime(false)
     );
   } catch (error) {
-    console.error(
-      "Pro admin menu failed:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ دریافت منوی مدیریت Pro انجام نشد."
-    );
+    console.error("Pro admin menu failed:", error);
+    await ctx.reply("❌ دریافت منوی مدیریت Pro انجام نشد.");
   }
 }
 
@@ -267,14 +238,8 @@ async function handlePlatformMenu(ctx) {
         .oneTime(false)
     );
   } catch (error) {
-    console.error(
-      "Platform menu failed:",
-      error
-    );
-
-    await ctx.reply(
-      "❌ دریافت وضعیت پلتفرم‌ها انجام نشد."
-    );
+    console.error("Platform menu failed:", error);
+    await ctx.reply("❌ دریافت وضعیت پلتفرم‌ها انجام نشد.");
   }
 }
 
@@ -298,9 +263,7 @@ async function handlePlatformToggle(ctx) {
     )
   );
 
-  if (!platform) {
-    return;
-  }
+  if (!platform) return;
 
   try {
     const currentValue = await getSetting(
@@ -308,9 +271,8 @@ async function handlePlatformToggle(ctx) {
       false
     );
 
-    const requestedValue = text.startsWith(
-      "🟢 روشن کردن"
-    );
+    const requestedValue =
+      text.startsWith("🟢 روشن کردن");
 
     if (Boolean(currentValue) === requestedValue) {
       await ctx.reply(
@@ -334,10 +296,7 @@ async function handlePlatformToggle(ctx) {
 
     await handlePlatformMenu(ctx);
   } catch (error) {
-    console.error(
-      "Platform setting update failed:",
-      error
-    );
+    console.error("Platform setting update failed:", error);
 
     await ctx.reply(
       `❌ تغییر وضعیت ${platform.name} انجام نشد. خطای ثبت تنظیمات را بررسی کنید.`
@@ -368,9 +327,7 @@ async function handleBackToEntertainment(ctx) {
 async function handleSuperAdminExit(ctx) {
   const telegramUserId = ctx.from?.id;
 
-  if (!telegramUserId) {
-    return;
-  }
+  if (!telegramUserId) return;
 
   const admin = await getSuperAdmin(ctx);
 
