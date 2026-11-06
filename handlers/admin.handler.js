@@ -1,3 +1,4 @@
+
 const adminService = require("../services/admin.service");
 
 const {
@@ -15,6 +16,10 @@ const {
 const {
   createAdminRequestsHandler,
 } = require("./admin-requests.handler");
+
+const {
+  createAdminSupportHandler,
+} = require("./admin-support.handler");
 
 const {
   createAdminProHandler,
@@ -61,6 +66,7 @@ const {
 } = require("./zeka-media.handler");
 
 const ENTERTAINMENT_BUTTON = "🎮 سرگرمی";
+const SUPPORT_BUTTON = "🆘 پشتیبانی";
 
 const ENTERTAINMENT_SECTIONS = [
   {
@@ -74,6 +80,25 @@ const ENTERTAINMENT_SECTIONS = [
   {
     permission: "rewards",
     button: "🎁 مدیریت جوایز",
+  },
+];
+
+const SUPPORT_SECTIONS = [
+  {
+    permission: "reports",
+    button: "📋 گزارش‌ها",
+  },
+  {
+    permission: "bug_reports",
+    button: "🐞 گزارش مشکلات",
+  },
+  {
+    permission: "support",
+    button: "💬 مدیریت پشتیبانی",
+  },
+  {
+    permission: "requests",
+    button: "📥 مدیریت درخواست‌ها",
   },
 ];
 
@@ -91,10 +116,6 @@ const PERMISSION_BUTTONS = [
     button: "⚙️ تنظیمات",
   },
   {
-    permission: "requests",
-    button: "📥 مدیریت درخواست‌ها",
-  },
-  {
     permission: "credits",
     button: "💳 مدیریت اعتبار",
   },
@@ -107,24 +128,12 @@ const PERMISSION_BUTTONS = [
     button: "✨ مدیریت امکانات",
   },
   {
-    permission: "support",
-    button: "🆘 پشتیبانی",
-  },
-  {
     permission: "monitoring",
     button: "📊 مانیتورینگ",
   },
   {
     permission: "admins",
     button: "🛠 مدیریت ادمین",
-  },
-  {
-    permission: "reports",
-    button: "🧠 گزارش سؤالات",
-  },
-  {
-    permission: "bug_reports",
-    button: "🐞 گزارش مشکلات",
   },
   {
     permission: "pro",
@@ -136,11 +145,15 @@ const PERMISSION_BUTTONS = [
 const UNIMPLEMENTED_BUTTONS = [
   "⚙️ تنظیمات",
   "✨ مدیریت امکانات",
-  "🆘 پشتیبانی",
+];
+
+const ALL_PERMISSION_SECTIONS = [
+  ...PERMISSION_BUTTONS,
+  ...SUPPORT_SECTIONS,
 ];
 
 const BUTTON_PERMISSIONS = new Map(
-  PERMISSION_BUTTONS.map((item) => [
+  ALL_PERMISSION_SECTIONS.map((item) => [
     item.button,
     item.permission,
   ])
@@ -175,6 +188,16 @@ function buildAdminMenu(permissions) {
     buttons.push(ENTERTAINMENT_BUTTON);
   }
 
+  const hasSupportPermission =
+    SUPPORT_SECTIONS.some(
+      (section) =>
+        permissions[section.permission]
+    );
+
+  if (hasSupportPermission) {
+    buttons.push(SUPPORT_BUTTON);
+  }
+
   buttons.push("🔙 خروج از پنل مدیریت");
 
   const rows = [];
@@ -198,7 +221,11 @@ async function getAdminPanelData(telegramUserId) {
 
   const permissions = {};
 
-  for (const item of PERMISSION_BUTTONS) {
+  for (const item of ALL_PERMISSION_SECTIONS) {
+    if (permissions[item.permission] !== undefined) {
+      continue;
+    }
+
     try {
       permissions[item.permission] =
         await adminService.hasPermission(
@@ -332,6 +359,78 @@ async function showEntertainmentMenu(ctx) {
 
     await ctx.reply(
       "❌ دریافت منوی سرگرمی انجام نشد."
+    );
+  }
+}
+
+async function showSupportMenu(ctx) {
+  const telegramUserId = ctx.from?.id;
+
+  if (!telegramUserId) {
+    return;
+  }
+
+  try {
+    const admin =
+      await adminService.getAdminByTelegramId(
+        telegramUserId
+      );
+
+    if (!admin || !admin.is_active) {
+      await ctx.reply(
+        "⛔ دسترسی به پنل مدیریت ندارید."
+      );
+
+      return;
+    }
+
+    const buttons = [];
+
+    for (const section of SUPPORT_SECTIONS) {
+      const allowed =
+        await adminService.hasPermission(
+          admin.user_id,
+          section.permission
+        );
+
+      if (allowed) {
+        buttons.push([section.button]);
+      }
+    }
+
+    if (buttons.length === 0) {
+      await ctx.reply(
+        "⛔ شما به بخش‌های پشتیبانی دسترسی ندارید."
+      );
+
+      return;
+    }
+
+    const backButton =
+      admin.role_key === "super_admin"
+        ? "🔙 پنل Super Admin"
+        : "🔙 پنل ادمین";
+
+    buttons.push([backButton]);
+
+    await ctx.reply(
+      "🆘 پشتیبانی\n\nبخش موردنظر را انتخاب کنید:",
+      {
+        reply_markup: {
+          keyboard: buttons,
+          resize_keyboard: true,
+          one_time_keyboard: false,
+        },
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Support menu failed:",
+      error
+    );
+
+    await ctx.reply(
+      "❌ دریافت منوی پشتیبانی انجام نشد."
     );
   }
 }
@@ -478,6 +577,11 @@ function createAdminHandler(bot) {
   );
 
   bot.hears(
+    SUPPORT_BUTTON,
+    showSupportMenu
+  );
+
+  bot.hears(
     "🧠 مدیریت مسابقه",
     showAdminQuizMenu
   );
@@ -502,6 +606,8 @@ function createAdminHandler(bot) {
   createAdminMonitoringHandler(bot);
   createAdminBugReportsHandler(bot);
   createAdminReportsHandler(bot);
+  createAdminSupportHandler(bot);
+
   createZekaMediaHandler(bot);
 
   for (const button of UNIMPLEMENTED_BUTTONS) {
@@ -516,8 +622,10 @@ module.exports = {
   createAdminHandler,
   showAdminPanel,
   showEntertainmentMenu,
+  showSupportMenu,
   showAdminQuizMenu,
   getAdminPanelData,
   buildAdminMenu,
   PERMISSION_BUTTONS,
+  SUPPORT_SECTIONS,
 };
