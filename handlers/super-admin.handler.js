@@ -1,4 +1,3 @@
-
 const {
   Markup,
 } = require("telegraf");
@@ -32,6 +31,7 @@ const PLATFORMS = [
 ];
 
 const ENTERTAINMENT_BUTTON = "🎮 سرگرمی";
+const SETTINGS_BUTTON = "⚙️ تنظیمات";
 
 async function getSuperAdmin(ctx) {
   const telegramUserId = ctx.from?.id;
@@ -59,12 +59,21 @@ async function getSuperAdmin(ctx) {
 function buildSuperAdminMenu() {
   return Markup.keyboard([
     ["👥 کاربران", "💰 مالی"],
-    ["⚙️ تنظیمات"],
-    [ENTERTAINMENT_BUTTON, "🌐 مدیریت پلتفرم‌ها"],
-    ["🍪 کوکی اینستاگرام"],
-    ["✨ مدیریت امکانات", "🆘 پشتیبانی"],
-    ["📊 مانیتورینگ", "🛠 مدیریت ادمین"],
+    [SETTINGS_BUTTON],
+    [ENTERTAINMENT_BUTTON, "✨ مدیریت امکانات"],
+    ["🆘 پشتیبانی", "🛠 مدیریت ادمین"],
     ["🔙 خروج از پنل Super Admin"],
+  ])
+    .resize()
+    .oneTime(false);
+}
+
+function buildSettingsMenu() {
+  return Markup.keyboard([
+    ["🌐 مدیریت پلتفرم‌ها"],
+    ["🍪 کوکی اینستاگرام"],
+    ["📊 مانیتورینگ"],
+    ["🔙 پنل Super Admin"],
   ])
     .resize()
     .oneTime(false);
@@ -102,6 +111,27 @@ async function handleSuperAdminCommand(ctx) {
       "❌ دریافت پنل Super Admin انجام نشد."
     );
   }
+}
+
+async function handleSettingsMenu(ctx) {
+  const admin = await getSuperAdmin(ctx);
+
+  if (!admin) {
+    await ctx.reply(
+      "⛔ فقط Super Admin به تنظیمات دسترسی دارد."
+    );
+    return;
+  }
+
+  await ctx.reply(
+    "⚙️ تنظیمات Super Admin\n\n" +
+      "بخش موردنظر را انتخاب کن.",
+    buildSettingsMenu()
+  );
+}
+
+async function handleBackToSettings(ctx) {
+  await handleSettingsMenu(ctx);
 }
 
 async function handleEntertainmentMenu(ctx) {
@@ -225,7 +255,7 @@ async function handlePlatformMenu(ctx) {
 
     buttons.push(
       ["🔄 تازه‌سازی وضعیت پلتفرم‌ها"],
-      ["🔙 پنل Super Admin"]
+      ["🔙 تنظیمات"]
     );
 
     await ctx.reply(
@@ -372,6 +402,11 @@ function createSuperAdminHandler(bot) {
   createSuperAdminFinanceHandler(bot);
 
   bot.hears(
+    SETTINGS_BUTTON,
+    handleSettingsMenu
+  );
+
+  bot.hears(
     "🌐 مدیریت پلتفرم‌ها",
     handlePlatformMenu
   );
@@ -394,6 +429,11 @@ function createSuperAdminHandler(bot) {
   bot.hears(
     "🔙 سرگرمی",
     handleBackToEntertainment
+  );
+
+  bot.hears(
+    "🔙 تنظیمات",
+    handleBackToSettings
   );
 
   bot.hears(
