@@ -1,3 +1,4 @@
+
 const { Telegraf } = require("telegraf");
 
 const {
@@ -46,6 +47,9 @@ const { createDownloadHandler } = require("./handlers/download.handler");
 const { createAdminHandler } = require("./handlers/admin.handler");
 const { createSuperAdminHandler } = require("./handlers/super-admin.handler");
 const { createInstagramCookieHandler } = require("./handlers/instagram-cookie.handler");
+const {
+  createZekaMediaHandler,
+} = require("./handlers/zeka-media.handler");
 
 const {
   createQuizHandler,
@@ -110,6 +114,7 @@ function createBot() {
 
   createAdminHandler(bot);
   createSuperAdminHandler(bot);
+  createZekaMediaHandler(bot);
   createInstagramCookieHandler(bot);
 
   // ثبت سیستم پشتیبانی کاربران
