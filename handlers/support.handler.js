@@ -160,13 +160,13 @@ async function handlePendingMessage(ctx, next) {
   const message = ctx.message?.text;
 
   if (!message) {
-    await ctx.reply(
-      "لطفاً پیام متنی ارسال کن."
-    );
+    await ctx.reply("لطفاً پیام متنی ارسال کن.");
     return;
   }
 
-  if (message.trim() === CANCEL_BUTTON) {
+  const normalizedMessage = message.trim();
+
+  if (normalizedMessage === CANCEL_BUTTON) {
     pendingActions.delete(telegramId);
 
     await ctx.reply(
@@ -184,7 +184,7 @@ async function handlePendingMessage(ctx, next) {
     return;
   }
 
-  if (message.trim().length < 3) {
+  if (normalizedMessage.length < 3) {
     await ctx.reply(
       "پیام خیلی کوتاه است. لطفاً توضیحات بیشتری بنویس.",
       buildCancelMenu()
@@ -206,8 +206,8 @@ async function handlePendingMessage(ctx, next) {
         userId: pending.userId,
         category: "OTHER",
         priority: "NORMAL",
-        subject: message.trim().slice(0, 200),
-        message: message.trim(),
+        subject: normalizedMessage.slice(0, 200),
+        message: normalizedMessage,
         metadata: {
           source: "telegram",
           telegram_user_id: telegramId,
@@ -264,13 +264,9 @@ async function handlePendingMessage(ctx, next) {
         ticketId: ticket.id,
         senderUserId: pending.userId,
         senderType: "USER",
-        message: message.trim(),
+        message: normalizedMessage,
+        ticketStatus: "OPEN",
       });
-
-      await supportRepository.updateTicketStatus(
-        ticket.id,
-        "OPEN"
-      );
 
       pendingActions.delete(telegramId);
 
@@ -279,7 +275,16 @@ async function handlePendingMessage(ctx, next) {
           `شماره تیکت: ${pending.ticketCode}`,
         buildSupportMenu()
       );
+
+      return;
     }
+
+    pendingActions.delete(telegramId);
+
+    await ctx.reply(
+      "❌ عملیات نامعتبر است.",
+      buildSupportMenu()
+    );
   } catch (error) {
     console.error("Support message failed:", {
       telegramId,
@@ -288,7 +293,7 @@ async function handlePendingMessage(ctx, next) {
 
     await ctx.reply(
       "❌ ثبت پیام انجام نشد. لطفاً دوباره تلاش کن.",
-      buildSupportMenu()
+      buildCancelMenu()
     );
   }
 }
