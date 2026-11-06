@@ -1,3 +1,4 @@
+
 const fs = require("fs");
 const path = require("path");
 
@@ -200,11 +201,7 @@ async function publishToChannel(queueItem) {
     );
   } catch (error) {
     stream.destroy();
-
-    // نتیجه درخواست تلگرام ممکن است نامشخص باشد.
-    // برای جلوگیری از انتشار تکراری، وضعیت UNKNOWN ثبت می‌شود.
     error.publishFailureType = "UNKNOWN";
-
     throw error;
   }
 }
@@ -252,6 +249,10 @@ async function renderStatusPage(ctx, status, offset = 0) {
   );
 
   for (const item of items) {
+    const fileAvailable =
+      Boolean(item.file_path) &&
+      fs.existsSync(item.file_path);
+
     const details = [
       `شناسه: ${item.id}`,
       `وضعیت: ${STATUS_LABELS[status]}`,
@@ -263,24 +264,37 @@ async function renderStatusPage(ctx, status, offset = 0) {
         ? `شناسه پیام کانال: ${item.published_message_id}`
         : null,
       item.file_path
-        ? `فایل: ${
-            fs.existsSync(item.file_path)
-              ? "موجود"
-              : "حذف‌شده یا در دسترس نیست"
-          }`
+        ? `فایل: ${fileAvailable ? "موجود" : "حذف‌شده یا در دسترس نیست"}`
         : "فایل: ثبت نشده",
     ]
       .filter(Boolean)
       .join("\n");
 
     if (status === "PENDING") {
-      if (
-        !item.file_path ||
-        !fs.existsSync(item.file_path)
-      ) {
+      const caption = [
+        "📺 محتوای در انتظار بررسی زکا مدیا",
+        "",
+        details,
+        "",
+        "برای انتشار یا رد محتوا یکی از دکمه‌ها را بزن.",
+      ].join("\n");
+
+      const reviewKeyboard = {
+        reply_markup: buildReviewKeyboard(item.id),
+      };
+
+      if (!fileAvailable) {
         await ctx.reply(
-          `⚠️ فایل درخواست ${item.id} پیدا نشد.\n${details}`
+          [
+            "⚠️ فایل این درخواست پیدا نشد.",
+            "",
+            caption,
+            "",
+            "انتشار بدون فایل ممکن نیست؛ اما می‌توانی درخواست را رد کنی.",
+          ].join("\n"),
+          reviewKeyboard
         );
+
         continue;
       }
 
@@ -292,13 +306,7 @@ async function renderStatusPage(ctx, status, offset = 0) {
           ctx.chat.id,
           { source: stream },
           {
-            caption: [
-              "📺 محتوای در انتظار بررسی زکا مدیا",
-              "",
-              details,
-              "",
-              "برای انتشار یا رد محتوا یکی از دکمه‌ها را بزن.",
-            ].join("\n"),
+            caption,
             reply_markup: buildReviewKeyboard(item.id),
           }
         );
@@ -311,7 +319,14 @@ async function renderStatusPage(ctx, status, offset = 0) {
         );
 
         await ctx.reply(
-          `❌ نمایش محتوای ${item.id} ناموفق بود.`
+          [
+            "⚠️ نمایش فایل این درخواست ناموفق بود.",
+            "",
+            caption,
+            "",
+            "می‌توانی درخواست را رد کنی یا در صورت موجود بودن فایل، انتشار را امتحان کنی.",
+          ].join("\n"),
+          reviewKeyboard
         );
       }
 
