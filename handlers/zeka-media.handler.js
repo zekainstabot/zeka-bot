@@ -1,4 +1,3 @@
-
 const fs = require("fs");
 const path = require("path");
 
@@ -8,7 +7,7 @@ const { deleteFile } = require("../services/file.service");
 
 const PERMISSION = "zeka_media";
 const CHANNEL = "@zeka_media";
-const PANEL_BUTTON = "📺 زکا مدیا";
+const PANEL_BUTTON = "📺 مدیریت زکا مدیا";
 const PANEL_PAGE_SIZE = 5;
 
 const CHANNEL_CAPTION = [
@@ -99,7 +98,9 @@ async function publishToChannel(queueItem) {
     !queueItem?.file_path ||
     !fs.existsSync(queueItem.file_path)
   ) {
-    throw new Error("Queued media file is missing");
+    const error = new Error("Queued media file is missing");
+    error.publishFailureType = "DEFINITE";
+    throw error;
   }
 
   const method = getChannelMediaMethod(queueItem);
@@ -113,6 +114,11 @@ async function publishToChannel(queueItem) {
     );
   } catch (error) {
     stream.destroy();
+
+    // خطای درخواست تلگرام ممکن است بعد از انتشار واقعی رخ داده باشد.
+    // بنابراین نتیجه را نامشخص ثبت می‌کنیم تا انتشار تکراری اتفاق نیفتد.
+    error.publishFailureType = "UNKNOWN";
+
     throw error;
   }
 }
@@ -132,22 +138,49 @@ async function handlePanel(ctx) {
       return;
     }
 
+    if (!botInstance) {
+      await ctx.reply("❌ ربات آماده نیست.");
+      return;
+    }
+
     const items = await mediaRepository.listPending(
       PANEL_PAGE_SIZE
     );
 
+    const counts = await mediaRepository.getStatusCounts();
+
+    const pendingCount = counts.PENDING || 0;
+    const unknownCount = counts.PUBLISH_UNKNOWN || 0;
+
     if (!items.length) {
       await ctx.reply(
-        "📺 مدیریت زکا مدیا\n\n" +
-        "در حال حاضر محتوایی برای بررسی وجود ندارد."
+        [
+          "📺 مدیریت زکا مدیا",
+          "",
+          "در حال حاضر محتوایی برای بررسی وجود ندارد.",
+          "",
+          `📥 در انتظار بررسی: ${pendingCount}`,
+          `⚠️ انتشار نامشخص: ${unknownCount}`,
+          `✅ منتشرشده: ${counts.PUBLISHED || 0}`,
+          `❌ ردشده: ${counts.REJECTED || 0}`,
+          `🚫 ناموفق: ${counts.FAILED || 0}`,
+        ].join("\n")
       );
       return;
     }
 
     await ctx.reply(
-      `📺 مدیریت زکا مدیا\n\n` +
-      `${items.length} محتوای در انتظار بررسی نمایش داده می‌شود.\n` +
-      `برای جلوگیری از شلوغی، هر بار حداکثر ${PANEL_PAGE_SIZE} مورد نمایش داده می‌شود.`
+      [
+        "📺 مدیریت زکا مدیا",
+        "",
+        `📥 در انتظار بررسی: ${pendingCount}`,
+        `⚠️ انتشار نامشخص: ${unknownCount}`,
+        `✅ منتشرشده: ${counts.PUBLISHED || 0}`,
+        `❌ ردشده: ${counts.REJECTED || 0}`,
+        `🚫 ناموفق: ${counts.FAILED || 0}`,
+        "",
+        `${items.length} مورد از درخواست‌های در انتظار نمایش داده می‌شود.`,
+      ].join("\n")
     );
 
     for (const item of items) {
@@ -209,12 +242,186 @@ async function handlePanel(ctx) {
   }
 }
 
+async function removeReviewButtons(ctx) {
+  try {
+    await ctx.editMessageReplyMarkup({
+      inline_keyboard: [],
+    });
+  } catch (error) {
+    console.warn(
+      "Could not remove review buttons:",
+      error.message
+    );
+  }
+}
+
+async function handleReject(ctx, queueId, telegramUserId) {
+  const rejected = await mediaRepository.reject(
+    queueId,
+    telegramUserId
+  );
+
+  if (!rejected) {
+    const current = await mediaRepository.findById(queueId);
+
+    await ctx.answerCbQuery(
+      current?.status === "EXPIRED"
+        ? "مهلت بررسی تمام شده است."
+        : "این مورد قبلاً بررسی شده یا وجود ندارد.",
+      { show_alert: true }
+    );
+
+    return;
+  }
+
+  const deleted = await deleteFile(rejected.file_path);
+
+  if (!deleted) {
+    console.error(
+      `Rejected media file could not be deleted: ${queueId}`
+    );
+  }
+
+  await removeReviewButtons(ctx);
+
+  await ctx.answerCbQuery("محتوا رد شد.");
+
+  await ctx.reply(
+    `❌ محتوای زکا مدیا با شناسه ${queueId} رد شد.`
+  );
+}
+
+async function handleApprove(ctx, queueId, telegramUserId) {
+  const queueItem = await mediaRepository.claimForPublishing(
+    queueId,
+    telegramUserId
+  );
+
+  if (!queueItem) {
+    const current = await mediaRepository.findById(queueId);
+
+    await ctx.answerCbQuery(
+      current?.status === "EXPIRED"
+        ? "مهلت بررسی تمام شده است."
+        : current?.status === "PUBLISH_UNKNOWN"
+          ? "نتیجه انتشار قبلی نامشخص است؛ برای جلوگیری از انتشار تکراری بررسی دستی لازم است."
+          : current?.status === "PUBLISHING"
+            ? "این محتوا در حال انتشار است."
+            : "این مورد قبلاً بررسی شده یا وجود ندارد.",
+      { show_alert: true }
+    );
+
+    return;
+  }
+
+  await ctx.answerCbQuery("در حال انتشار در کانال…");
+
+  let sentMessage;
+
+  try {
+    sentMessage = await publishToChannel(queueItem);
+  } catch (error) {
+    console.error(
+      `Zeka Media publish failed for ${queueId}:`,
+      error
+    );
+
+    if (error.publishFailureType === "DEFINITE") {
+      await mediaRepository.markFailed(queueId);
+
+      await ctx.reply(
+        `❌ انتشار محتوای ${queueId} انجام نشد؛ فایل موجود نیست و وضعیت آن ناموفق ثبت شد.`
+      );
+      return;
+    }
+
+    await mediaRepository.markPublishUnknown(queueId);
+
+    await ctx.reply(
+      [
+        `⚠️ نتیجه انتشار محتوای ${queueId} مشخص نیست.`,
+        "",
+        "ممکن است تلگرام محتوا را منتشر کرده باشد اما پاسخ به ربات نرسیده باشد.",
+        "برای جلوگیری از انتشار تکراری، این مورد دوباره خودکار منتشر نمی‌شود.",
+        "وضعیت آن در بخش انتشارهای نامشخص قابل بررسی است.",
+      ].join("\n")
+    );
+
+    return;
+  }
+
+  const messageId = sentMessage?.message_id;
+
+  if (!messageId) {
+    await mediaRepository.markPublishUnknown(queueId);
+
+    await ctx.reply(
+      `⚠️ تلگرام پاسخ معتبر برای محتوای ${queueId} برنگرداند. وضعیت انتشار نامشخص ثبت شد.`
+    );
+
+    return;
+  }
+
+  try {
+    const published = await mediaRepository.markPublished(
+      queueId,
+      messageId
+    );
+
+    if (!published) {
+      await mediaRepository.markPublishUnknown(queueId);
+
+      await ctx.reply(
+        `⚠️ محتوا در کانال ارسال شد، اما ثبت وضعیت آن کامل نشد. شناسه پیام کانال: ${messageId}`
+      );
+
+      return;
+    }
+  } catch (error) {
+    console.error(
+      `Could not save published status for ${queueId}:`,
+      error
+    );
+
+    try {
+      await mediaRepository.markPublishUnknown(queueId);
+    } catch (statusError) {
+      console.error(
+        `Could not mark item ${queueId} as unknown:`,
+        statusError
+      );
+    }
+
+    await ctx.reply(
+      `⚠️ محتوا احتمالاً منتشر شده، اما ثبت نتیجه در دیتابیس با خطا مواجه شد. شناسه پیام کانال: ${messageId}`
+    );
+
+    return;
+  }
+
+  const deleted = await deleteFile(queueItem.file_path);
+
+  if (!deleted) {
+    console.error(
+      `Published media file could not be deleted: ${queueId}`
+    );
+  }
+
+  await removeReviewButtons(ctx);
+
+  await ctx.reply(
+    `✅ محتوای زکا مدیا با شناسه ${queueId} منتشر شد.\nشناسه پیام کانال: ${messageId}`
+  );
+}
+
 async function handleReviewAction(ctx) {
   const match = String(
     ctx.callbackQuery?.data || ""
   ).match(/^zeka_media:(approve|reject):(\d+)$/);
 
-  if (!match) return;
+  if (!match) {
+    return;
+  }
 
   if (!botInstance) {
     await ctx.answerCbQuery("ربات آماده نیست.", {
@@ -228,9 +435,7 @@ async function handleReviewAction(ctx) {
   const telegramUserId = ctx.from?.id;
 
   try {
-    const admin = await getAuthorizedAdmin(
-      telegramUserId
-    );
+    const admin = await getAuthorizedAdmin(telegramUserId);
 
     if (!admin) {
       await ctx.answerCbQuery(
@@ -241,128 +446,11 @@ async function handleReviewAction(ctx) {
     }
 
     if (action === "reject") {
-      const rejected = await mediaRepository.reject(
-        queueId,
-        telegramUserId
-      );
-
-      if (!rejected) {
-        const current = await mediaRepository.findById(
-          queueId
-        );
-
-        await ctx.answerCbQuery(
-          current?.status === "EXPIRED"
-            ? "مهلت بررسی تمام شده است."
-            : "این مورد قبلاً بررسی شده یا وجود ندارد.",
-          { show_alert: true }
-        );
-        return;
-      }
-
-      try {
-        await deleteFile(rejected.file_path);
-      } catch (error) {
-        console.error(
-          `Failed to delete rejected media ${queueId}:`,
-          error
-        );
-      }
-
-      try {
-        await ctx.editMessageReplyMarkup({
-          inline_keyboard: [],
-        });
-      } catch (error) {
-        console.warn(
-          "Could not remove review buttons:",
-          error.message
-        );
-      }
-
-      await ctx.answerCbQuery("محتوا رد شد.");
-
-      await ctx.reply(
-        `❌ محتوای زکا مدیا با شناسه ${queueId} رد شد.`
-      );
+      await handleReject(ctx, queueId, telegramUserId);
       return;
     }
 
-    const queueItem =
-      await mediaRepository.claimForPublishing(
-        queueId,
-        telegramUserId
-      );
-
-    if (!queueItem) {
-      const current = await mediaRepository.findById(
-        queueId
-      );
-
-      await ctx.answerCbQuery(
-        current?.status === "EXPIRED"
-          ? "مهلت بررسی تمام شده است."
-          : "این مورد قبلاً بررسی شده یا وجود ندارد.",
-        { show_alert: true }
-      );
-      return;
-    }
-
-    await ctx.answerCbQuery(
-      "در حال انتشار در کانال…"
-    );
-
-    try {
-      const sentMessage = await publishToChannel(
-        queueItem
-      );
-
-      const messageId = sentMessage?.message_id;
-
-      if (!messageId) {
-        throw new Error(
-          "Telegram did not return the channel message ID"
-        );
-      }
-
-      await mediaRepository.markPublished(
-        queueItem.id,
-        messageId
-      );
-
-      try {
-        await deleteFile(queueItem.file_path);
-      } catch (error) {
-        console.error(
-          `Failed to delete published media ${queueId}:`,
-          error
-        );
-      }
-
-      try {
-        await ctx.editMessageReplyMarkup({
-          inline_keyboard: [],
-        });
-      } catch (error) {
-        console.warn(
-          "Could not remove review buttons:",
-          error.message
-        );
-      }
-
-      await ctx.reply(
-        `✅ محتوای زکا مدیا با شناسه ${queueId} منتشر شد.`
-      );
-    } catch (error) {
-      console.error(
-        `Zeka Media publish failed for ${queueId}:`,
-        error
-      );
-
-      await ctx.reply(
-        `⚠️ انتشار محتوای ${queueId} ناموفق بود. فایل حذف نشده است. برای جلوگیری از انتشار تکراری، وضعیت مورد را در پایگاه داده بررسی کن.`
-      );
-    }
+    await handleApprove(ctx, queueId, telegramUserId);
   } catch (error) {
     console.error(
       "Zeka Media review action failed:",
@@ -378,7 +466,7 @@ async function handleReviewAction(ctx) {
 
     try {
       await ctx.reply(
-        "❌ پردازش درخواست زکا مدیا با خطا مواجه شد."
+        "❌ پردازش درخواست زکا مدیا با خطا مواجه شد. لاگ Render را بررسی کن."
       );
     } catch {}
   }
