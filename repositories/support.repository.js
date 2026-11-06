@@ -367,6 +367,7 @@ async function addMessage({
   message,
   messageType = "TEXT",
   metadata = null,
+  ticketStatus = null,
 }) {
   if (!ticketId) {
     throw new Error("Ticket ID is required");
@@ -382,6 +383,16 @@ async function addMessage({
 
   if (!Object.values(SENDER_TYPES).includes(normalizedSenderType)) {
     throw new Error("Invalid sender type");
+  }
+
+  let normalizedTicketStatus = null;
+
+  if (ticketStatus !== null && ticketStatus !== undefined) {
+    normalizedTicketStatus = String(ticketStatus).toUpperCase();
+
+    if (!Object.values(TICKET_STATUSES).includes(normalizedTicketStatus)) {
+      throw new Error("Invalid ticket status");
+    }
   }
 
   const client = await db.connect();
@@ -416,12 +427,24 @@ async function addMessage({
       `
         UPDATE support_tickets
         SET
+          status = COALESCE($2, status),
           last_message_at = NOW(),
+          resolved_at = CASE
+            WHEN $2 IS NULL THEN resolved_at
+            WHEN $2 = 'RESOLVED' THEN NOW()
+            WHEN $2 IN ('OPEN', 'IN_PROGRESS', 'WAITING_USER') THEN NULL
+            ELSE resolved_at
+          END,
+          closed_at = CASE
+            WHEN $2 IS NULL THEN closed_at
+            WHEN $2 = 'CLOSED' THEN NOW()
+            ELSE NULL
+          END,
           updated_at = NOW()
         WHERE id = $1
         RETURNING id
       `,
-      [ticketId]
+      [ticketId, normalizedTicketStatus]
     );
 
     if (!ticketResult.rowCount) {
