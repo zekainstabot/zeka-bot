@@ -1,4 +1,3 @@
-
 const userRepository = require("../repositories/user.repository");
 
 const {
@@ -164,7 +163,11 @@ function createJobWorker(overrides = {}) {
 
         if (
           queueItem &&
-          ["PENDING", "PUBLISHING"].includes(queueItem.status) &&
+          [
+            "PENDING",
+            "PUBLISHING",
+            "PUBLISH_UNKNOWN",
+          ].includes(queueItem.status) &&
           queueItem.file_path === result.filePath
         ) {
           preserveDownloadedFile = true;
@@ -181,7 +184,11 @@ function createJobWorker(overrides = {}) {
 
           if (
             existingItem &&
-            ["PENDING", "PUBLISHING"].includes(existingItem.status) &&
+            [
+              "PENDING",
+              "PUBLISHING",
+              "PUBLISH_UNKNOWN",
+            ].includes(existingItem.status) &&
             existingItem.file_path === result.filePath
           ) {
             preserveDownloadedFile = true;
