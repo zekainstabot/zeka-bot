@@ -23,6 +23,20 @@ const STATUS_BUTTONS = [
   { status: "CLOSED", label: "🔒 تیکت‌های بسته‌شده" },
 ];
 
+const NAVIGATION_BUTTONS = new Set([
+  "🆘 پشتیبانی",
+  "🔙 پنل Super Admin",
+  "🔙 پنل ادمین",
+  "🔙 پنل مدیریت",
+  "🔙 خروج از پنل Super Admin",
+  "🔙 خروج از پنل مدیریت",
+  "⚙️ تنظیمات",
+  "🎮 سرگرمی",
+  "👥 کاربران",
+  "💰 مالی",
+  "🛠 مدیریت ادمین",
+]);
+
 function keyboard(rows) {
   return {
     reply_markup: {
@@ -39,6 +53,17 @@ function inlineKeyboard(rows) {
       inline_keyboard: rows,
     },
   };
+}
+
+function getBackKeyboard(admin) {
+  return keyboard([
+    ["🆘 پشتیبانی"],
+    [
+      admin.role_key === "super_admin"
+        ? "🔙 پنل Super Admin"
+        : "🔙 پنل ادمین",
+    ],
+  ]);
 }
 
 function formatDate(value) {
@@ -72,20 +97,28 @@ async function getAuthorizedAdmin(ctx) {
 
   if (!telegramId) return null;
 
-  const admin = await adminService.getAdminByTelegramId(
-    telegramId
-  );
+  const admin =
+    await adminService.getAdminByTelegramId(
+      telegramId
+    );
 
   if (!admin || !admin.is_active) {
     return null;
   }
 
-  const allowed = await adminService.hasPermission(
-    admin.user_id,
-    PERMISSION
-  );
+  if (admin.role_key === "super_admin") {
+    return admin;
+  }
 
-  if (!allowed) return null;
+  const allowed =
+    await adminService.hasPermission(
+      admin.user_id,
+      PERMISSION
+    );
+
+  if (!allowed) {
+    return null;
+  }
 
   return admin;
 }
@@ -111,12 +144,17 @@ async function showSupportMenu(ctx) {
 
   await ctx.reply(
     "🆘 مدیریت پشتیبانی\n\n" +
-      "بخش موردنظر را انتخاب کن:",
+      "بخش موردنظر را انتخاب کنید:",
     keyboard([
       ["📩 تیکت‌های جدید", "🔄 در حال بررسی"],
       ["⏳ منتظر پاسخ کاربر", "✅ تیکت‌های حل‌شده"],
       ["🔒 تیکت‌های بسته‌شده", "📊 آمار پشتیبانی"],
       ["🔙 بازگشت به پشتیبانی"],
+      [
+        admin.role_key === "super_admin"
+          ? "🔙 پنل Super Admin"
+          : "🔙 پنل ادمین",
+      ],
     ])
   );
 }
@@ -126,16 +164,23 @@ async function showTicketList(ctx, status, offset = 0) {
 
   if (!admin) return;
 
-  const tickets = await supportRepository.listTickets({
-    status,
-    limit: 10,
-    offset,
-  });
+  if (!STATUS_LABELS[status]) {
+    await ctx.reply("❌ وضعیت تیکت نامعتبر است.");
+    return;
+  }
+
+  const tickets =
+    await supportRepository.listTickets({
+      status,
+      limit: 10,
+      offset,
+    });
 
   if (!tickets.length) {
     await ctx.reply(
-      `📭 ${STATUS_LABELS[status] || "تیکت‌ها"}\n\n` +
-        "تیکتی در این بخش وجود ندارد."
+      `📭 ${STATUS_LABELS[status]}\n\n` +
+        "تیکتی در این بخش وجود ندارد.",
+      getBackKeyboard(admin)
     );
 
     return;
@@ -145,12 +190,14 @@ async function showTicketList(ctx, status, offset = 0) {
     const subject = ticket.subject || "بدون عنوان";
     const userName = getUserName(ticket);
 
-    return [{
-      text:
-        `#${ticket.ticket_id} | ${subject.slice(0, 35)}\n` +
-        `👤 ${userName}`,
-      callback_data: `support:ticket:${ticket.id}`,
-    }];
+    return [
+      {
+        text:
+          `#${ticket.ticket_id} | ${subject.slice(0, 35)}\n` +
+          `👤 ${userName}`,
+        callback_data: `support:ticket:${ticket.id}`,
+      },
+    ];
   });
 
   const navigation = [];
@@ -177,7 +224,7 @@ async function showTicketList(ctx, status, offset = 0) {
   }
 
   await ctx.reply(
-    `${STATUS_LABELS[status] || "📩 تیکت‌ها"}\n\n` +
+    `${STATUS_LABELS[status]}\n\n` +
       `تعداد نمایش داده‌شده: ${tickets.length}`,
     inlineKeyboard(rows)
   );
@@ -188,9 +235,10 @@ async function showTicketDetails(ctx, ticketId) {
 
   if (!admin) return;
 
-  const ticket = await supportRepository.findTicketById(
-    ticketId
-  );
+  const ticket =
+    await supportRepository.findTicketById(
+      ticketId
+    );
 
   if (!ticket) {
     await ctx.reply("❌ تیکت پیدا نشد.");
@@ -201,7 +249,7 @@ async function showTicketDetails(ctx, ticketId) {
     "📩 جزئیات تیکت\n\n" +
     `🆔 کد: ${ticket.ticket_id}\n` +
     `👤 کاربر: ${getUserName(ticket)}\n` +
-    `📱 آیدی تلگرام: ${ticket.telegram_user_id}\n` +
+    `📱 آیدی تلگرام: ${ticket.telegram_user_id || "نامشخص"}\n` +
     `📌 موضوع: ${ticket.subject || "بدون عنوان"}\n` +
     `📂 دسته‌بندی: ${ticket.category || "OTHER"}\n` +
     `⚡ اولویت: ${ticket.priority || "NORMAL"}\n` +
@@ -282,22 +330,26 @@ async function showTicketMessages(ctx, ticketId) {
 
   if (!admin) return;
 
-  const ticket = await supportRepository.findTicketById(
-    ticketId
-  );
+  const ticket =
+    await supportRepository.findTicketById(
+      ticketId
+    );
 
   if (!ticket) {
     await ctx.reply("❌ تیکت پیدا نشد.");
     return;
   }
 
-  const messages = await supportRepository.getTicketMessages(
-    ticketId,
-    { limit: 100 }
-  );
+  const messages =
+    await supportRepository.getTicketMessages(
+      ticketId,
+      { limit: 100 }
+    );
 
   if (!messages.length) {
-    await ctx.reply("📭 هیچ پیامی برای این تیکت ثبت نشده است.");
+    await ctx.reply(
+      "📭 هیچ پیامی برای این تیکت ثبت نشده است."
+    );
     return;
   }
 
@@ -328,9 +380,10 @@ async function startReply(ctx, ticketId) {
 
   if (!admin) return;
 
-  const ticket = await supportRepository.findTicketById(
-    ticketId
-  );
+  const ticket =
+    await supportRepository.findTicketById(
+      ticketId
+    );
 
   if (!ticket) {
     await ctx.reply("❌ تیکت پیدا نشد.");
@@ -339,7 +392,7 @@ async function startReply(ctx, ticketId) {
 
   if (ticket.status === "CLOSED") {
     await ctx.reply(
-      "🔒 این تیکت بسته شده است. ابتدا آن را بازگشایی کن."
+      "🔒 این تیکت بسته شده است. ابتدا آن را بازگشایی کنید."
     );
     return;
   }
@@ -353,8 +406,8 @@ async function startReply(ctx, ticketId) {
 
   await ctx.reply(
     `✉️ پاسخ به تیکت ${ticket.ticket_id}\n\n` +
-      "پیام خود را ارسال کن.\n\n" +
-      "برای لغو، دکمه لغو را بزن.",
+      "پیام خود را ارسال کنید.\n\n" +
+      "برای لغو، دکمه لغو پاسخ را بزنید.",
     keyboard([
       ["❌ لغو پاسخ"],
     ])
@@ -369,41 +422,80 @@ async function handleAdminReply(ctx, next) {
     return next();
   }
 
-  const message = String(ctx.message?.text || "").trim();
+  const message =
+    typeof ctx.message?.text === "string"
+      ? ctx.message.text.trim()
+      : "";
 
   if (!message) {
-    await ctx.reply("❌ متن پاسخ نمی‌تواند خالی باشد.");
-    return;
+    return next();
   }
 
-  if (message === "❌ لغو پاسخ") {
+  if (message.startsWith("/")) {
+    pendingReplies.delete(telegramId);
+    return next();
+  }
+
+  if (
+    message === "❌ لغو پاسخ" ||
+    NAVIGATION_BUTTONS.has(message)
+  ) {
     pendingReplies.delete(telegramId);
 
-    await ctx.reply(
-      "عملیات پاسخ لغو شد.",
-      keyboard([
-        ["🆘 پشتیبانی"],
-        ["🔙 پنل ادمین"],
-      ])
-    );
+    if (message === "❌ لغو پاسخ") {
+      const admin = await getAuthorizedAdmin(ctx);
 
-    return;
+      await ctx.reply(
+        "❌ عملیات پاسخ لغو شد.",
+        admin
+          ? getBackKeyboard(admin)
+          : undefined
+      );
+
+      return;
+    }
+
+    return next();
   }
 
   try {
-    const ticket = await supportRepository.findTicketById(
-      pending.ticketId
-    );
+    const admin = await getAuthorizedAdmin(ctx);
+
+    if (!admin) {
+      pendingReplies.delete(telegramId);
+
+      await ctx.reply(
+        "⛔ دسترسی شما برای پاسخ‌گویی به تیکت لغو شده است."
+      );
+
+      return;
+    }
+
+    const ticket =
+      await supportRepository.findTicketById(
+        pending.ticketId
+      );
 
     if (!ticket) {
       pendingReplies.delete(telegramId);
+
       await ctx.reply("❌ تیکت دیگر وجود ندارد.");
+      return;
+    }
+
+    if (ticket.status === "CLOSED") {
+      pendingReplies.delete(telegramId);
+
+      await ctx.reply(
+        "🔒 این تیکت بسته شده است و امکان پاسخ ندارد."
+      );
+
       return;
     }
 
     await supportRepository.addMessage({
       ticketId: pending.ticketId,
-      senderUserId: pending.adminUserId,
+      senderUserId: admin.user_id,
       senderType: "ADMIN",
       message,
     });
@@ -415,21 +507,25 @@ async function handleAdminReply(ctx, next) {
 
     let notificationSent = true;
 
-    try {
-      await ctx.telegram.sendMessage(
-        pending.telegramUserId,
-        "📩 پاسخ جدید از پشتیبانی\n\n" +
-          `🆔 تیکت: ${pending.ticketCode}\n\n` +
-          `${message}\n\n` +
-          "برای ادامه گفتگو از بخش پشتیبانی اقدام کن."
-      );
-    } catch (error) {
-      notificationSent = false;
+    if (ticket.telegram_user_id) {
+      try {
+        await ctx.telegram.sendMessage(
+          ticket.telegram_user_id,
+          "📩 پاسخ جدید از پشتیبانی\n\n" +
+            `🆔 تیکت: ${pending.ticketCode}\n\n` +
+            `${message}\n\n` +
+            "برای ادامه گفتگو از بخش پشتیبانی اقدام کنید."
+        );
+      } catch (error) {
+        notificationSent = false;
 
-      console.error(
-        "Support reply notification failed:",
-        error.message
-      );
+        console.error(
+          "Support reply notification failed:",
+          error.message
+        );
+      }
+    } else {
+      notificationSent = false;
     }
 
     pendingReplies.delete(telegramId);
@@ -441,10 +537,13 @@ async function handleAdminReply(ctx, next) {
           : "⚠️ پیام ثبت شد اما ارسال اعلان به کاربر ناموفق بود.")
     );
   } catch (error) {
-    console.error("Admin support reply failed:", error);
+    console.error(
+      "Admin support reply failed:",
+      error
+    );
 
     await ctx.reply(
-      "❌ ثبت پاسخ انجام نشد. دوباره تلاش کن."
+      "❌ ثبت پاسخ انجام نشد. دوباره تلاش کنید."
     );
   }
 }
@@ -454,10 +553,16 @@ async function changeTicketStatus(ctx, ticketId, status) {
 
   if (!admin) return;
 
-  const ticket = await supportRepository.updateTicketStatus(
-    ticketId,
-    status
-  );
+  if (!STATUS_LABELS[status]) {
+    await ctx.reply("❌ وضعیت انتخاب‌شده معتبر نیست.");
+    return;
+  }
+
+  const ticket =
+    await supportRepository.updateTicketStatus(
+      ticketId,
+      status
+    );
 
   if (!ticket) {
     await ctx.reply("❌ تیکت پیدا نشد.");
@@ -465,7 +570,7 @@ async function changeTicketStatus(ctx, ticketId, status) {
   }
 
   await ctx.reply(
-    `✅ وضعیت تیکت به «${STATUS_LABELS[status] || status}» تغییر کرد.`
+    `✅ وضعیت تیکت به «${STATUS_LABELS[status]}» تغییر کرد.`
   );
 
   await showTicketDetails(ctx, ticketId);
@@ -476,10 +581,11 @@ async function assignTicketToAdmin(ctx, ticketId) {
 
   if (!admin) return;
 
-  const ticket = await supportRepository.assignTicket(
-    ticketId,
-    admin.user_id
-  );
+  const ticket =
+    await supportRepository.assignTicket(
+      ticketId,
+      admin.user_id
+    );
 
   if (!ticket) {
     await ctx.reply("❌ تیکت پیدا نشد.");
@@ -495,9 +601,10 @@ async function confirmDeleteTicket(ctx, ticketId) {
 
   if (!admin) return;
 
-  const ticket = await supportRepository.findTicketById(
-    ticketId
-  );
+  const ticket =
+    await supportRepository.findTicketById(
+      ticketId
+    );
 
   if (!ticket) {
     await ctx.reply("❌ تیکت پیدا نشد.");
@@ -505,7 +612,7 @@ async function confirmDeleteTicket(ctx, ticketId) {
   }
 
   await ctx.reply(
-    `⚠️ آیا از حذف دائمی تیکت ${ticket.ticket_id} مطمئن هستی؟\n\n` +
+    `⚠️ آیا از حذف دائمی تیکت ${ticket.ticket_id} مطمئن هستید؟\n\n` +
       "تمام پیام‌های این تیکت نیز حذف خواهند شد.",
     inlineKeyboard([
       [
@@ -527,12 +634,15 @@ async function deleteTicket(ctx, ticketId) {
 
   if (!admin) return;
 
-  const deleted = await supportRepository.deleteTicket(
-    ticketId
-  );
+  const deleted =
+    await supportRepository.deleteTicket(
+      ticketId
+    );
 
   if (!deleted) {
-    await ctx.reply("❌ تیکت پیدا نشد یا قبلاً حذف شده است.");
+    await ctx.reply(
+      "❌ تیکت پیدا نشد یا قبلاً حذف شده است."
+    );
     return;
   }
 
@@ -546,7 +656,8 @@ async function showSupportStats(ctx) {
 
   if (!admin) return;
 
-  const stats = await supportRepository.getTicketStats();
+  const stats =
+    await supportRepository.getTicketStats();
 
   await ctx.reply(
     "📊 آمار پشتیبانی\n\n" +
@@ -560,100 +671,165 @@ async function showSupportStats(ctx) {
 }
 
 function createAdminSupportHandler(bot) {
-  bot.hears(MENU_BUTTON, showSupportMenu);
-
-  bot.hears("📩 تیکت‌های جدید", (ctx) =>
-    showTicketList(ctx, "OPEN")
+  bot.hears(
+    MENU_BUTTON,
+    showSupportMenu
   );
 
-  bot.hears("🔄 در حال بررسی", (ctx) =>
-    showTicketList(ctx, "IN_PROGRESS")
+  bot.hears(
+    "📩 تیکت‌های جدید",
+    (ctx) => showTicketList(ctx, "OPEN")
   );
 
-  bot.hears("⏳ منتظر پاسخ کاربر", (ctx) =>
-    showTicketList(ctx, "WAITING_USER")
+  bot.hears(
+    "🔄 در حال بررسی",
+    (ctx) => showTicketList(ctx, "IN_PROGRESS")
   );
 
-  bot.hears("✅ تیکت‌های حل‌شده", (ctx) =>
-    showTicketList(ctx, "RESOLVED")
+  bot.hears(
+    "⏳ منتظر پاسخ کاربر",
+    (ctx) => showTicketList(ctx, "WAITING_USER")
   );
 
-  bot.hears("🔒 تیکت‌های بسته‌شده", (ctx) =>
-    showTicketList(ctx, "CLOSED")
+  bot.hears(
+    "✅ تیکت‌های حل‌شده",
+    (ctx) => showTicketList(ctx, "RESOLVED")
   );
 
-  bot.hears("📊 آمار پشتیبانی", showSupportStats);
+  bot.hears(
+    "🔒 تیکت‌های بسته‌شده",
+    (ctx) => showTicketList(ctx, "CLOSED")
+  );
 
-  bot.hears("🔙 بازگشت به پشتیبانی", async (ctx) => {
-    await ctx.reply(
-      "برای بازگشت، دکمه پشتیبانی را انتخاب کن.",
-      keyboard([
-        ["🆘 پشتیبانی"],
-        ["🔙 پنل ادمین"],
-      ])
-    );
-  });
+  bot.hears(
+    "📊 آمار پشتیبانی",
+    showSupportStats
+  );
 
-  bot.hears("❌ لغو پاسخ", async (ctx) => {
-    const telegramId = String(ctx.from?.id || "");
+  bot.hears(
+    "🔙 بازگشت به پشتیبانی",
+    async (ctx) => {
+      const admin = await requireAdmin(ctx);
 
-    if (pendingReplies.has(telegramId)) {
-      pendingReplies.delete(telegramId);
-    }
+      if (!admin) return;
 
-    await ctx.reply(
-      "عملیات پاسخ لغو شد.",
-      keyboard([
-        ["🆘 پشتیبانی"],
-        ["🔙 پنل ادمین"],
-      ])
-    );
-  });
-
-  bot.action(/^support:list:([A-Z_]+):(\d+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-
-      await showTicketList(
-        ctx,
-        ctx.match[1],
-        Number(ctx.match[2])
+      await ctx.reply(
+        "🆘 به منوی اصلی پشتیبانی برگشتید.",
+        getBackKeyboard(admin)
       );
-    } catch (error) {
-      console.error("Support ticket list failed:", error);
-      await ctx.reply("❌ دریافت فهرست تیکت‌ها ناموفق بود.");
     }
-  });
+  );
 
-  bot.action(/^support:ticket:(\d+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-      await showTicketDetails(ctx, Number(ctx.match[1]));
-    } catch (error) {
-      console.error("Support ticket details failed:", error);
-      await ctx.reply("❌ دریافت اطلاعات تیکت ناموفق بود.");
-    }
-  });
+  bot.hears(
+    "❌ لغو پاسخ",
+    async (ctx) => {
+      const telegramId = String(ctx.from?.id || "");
 
-  bot.action(/^support:messages:(\d+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-      await showTicketMessages(ctx, Number(ctx.match[1]));
-    } catch (error) {
-      console.error("Support messages failed:", error);
-      await ctx.reply("❌ دریافت پیام‌ها ناموفق بود.");
-    }
-  });
+      pendingReplies.delete(telegramId);
 
-  bot.action(/^support:reply:(\d+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-      await startReply(ctx, Number(ctx.match[1]));
-    } catch (error) {
-      console.error("Support reply start failed:", error);
-      await ctx.reply("❌ شروع پاسخ‌گویی ناموفق بود.");
+      const admin = await getAuthorizedAdmin(ctx);
+
+      await ctx.reply(
+        "❌ عملیات پاسخ لغو شد.",
+        admin
+          ? getBackKeyboard(admin)
+          : undefined
+      );
     }
-  });
+  );
+
+  bot.action(
+    /^support:list:([A-Z_]+):(\d+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        await showTicketList(
+          ctx,
+          ctx.match[1],
+          Number(ctx.match[2])
+        );
+      } catch (error) {
+        console.error(
+          "Support ticket list failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ دریافت فهرست تیکت‌ها ناموفق بود."
+        );
+      }
+    }
+  );
+
+  bot.action(
+    /^support:ticket:(\d+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        await showTicketDetails(
+          ctx,
+          Number(ctx.match[1])
+        );
+      } catch (error) {
+        console.error(
+          "Support ticket details failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ دریافت اطلاعات تیکت ناموفق بود."
+        );
+      }
+    }
+  );
+
+  bot.action(
+    /^support:messages:(\d+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        await showTicketMessages(
+          ctx,
+          Number(ctx.match[1])
+        );
+      } catch (error) {
+        console.error(
+          "Support messages failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ دریافت پیام‌ها ناموفق بود."
+        );
+      }
+    }
+  );
+
+  bot.action(
+    /^support:reply:(\d+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        await startReply(
+          ctx,
+          Number(ctx.match[1])
+        );
+      } catch (error) {
+        console.error(
+          "Support reply start failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ شروع پاسخ‌گویی ناموفق بود."
+        );
+      }
+    }
+  );
 
   bot.action(
     /^support:status:(\d+):(OPEN|IN_PROGRESS|WAITING_USER|RESOLVED|CLOSED)$/,
@@ -667,43 +843,91 @@ function createAdminSupportHandler(bot) {
           ctx.match[2]
         );
       } catch (error) {
-        console.error("Support status update failed:", error);
-        await ctx.reply("❌ تغییر وضعیت تیکت ناموفق بود.");
+        console.error(
+          "Support status update failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ تغییر وضعیت تیکت ناموفق بود."
+        );
       }
     }
   );
 
-  bot.action(/^support:assign:(\d+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-      await assignTicketToAdmin(ctx, Number(ctx.match[1]));
-    } catch (error) {
-      console.error("Support assignment failed:", error);
-      await ctx.reply("❌ تخصیص تیکت ناموفق بود.");
-    }
-  });
+  bot.action(
+    /^support:assign:(\d+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
 
-  bot.action(/^support:delete_confirm:(\d+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-      await confirmDeleteTicket(ctx, Number(ctx.match[1]));
-    } catch (error) {
-      console.error("Support delete confirmation failed:", error);
-      await ctx.reply("❌ انجام عملیات ناموفق بود.");
-    }
-  });
+        await assignTicketToAdmin(
+          ctx,
+          Number(ctx.match[1])
+        );
+      } catch (error) {
+        console.error(
+          "Support assignment failed:",
+          error
+        );
 
-  bot.action(/^support:delete:(\d+)$/, async (ctx) => {
-    try {
-      await ctx.answerCbQuery();
-      await deleteTicket(ctx, Number(ctx.match[1]));
-    } catch (error) {
-      console.error("Support ticket deletion failed:", error);
-      await ctx.reply("❌ حذف تیکت ناموفق بود.");
+        await ctx.reply(
+          "❌ تخصیص تیکت ناموفق بود."
+        );
+      }
     }
-  });
+  );
 
-  bot.on("text", handleAdminReply);
+  bot.action(
+    /^support:delete_confirm:(\d+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        await confirmDeleteTicket(
+          ctx,
+          Number(ctx.match[1])
+        );
+      } catch (error) {
+        console.error(
+          "Support delete confirmation failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ انجام عملیات ناموفق بود."
+        );
+      }
+    }
+  );
+
+  bot.action(
+    /^support:delete:(\d+)$/,
+    async (ctx) => {
+      try {
+        await ctx.answerCbQuery();
+
+        await deleteTicket(
+          ctx,
+          Number(ctx.match[1])
+        );
+      } catch (error) {
+        console.error(
+          "Support ticket deletion failed:",
+          error
+        );
+
+        await ctx.reply(
+          "❌ حذف تیکت ناموفق بود."
+        );
+      }
+    }
+  );
+
+  bot.on(
+    "text",
+    handleAdminReply
+  );
 }
 
 module.exports = {
