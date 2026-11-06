@@ -32,10 +32,7 @@ async function createPending({
         expires_at
       )
       VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
+        $1, $2, $3, $4,
         'PENDING',
         NOW() + INTERVAL '14 days'
       )
@@ -78,15 +75,8 @@ async function findByJobId(jobId) {
 }
 
 async function listPending(limit = 20, offset = 0) {
-  const safeLimit = Math.max(
-    1,
-    Math.min(Number(limit) || 20, 100)
-  );
-
-  const safeOffset = Math.max(
-    0,
-    Number(offset) || 0
-  );
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+  const safeOffset = Math.max(0, Number(offset) || 0);
 
   const result = await db.query(
     `
@@ -124,9 +114,7 @@ async function countByStatus(status) {
 async function getStatusCounts() {
   const result = await db.query(
     `
-      SELECT
-        status,
-        COUNT(*)::INTEGER AS total
+      SELECT status, COUNT(*)::INTEGER AS total
       FROM zeka_media_queue
       GROUP BY status
     `
@@ -145,24 +133,13 @@ async function getStatusCounts() {
   return counts;
 }
 
-async function listByStatus(
-  status,
-  limit = 20,
-  offset = 0
-) {
+async function listByStatus(status, limit = 20, offset = 0) {
   if (!ALLOWED_STATUSES.includes(status)) {
     throw new Error(`Invalid Zeka Media status: ${status}`);
   }
 
-  const safeLimit = Math.max(
-    1,
-    Math.min(Number(limit) || 20, 100)
-  );
-
-  const safeOffset = Math.max(
-    0,
-    Number(offset) || 0
-  );
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
+  const safeOffset = Math.max(0, Number(offset) || 0);
 
   const result = await db.query(
     `
@@ -189,8 +166,13 @@ async function claimForPublishing(id, reviewerTelegramId) {
         reviewed_at = NOW(),
         updated_at = NOW()
       WHERE id = $1
-        AND status = 'PENDING'
-        AND expires_at > NOW()
+        AND (
+          (
+            status = 'PENDING'
+            AND expires_at > NOW()
+          )
+          OR status = 'FAILED'
+        )
       RETURNING *
     `,
     [id, reviewerTelegramId]
@@ -209,8 +191,13 @@ async function reject(id, reviewerTelegramId) {
         reviewed_at = NOW(),
         updated_at = NOW()
       WHERE id = $1
-        AND status = 'PENDING'
-        AND expires_at > NOW()
+        AND (
+          (
+            status = 'PENDING'
+            AND expires_at > NOW()
+          )
+          OR status = 'FAILED'
+        )
       RETURNING *
     `,
     [id, reviewerTelegramId]
