@@ -1,3 +1,4 @@
+
 const {
   sendPendingReports,
 } = require("./admin-quiz/reports.handler");
@@ -7,8 +8,7 @@ const adminManagementService = require(
 );
 
 async function handleAdminQuestionReports(ctx) {
-  const telegramUserId =
-    ctx.from?.id;
+  const telegramUserId = ctx.from?.id;
 
   if (!telegramUserId) {
     return;
@@ -42,7 +42,7 @@ async function handleAdminQuestionReports(ctx) {
 
 function createAdminReportsHandler(bot) {
   bot.hears(
-    "🧠 گزارش سؤالات",
+    "📋 گزارش‌ها",
     handleAdminQuestionReports
   );
 }
