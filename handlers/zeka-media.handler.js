@@ -5,6 +5,9 @@ const path = require("path");
 const adminService = require("../services/admin.service");
 const mediaRepository = require("../repositories/zeka-media.repository");
 const { deleteFile } = require("../services/file.service");
+const {
+  recoverZekaMediaFile,
+} = require("../services/zeka-media-recovery.service");
 
 const PERMISSION = "zeka_media";
 const CHANNEL = "@zeka_media";
@@ -42,6 +45,9 @@ const CHANNEL_CAPTION = [
 
 let botInstance = null;
 
+// فایل‌های بازیابی‌شده تا زمان انتشار یا رد، در حافظه نگهداری می‌شوند.
+const recoveredMediaFiles = new Map();
+
 function setBot(bot) {
   botInstance = bot;
 }
@@ -78,14 +84,14 @@ function getChannelMediaMethod(queueItem) {
 
   if (
     type === "PHOTO" ||
-    [".jpg", ".jpeg", ".png", ".webp"].includes(extension)
+    [".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(extension)
   ) {
     return "sendPhoto";
   }
 
   if (
     type === "VIDEO" ||
-    [".mp4", ".mov", ".webm"].includes(extension)
+    [".mp4", ".mov", ".webm", ".mkv"].includes(extension)
   ) {
     return "sendVideo";
   }
@@ -103,6 +109,23 @@ function buildReviewKeyboard(queueId) {
         },
         {
           text: "❌ رد و حذف",
+          callback_data: `zeka_media:reject:${queueId}`,
+        },
+      ],
+    ],
+  };
+}
+
+function buildRetryKeyboard(queueId) {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: "🔄 تلاش مجدد برای دانلود",
+          callback_data: `zeka_media:retry:${queueId}`,
+        },
+        {
+          text: "❌ رد درخواست",
           callback_data: `zeka_media:reject:${queueId}`,
         },
       ],
@@ -206,6 +229,48 @@ async function publishToChannel(queueItem) {
   }
 }
 
+async function getAvailableMedia(item) {
+  const cached = recoveredMediaFiles.get(Number(item.id));
+
+  if (
+    cached?.filePath &&
+    fs.existsSync(cached.filePath)
+  ) {
+    return {
+      filePath: cached.filePath,
+      contentType: cached.contentType,
+    };
+  }
+
+  if (
+    item.file_path &&
+    fs.existsSync(item.file_path)
+  ) {
+    return {
+      filePath: item.file_path,
+      contentType: item.content_type || "UNKNOWN",
+    };
+  }
+
+  const recovered = await recoverZekaMediaFile(item);
+
+  if (
+    !recovered?.filePath ||
+    !fs.existsSync(recovered.filePath)
+  ) {
+    throw new Error("فایل بازیابی‌شده در دسترس نیست.");
+  }
+
+  const media = {
+    filePath: recovered.filePath,
+    contentType: recovered.contentType,
+  };
+
+  recoveredMediaFiles.set(Number(item.id), media);
+
+  return media;
+}
+
 async function renderStatusPage(ctx, status, offset = 0) {
   if (!PANEL_STATUSES.includes(status)) {
     await ctx.reply("وضعیت انتخاب‌شده معتبر نیست.");
@@ -249,57 +314,85 @@ async function renderStatusPage(ctx, status, offset = 0) {
   );
 
   for (const item of items) {
+    const reviewable = ["PENDING", "FAILED"].includes(status);
+
+    let media = null;
+    let recoveryError = null;
+
+    if (reviewable) {
+      try {
+        if (!item.original_url && (
+          !item.file_path ||
+          !fs.existsSync(item.file_path)
+        )) {
+          throw new Error("لینک اصلی و فایل محلی این درخواست موجود نیست.");
+        }
+
+        media = await getAvailableMedia(item);
+      } catch (error) {
+        recoveryError = error;
+
+        console.error(
+          `Zeka Media recovery failed for ${item.id}:`,
+          error
+        );
+      }
+    }
+
+    const mediaPath = media?.filePath || item.file_path;
+    const contentType = media?.contentType || item.content_type;
+
     const fileAvailable =
-      Boolean(item.file_path) &&
-      fs.existsSync(item.file_path);
+      Boolean(mediaPath) &&
+      fs.existsSync(mediaPath);
 
     const details = [
       `شناسه: ${item.id}`,
       `وضعیت: ${STATUS_LABELS[status]}`,
-      `نوع فایل: ${item.content_type || "UNKNOWN"}`,
+      `نوع فایل: ${contentType || "UNKNOWN"}`,
       item.original_url
         ? `لینک منبع: ${item.original_url}`
         : null,
       item.published_message_id
         ? `شناسه پیام کانال: ${item.published_message_id}`
         : null,
-      item.file_path
-        ? `فایل: ${fileAvailable ? "موجود" : "حذف‌شده یا در دسترس نیست"}`
-        : "فایل: ثبت نشده",
+      `فایل: ${fileAvailable ? "موجود" : "در دسترس نیست"}`,
     ]
       .filter(Boolean)
       .join("\n");
 
-    if (status === "PENDING") {
+    if (reviewable && recoveryError) {
+      await ctx.reply(
+        [
+          `❌ بازیابی فایل درخواست ${item.id} ناموفق بود.`,
+          "",
+          details,
+          `علت: ${recoveryError.message}`,
+        ].join("\n"),
+        {
+          reply_markup: buildRetryKeyboard(item.id),
+        }
+      );
+
+      continue;
+    }
+
+    if (reviewable && fileAvailable) {
       const caption = [
-        "📺 محتوای در انتظار بررسی زکا مدیا",
+        "📺 محتوای زکا مدیا",
         "",
         details,
         "",
-        "برای انتشار یا رد محتوا یکی از دکمه‌ها را بزن.",
+        "محتوا را بررسی کن و سپس تأیید یا رد کن.",
       ].join("\n");
 
-      const reviewKeyboard = {
-        reply_markup: buildReviewKeyboard(item.id),
-      };
+      const method = getChannelMediaMethod({
+        ...item,
+        file_path: mediaPath,
+        content_type: contentType,
+      });
 
-      if (!fileAvailable) {
-        await ctx.reply(
-          [
-            "⚠️ فایل این درخواست پیدا نشد.",
-            "",
-            caption,
-            "",
-            "انتشار بدون فایل ممکن نیست؛ اما می‌توانی درخواست را رد کنی.",
-          ].join("\n"),
-          reviewKeyboard
-        );
-
-        continue;
-      }
-
-      const method = getChannelMediaMethod(item);
-      const stream = fs.createReadStream(item.file_path);
+      const stream = fs.createReadStream(mediaPath);
 
       try {
         await botInstance.telegram[method](
@@ -320,15 +413,26 @@ async function renderStatusPage(ctx, status, offset = 0) {
 
         await ctx.reply(
           [
-            "⚠️ نمایش فایل این درخواست ناموفق بود.",
+            "⚠️ نمایش فایل ناموفق بود.",
             "",
-            caption,
-            "",
-            "می‌توانی درخواست را رد کنی یا در صورت موجود بودن فایل، انتشار را امتحان کنی.",
+            details,
           ].join("\n"),
-          reviewKeyboard
+          {
+            reply_markup: buildReviewKeyboard(item.id),
+          }
         );
       }
+
+      continue;
+    }
+
+    if (reviewable) {
+      await ctx.reply(
+        details,
+        {
+          reply_markup: buildRetryKeyboard(item.id),
+        }
+      );
 
       continue;
     }
@@ -504,13 +608,20 @@ async function handleReject(ctx, queueId, telegramUserId) {
     return;
   }
 
-  const deleted = await deleteFile(rejected.file_path);
+  const cached = recoveredMediaFiles.get(Number(queueId));
 
-  if (!deleted) {
-    console.error(
-      `Rejected media file could not be deleted: ${queueId}`
-    );
+  if (cached?.filePath) {
+    await deleteFile(cached.filePath);
   }
+
+  if (
+    rejected.file_path &&
+    rejected.file_path !== cached?.filePath
+  ) {
+    await deleteFile(rejected.file_path);
+  }
+
+  recoveredMediaFiles.delete(Number(queueId));
 
   await removeReviewButtons(ctx);
 
@@ -544,12 +655,42 @@ async function handleApprove(ctx, queueId, telegramUserId) {
     return;
   }
 
-  await ctx.answerCbQuery("در حال انتشار در کانال…");
+  await ctx.answerCbQuery("در حال آماده‌سازی محتوا...");
+
+  let media;
+
+  try {
+    media = await getAvailableMedia(queueItem);
+  } catch (error) {
+    console.error(
+      `Zeka Media recovery before publish failed for ${queueId}:`,
+      error
+    );
+
+    await mediaRepository.markFailed(queueId);
+
+    await ctx.reply(
+      [
+        `❌ بازیابی فایل درخواست ${queueId} ناموفق بود.`,
+        `علت: ${error.message}`,
+        "",
+        "درخواست در بخش ناموفق باقی می‌ماند و می‌توانی دوباره تلاش کنی.",
+      ].join("\n")
+    );
+
+    return;
+  }
+
+  const publishItem = {
+    ...queueItem,
+    file_path: media.filePath,
+    content_type: media.contentType,
+  };
 
   let sentMessage;
 
   try {
-    sentMessage = await publishToChannel(queueItem);
+    sentMessage = await publishToChannel(publishItem);
   } catch (error) {
     console.error(
       `Zeka Media publish failed for ${queueId}:`,
@@ -560,8 +701,9 @@ async function handleApprove(ctx, queueId, telegramUserId) {
       await mediaRepository.markFailed(queueId);
 
       await ctx.reply(
-        `❌ انتشار محتوای ${queueId} انجام نشد؛ فایل موجود نیست و وضعیت آن ناموفق ثبت شد.`
+        `❌ انتشار محتوای ${queueId} انجام نشد؛ وضعیت آن ناموفق ثبت شد.`
       );
+
       return;
     }
 
@@ -629,13 +771,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
     return;
   }
 
-  const deleted = await deleteFile(queueItem.file_path);
-
-  if (!deleted) {
-    console.error(
-      `Published media file could not be deleted: ${queueId}`
-    );
-  }
+  await deleteFile(media.filePath);
+  recoveredMediaFiles.delete(Number(queueId));
 
   await removeReviewButtons(ctx);
 
@@ -644,10 +781,74 @@ async function handleApprove(ctx, queueId, telegramUserId) {
   );
 }
 
+async function handleRetry(ctx, queueId) {
+  const item = await mediaRepository.findById(queueId);
+
+  if (!item || !["PENDING", "FAILED"].includes(item.status)) {
+    await ctx.answerCbQuery(
+      "این درخواست دیگر قابل بازیابی نیست.",
+      { show_alert: true }
+    );
+    return;
+  }
+
+  await ctx.answerCbQuery("در حال دانلود مجدد...");
+
+  try {
+    const media = await getAvailableMedia(item);
+
+    const caption = [
+      "✅ فایل با موفقیت بازیابی شد.",
+      "",
+      `شناسه درخواست: ${queueId}`,
+      `نوع فایل: ${media.contentType}`,
+      "",
+      "محتوا را بررسی کن و در صورت تأیید، انتشار را بزن.",
+    ].join("\n");
+
+    const method = getChannelMediaMethod({
+      ...item,
+      file_path: media.filePath,
+      content_type: media.contentType,
+    });
+
+    const stream = fs.createReadStream(media.filePath);
+
+    try {
+      await botInstance.telegram[method](
+        ctx.chat.id,
+        { source: stream },
+        {
+          caption,
+          reply_markup: buildReviewKeyboard(queueId),
+        }
+      );
+    } catch (error) {
+      stream.destroy();
+      throw error;
+    }
+  } catch (error) {
+    console.error(
+      `Zeka Media retry failed for ${queueId}:`,
+      error
+    );
+
+    await ctx.reply(
+      [
+        `❌ دانلود مجدد درخواست ${queueId} ناموفق بود.`,
+        `علت: ${error.message}`,
+      ].join("\n"),
+      {
+        reply_markup: buildRetryKeyboard(queueId),
+      }
+    );
+  }
+}
+
 async function handleReviewAction(ctx) {
   const match = String(
     ctx.callbackQuery?.data || ""
-  ).match(/^zeka_media:(approve|reject):(\d+)$/);
+  ).match(/^zeka_media:(approve|reject|retry):(\d+)$/);
 
   if (!match) {
     return;
@@ -677,6 +878,11 @@ async function handleReviewAction(ctx) {
 
     if (action === "reject") {
       await handleReject(ctx, queueId, telegramUserId);
+      return;
+    }
+
+    if (action === "retry") {
+      await handleRetry(ctx, queueId);
       return;
     }
 
@@ -713,7 +919,7 @@ function createZekaMediaHandler(bot) {
   );
 
   bot.action(
-    /^zeka_media:(approve|reject):\d+$/,
+    /^zeka_media:(approve|reject|retry):\d+$/,
     handleReviewAction
   );
 }
