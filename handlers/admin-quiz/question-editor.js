@@ -1,6 +1,5 @@
-const {
-  Markup,
-} = require("telegraf");
+
+const { Markup } = require("telegraf");
 
 const adminQuizService = require(
   "../../services/admin-quiz.service"
@@ -22,8 +21,7 @@ async function startDirectEditQuestion(
   options = {}
 ) {
   try {
-    const telegramUserId =
-      ctx.from?.id;
+    const telegramUserId = ctx.from?.id;
 
     if (!telegramUserId) {
       return;
@@ -31,19 +29,17 @@ async function startDirectEditQuestion(
 
     await ctx.answerCbQuery();
 
-    const fromReport =
-      options.fromReport === true;
+    const fromReport = options.fromReport === true;
 
-    const question =
-      fromReport
-        ? await adminQuizService.getQuestionByIdForReport(
-            telegramUserId,
-            questionId
-          )
-        : await adminQuizService.getQuestionById(
-            telegramUserId,
-            questionId
-          );
+    const question = fromReport
+      ? await adminQuizService.getQuestionByIdForReport(
+          telegramUserId,
+          questionId
+        )
+      : await adminQuizService.getQuestionById(
+          telegramUserId,
+          questionId
+        );
 
     if (!question) {
       await ctx.editMessageText(
@@ -53,41 +49,51 @@ async function startDirectEditQuestion(
       return;
     }
 
-    setState(
-      telegramUserId,
-      {
-        mode: fromReport
-          ? "EDIT_REPORT"
-          : "EDIT_DIRECT",
-        step: "question",
-        questionId:
-          question.id,
-        reportId:
-          options.reportId || null,
-        data: {
-          questionText:
-            question.question_text,
-          optionA:
-            question.option_a,
-          optionB:
-            question.option_b,
-          optionC:
-            question.option_c,
-          optionD:
-            question.option_d,
-          correctOption:
-            question.correct_option,
-          category:
-            question.category || "",
-          difficulty:
-            question.difficulty ||
-            "MEDIUM",
-          explanation:
-            question.explanation ||
-            null,
-        },
-      }
-    );
+    setState(telegramUserId, {
+      mode: fromReport
+        ? "EDIT_REPORT"
+        : "EDIT_DIRECT",
+
+      step: "question",
+
+      questionId: question.id,
+
+      reportId: options.reportId || null,
+
+      data: {
+        questionText:
+          question.question_text,
+
+        optionA:
+          question.option_a,
+
+        optionB:
+          question.option_b,
+
+        optionC:
+          question.option_c,
+
+        optionD:
+          question.option_d,
+
+        correctOption:
+          question.correct_option,
+
+        category:
+          question.category || "",
+
+        categoryId:
+          question.category_id
+            ? Number(question.category_id)
+            : null,
+
+        difficulty:
+          question.difficulty || "MEDIUM",
+
+        explanation:
+          question.explanation || null,
+      },
+    });
 
     await ctx.reply(
       (
