@@ -1,4 +1,3 @@
-
 const { getAdminByTelegramId } = require("../services/admin.service");
 const {
   saveInstagramCookie,
@@ -10,10 +9,12 @@ const COOKIE_BUTTON = "🍪 کوکی اینستاگرام";
 const DELETE_BUTTON = "🗑 حذف کوکی اینستاگرام";
 const MAX_COOKIE_BYTES = 1024 * 1024;
 const UPLOAD_WINDOW_MS = 10 * 60 * 1000;
+
 const pendingUploads = new Map();
 
 async function isSuperAdmin(ctx) {
   const telegramId = ctx.from?.id;
+
   if (!telegramId) return false;
 
   const admin = await getAdminByTelegramId(telegramId);
@@ -44,7 +45,7 @@ async function showCookieMenu(ctx) {
           keyboard: [
             ["📤 دریافت فایل کوکی"],
             [DELETE_BUTTON],
-            ["🔙 پنل Super Admin"],
+            ["🔙 تنظیمات"],
           ],
           resize_keyboard: true,
           one_time_keyboard: false,
@@ -85,7 +86,9 @@ async function receiveCookieFile(ctx) {
 
   if (Date.now() > pendingUploads.get(telegramId)) {
     pendingUploads.delete(telegramId);
-    await ctx.reply("⌛ زمان ارسال فایل تمام شده است. دوباره گزینه دریافت فایل کوکی را بزن.");
+    await ctx.reply(
+      "⌛ زمان ارسال فایل تمام شده است. دوباره گزینه دریافت فایل کوکی را بزن."
+    );
     return;
   }
 
@@ -106,17 +109,22 @@ async function receiveCookieFile(ctx) {
     document.file_size <= 0 ||
     document.file_size > MAX_COOKIE_BYTES
   ) {
-    await ctx.reply("❌ اندازه فایل باید بیشتر از صفر و حداکثر ۱ مگابایت باشد.");
+    await ctx.reply(
+      "❌ اندازه فایل باید بیشتر از صفر و حداکثر ۱ مگابایت باشد."
+    );
     return;
   }
 
   try {
     const fileUrl = await ctx.telegram.getFileLink(document.file_id);
+
     const response = await fetch(fileUrl, {
       signal: AbortSignal.timeout(30000),
     });
 
-    if (!response.ok) throw new Error("Telegram file download failed");
+    if (!response.ok) {
+      throw new Error("Telegram file download failed");
+    }
 
     const buffer = Buffer.from(await response.arrayBuffer());
 
@@ -128,7 +136,9 @@ async function receiveCookieFile(ctx) {
 
     if (
       !cookieText.includes("instagram.com") ||
-      !/(# Netscape HTTP Cookie File|# HTTP Cookie File|\.instagram\.com|\tinstagram\.com\t)/i.test(cookieText)
+      !/(# Netscape HTTP Cookie File|# HTTP Cookie File|\.instagram\.com|\tinstagram\.com\t)/i.test(
+        cookieText
+      )
     ) {
       await ctx.reply(
         "❌ فایل شبیه کوکی اینستاگرام با فرمت Netscape نیست. فایل را دوباره از ابزار خروجی کوکی بگیر."
@@ -137,6 +147,7 @@ async function receiveCookieFile(ctx) {
     }
 
     await saveInstagramCookie(cookieText, telegramId);
+
     pendingUploads.delete(telegramId);
 
     await ctx.reply(
@@ -144,6 +155,7 @@ async function receiveCookieFile(ctx) {
     );
   } catch (error) {
     console.error("Instagram cookie upload failed.");
+
     await ctx.reply(
       "❌ ذخیره فایل انجام نشد. تنظیم کلید رمزنگاری Render و اتصال دیتابیس را بررسی می‌کنیم."
     );
@@ -158,7 +170,9 @@ async function removeCookie(ctx) {
 
   try {
     await deleteInstagramCookie();
+
     pendingUploads.delete(ctx.from.id);
+
     await ctx.reply("✅ کوکی ذخیره‌شده حذف شد.");
   } catch (error) {
     console.error("Instagram cookie deletion failed.");
