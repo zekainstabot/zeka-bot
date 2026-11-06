@@ -1,6 +1,25 @@
+
 "use strict";
 
 const { getClient } = require("../database/client");
+
+function normalizeCategoryId(categoryId) {
+  if (
+    categoryId === null ||
+    categoryId === undefined ||
+    categoryId === ""
+  ) {
+    return null;
+  }
+
+  const id = Number(categoryId);
+
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error("Invalid category ID");
+  }
+
+  return id;
+}
 
 /**
  * ایجاد سؤال جدید
@@ -8,6 +27,7 @@ const { getClient } = require("../database/client");
 async function createQuestion({
   languageCode = "fa",
   category,
+  categoryId = null,
   difficulty,
   questionText,
   optionA,
@@ -19,12 +39,15 @@ async function createQuestion({
   createdBy = null,
 }) {
   const db = getClient();
+  const normalizedCategoryId =
+    normalizeCategoryId(categoryId);
 
   const result = await db.query(
     `
       INSERT INTO quiz_questions (
         language_code,
         category,
+        category_id,
         difficulty,
         question_text,
         option_a,
@@ -39,13 +62,14 @@ async function createQuestion({
       VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, $10,
-        'ACTIVE', $11
+        $11, 'ACTIVE', $12
       )
       RETURNING *
     `,
     [
       languageCode,
       category,
+      normalizedCategoryId,
       difficulty,
       questionText,
       optionA,
@@ -94,12 +118,10 @@ async function importQuestions({
     throw new Error("Invalid quiz difficulty");
   }
 
-  const normalizedCategoryId = Number(categoryId);
+  const normalizedCategoryId =
+    normalizeCategoryId(categoryId);
 
-  if (
-    !Number.isInteger(normalizedCategoryId) ||
-    normalizedCategoryId <= 0
-  ) {
+  if (!normalizedCategoryId) {
     throw new Error("Invalid category ID");
   }
 
@@ -119,7 +141,6 @@ async function importQuestions({
     await client.query("BEGIN");
     transactionStarted = true;
 
-    // جلوگیری از ثبت هم‌زمان سؤال‌های تکراری
     await client.query(
       `
         LOCK TABLE quiz_questions
@@ -370,6 +391,7 @@ async function listQuestions({
     if (/^\d+$/.test(searchText)) {
       values.push(searchText);
       const idIndex = values.length;
+
       searchConditions.push(
         `CAST(qq.id AS TEXT) = $${idIndex}`
       );
@@ -448,6 +470,7 @@ async function countQuestions({
     if (/^\d+$/.test(searchText)) {
       values.push(searchText);
       const idIndex = values.length;
+
       searchConditions.push(
         `CAST(qq.id AS TEXT) = $${idIndex}`
       );
@@ -478,6 +501,7 @@ async function countQuestions({
 async function updateQuestion({
   questionId,
   category,
+  categoryId = null,
   difficulty,
   questionText,
   optionA,
@@ -489,21 +513,24 @@ async function updateQuestion({
   updatedBy = null,
 }) {
   const db = getClient();
+  const normalizedCategoryId =
+    normalizeCategoryId(categoryId);
 
   const result = await db.query(
     `
       UPDATE quiz_questions
       SET
         category = $2,
-        difficulty = $3,
-        question_text = $4,
-        option_a = $5,
-        option_b = $6,
-        option_c = $7,
-        option_d = $8,
-        correct_option = $9,
-        explanation = $10,
-        updated_by = $11,
+        category_id = COALESCE($3, category_id),
+        difficulty = $4,
+        question_text = $5,
+        option_a = $6,
+        option_b = $7,
+        option_c = $8,
+        option_d = $9,
+        correct_option = $10,
+        explanation = $11,
+        updated_by = $12,
         updated_at = NOW()
       WHERE id = $1
       RETURNING *
@@ -511,6 +538,7 @@ async function updateQuestion({
     [
       questionId,
       category,
+      normalizedCategoryId,
       difficulty,
       questionText,
       optionA,
