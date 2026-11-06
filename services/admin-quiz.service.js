@@ -48,10 +48,45 @@ async function requireReportManagePermission(telegramUserId) {
   );
 }
 
+async function resolveCategory(categoryId) {
+  if (
+    categoryId === null ||
+    categoryId === undefined ||
+    categoryId === ""
+  ) {
+    return null;
+  }
+
+  const normalizedId = Number(categoryId);
+
+  if (
+    !Number.isInteger(normalizedId) ||
+    normalizedId <= 0
+  ) {
+    throw new Error("Invalid category ID");
+  }
+
+  const categories =
+    await adminQuizRepository.listCategories();
+
+  const category = categories.find(
+    (item) => Number(item.id) === normalizedId
+  );
+
+  if (!category) {
+    const error = new Error("Quiz category not found");
+    error.code = "CATEGORY_NOT_FOUND";
+    throw error;
+  }
+
+  return category;
+}
+
 async function createQuestion({
   telegramUserId,
-  languageCode,
+  languageCode = "fa",
   category,
+  categoryId = null,
   difficulty,
   questionText,
   optionA,
@@ -65,9 +100,18 @@ async function createQuestion({
     telegramUserId
   );
 
+  const selectedCategory = await resolveCategory(
+    categoryId
+  );
+
   return adminQuizRepository.createQuestion({
     languageCode,
-    category,
+    category: selectedCategory
+      ? selectedCategory.slug
+      : category,
+    categoryId: selectedCategory
+      ? selectedCategory.id
+      : null,
     difficulty,
     questionText,
     optionA,
@@ -119,36 +163,21 @@ async function importQuestions({
     throw new Error("Invalid quiz difficulty");
   }
 
-  const normalizedCategoryId = Number(categoryId);
-
-  if (
-    !Number.isInteger(normalizedCategoryId) ||
-    normalizedCategoryId <= 0
-  ) {
-    throw new Error("Invalid category ID");
-  }
-
-  const categories =
-    await adminQuizRepository.listCategories();
-
-  const selectedCategory = categories.find(
-    (item) => Number(item.id) === normalizedCategoryId
+  const selectedCategory = await resolveCategory(
+    categoryId
   );
 
   if (!selectedCategory) {
-    const error = new Error(
-      "Quiz category not found"
-    );
-
-    error.code = "CATEGORY_NOT_FOUND";
-
-    throw error;
+    throw new Error("Invalid category ID");
   }
 
   const preparedQuestions = [];
 
+  let invalid = 0;
+
   for (const question of questions) {
     if (!question) {
+      invalid++;
       continue;
     }
 
@@ -160,24 +189,33 @@ async function importQuestions({
       question.correctOption
     );
 
+    const questionText = String(
+      question.question || ""
+    ).trim();
+
+    const normalizedOptions = options.map(
+      (option) => String(option || "").trim()
+    );
+
     if (
-      options.length !== 4 ||
+      !questionText ||
+      normalizedOptions.length !== 4 ||
+      normalizedOptions.some((option) => !option) ||
       !Number.isInteger(correctIndex) ||
       correctIndex < 0 ||
       correctIndex > 3
     ) {
+      invalid++;
       continue;
     }
 
     preparedQuestions.push({
-      questionText: String(
-        question.question || ""
-      ).trim(),
+      questionText,
 
-      optionA: String(options[0] || "").trim(),
-      optionB: String(options[1] || "").trim(),
-      optionC: String(options[2] || "").trim(),
-      optionD: String(options[3] || "").trim(),
+      optionA: normalizedOptions[0],
+      optionB: normalizedOptions[1],
+      optionC: normalizedOptions[2],
+      optionD: normalizedOptions[3],
 
       correctOption: ["A", "B", "C", "D"][
         correctIndex
@@ -191,12 +229,12 @@ async function importQuestions({
     return {
       inserted: 0,
       duplicates: 0,
-      invalid: questions.length,
+      invalid,
       questions: [],
     };
   }
 
-  return adminQuizRepository.importQuestions({
+  const result = await adminQuizRepository.importQuestions({
     questions: preparedQuestions,
     languageCode,
     category: selectedCategory.slug,
@@ -204,6 +242,11 @@ async function importQuestions({
     difficulty: normalizedDifficulty,
     createdBy: admin.user_id,
   });
+
+  return {
+    ...result,
+    invalid: invalid + Number(result.invalid || 0),
+  };
 }
 
 async function countActiveQuestions(telegramUserId) {
@@ -300,6 +343,7 @@ async function updateQuestion({
   telegramUserId,
   questionId,
   category,
+  categoryId = null,
   difficulty,
   questionText,
   optionA,
@@ -324,9 +368,18 @@ async function updateQuestion({
     throw error;
   }
 
+  const selectedCategory = await resolveCategory(
+    categoryId
+  );
+
   return adminQuizRepository.updateQuestion({
     questionId,
-    category,
+    category: selectedCategory
+      ? selectedCategory.slug
+      : category,
+    categoryId: selectedCategory
+      ? selectedCategory.id
+      : null,
     difficulty,
     questionText,
     optionA,
@@ -343,6 +396,7 @@ async function updateQuestionFromReport({
   telegramUserId,
   questionId,
   category,
+  categoryId = null,
   difficulty,
   questionText,
   optionA,
@@ -367,9 +421,18 @@ async function updateQuestionFromReport({
     throw error;
   }
 
+  const selectedCategory = await resolveCategory(
+    categoryId
+  );
+
   return adminQuizRepository.updateQuestion({
     questionId,
-    category,
+    category: selectedCategory
+      ? selectedCategory.slug
+      : category,
+    categoryId: selectedCategory
+      ? selectedCategory.id
+      : null,
     difficulty,
     questionText,
     optionA,
