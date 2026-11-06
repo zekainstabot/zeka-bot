@@ -330,6 +330,46 @@ async function expirePending() {
   return result.rows;
 }
 
+async function listExpiredFilesForCleanup(limit = 100) {
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 100, 500)
+  );
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM zeka_media_queue
+      WHERE status = 'EXPIRED'
+        AND file_deleted_at IS NULL
+        AND file_path IS NOT NULL
+      ORDER BY expires_at ASC
+      LIMIT $1
+    `,
+    [safeLimit]
+  );
+
+  return result.rows;
+}
+
+async function markFileDeleted(id) {
+  const result = await db.query(
+    `
+      UPDATE zeka_media_queue
+      SET
+        file_deleted_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+        AND status = 'EXPIRED'
+        AND file_deleted_at IS NULL
+      RETURNING *
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
 module.exports = {
   createPending,
   findById,
@@ -346,4 +386,6 @@ module.exports = {
   recoverStalePublishing,
   restoreToPending,
   expirePending,
+  listExpiredFilesForCleanup,
+  markFileDeleted,
 };
