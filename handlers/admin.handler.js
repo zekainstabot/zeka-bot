@@ -1,4 +1,3 @@
-
 const adminService = require("../services/admin.service");
 
 const {
@@ -60,10 +59,6 @@ const {
 const {
   createAdminReportsHandler,
 } = require("./admin-reports.handler");
-
-const {
-  createZekaMediaHandler,
-} = require("./zeka-media.handler");
 
 const ENTERTAINMENT_BUTTON = "🎮 سرگرمی";
 const SUPPORT_BUTTON = "🆘 پشتیبانی";
@@ -630,8 +625,6 @@ function createAdminHandler(bot) {
   createAdminBugReportsHandler(bot);
   createAdminReportsHandler(bot);
   createAdminSupportHandler(bot);
-
-  createZekaMediaHandler(bot);
 
   for (const button of UNIMPLEMENTED_BUTTONS) {
     bot.hears(
