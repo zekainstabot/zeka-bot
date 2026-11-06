@@ -9,62 +9,23 @@ const {
 
 const config = require("./config/app");
 
-const {
-  close,
-} = require("./database/client");
+const { close } = require("./database/client");
 
-const {
-  register,
-  shutdown,
-} = require("./core/shutdown");
+const { register, shutdown } = require("./core/shutdown");
 
-const {
-  setBot: setDeliveryBot,
-} = require("./services/delivery.service");
+const { setBot: setDeliveryBot } = require("./services/delivery.service");
+const { setBot: setReportBot } = require("./services/report.service");
+const { setBot: setZekaMediaBot } = require("./services/zeka-media.service");
 
-const {
-  setBot: setReportBot,
-} = require("./services/report.service");
-
-const {
-  setBot: setZekaMediaBot,
-} = require("./services/zeka-media.service");
-
-const {
-  createBasicHandler,
-} = require("./handlers/basic.handler");
-
-const {
-  userBlockMiddleware,
-} = require("./middleware/user-block.middleware");
-
-const {
-  createAccountHandler,
-} = require("./handlers/account.handler");
-
-const {
-  createGamesHandler,
-} = require("./handlers/games.handler");
-
-const {
-  createGiftsHandler,
-} = require("./handlers/gifts.handler");
-
-const {
-  createProHandler,
-} = require("./handlers/pro.handler");
-
-const {
-  createFeaturesHandler,
-} = require("./handlers/features.handler");
-
-const {
-  createHelpHandler,
-} = require("./handlers/help.handler");
-
-const {
-  createNavigationHandler,
-} = require("./handlers/navigation.handler");
+const { createBasicHandler } = require("./handlers/basic.handler");
+const { userBlockMiddleware } = require("./middleware/user-block.middleware");
+const { createAccountHandler } = require("./handlers/account.handler");
+const { createGamesHandler } = require("./handlers/games.handler");
+const { createGiftsHandler } = require("./handlers/gifts.handler");
+const { createProHandler } = require("./handlers/pro.handler");
+const { createFeaturesHandler } = require("./handlers/features.handler");
+const { createHelpHandler } = require("./handlers/help.handler");
+const { createNavigationHandler } = require("./handlers/navigation.handler");
 
 const {
   startScheduledPublishing,
@@ -81,38 +42,22 @@ const {
   stopDeliveryRecoveryScheduler,
 } = require("./scheduler/delivery-recovery.scheduler");
 
-const {
-  createDownloadHandler,
-} = require("./handlers/download.handler");
-
-const {
-  createAdminHandler,
-} = require("./handlers/admin.handler");
-
-const {
-  createSuperAdminHandler,
-} = require("./handlers/super-admin.handler");
-
-const {
-  createInstagramCookieHandler,
-} = require("./handlers/instagram-cookie.handler");
+const { createDownloadHandler } = require("./handlers/download.handler");
+const { createAdminHandler } = require("./handlers/admin.handler");
+const { createSuperAdminHandler } = require("./handlers/super-admin.handler");
+const { createInstagramCookieHandler } = require("./handlers/instagram-cookie.handler");
 
 const {
   createQuizHandler,
   cleanupQuizTimers,
 } = require("./games/quiz/quiz.handler");
 
-const {
-  recoverJobs,
-} = require("./services/queue-recovery.service");
+const { recoverJobs } = require("./services/queue-recovery.service");
+const { recoverDeliveredJobs } = require("./services/delivery-recovery.service");
+const { createFortuneHandler } = require("./handlers/fortune.handler");
 
-const {
-  recoverDeliveredJobs,
-} = require("./services/delivery-recovery.service");
-
-const {
-  createFortuneHandler,
-} = require("./handlers/fortune.handler");
+// سیستم پشتیبانی کاربران
+const { createSupportHandler } = require("./handlers/support.handler");
 
 let bot = null;
 
@@ -166,6 +111,9 @@ function createBot() {
   createAdminHandler(bot);
   createSuperAdminHandler(bot);
   createInstagramCookieHandler(bot);
+
+  // ثبت سیستم پشتیبانی کاربران
+  createSupportHandler({ bot });
 
   createBasicHandler({
     bot,
