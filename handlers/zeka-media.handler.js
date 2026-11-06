@@ -8,7 +8,7 @@ const { deleteFile } = require("../services/file.service");
 
 const PERMISSION = "zeka_media";
 const CHANNEL = "@zeka_media";
-const PANEL_BUTTON = "📺 مدیریت زکا مدیا";
+const PANEL_BUTTON = "📺 زکا مدیا";
 const PANEL_PAGE_SIZE = 5;
 
 const CHANNEL_CAPTION = [
@@ -33,6 +33,10 @@ async function getAuthorizedAdmin(telegramUserId) {
 
   if (!admin || !admin.is_active) {
     return null;
+  }
+
+  if (admin.role_key === "super_admin") {
+    return admin;
   }
 
   const allowed = await adminService.hasPermission(
@@ -276,9 +280,7 @@ async function handleReviewAction(ctx) {
         );
       }
 
-      await ctx.answerCbQuery(
-        "محتوا رد شد."
-      );
+      await ctx.answerCbQuery("محتوا رد شد.");
 
       await ctx.reply(
         `❌ محتوای زکا مدیا با شناسه ${queueId} رد شد.`
