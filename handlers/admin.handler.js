@@ -311,6 +311,26 @@ async function showEntertainmentMenu(ctx) {
       return;
     }
 
+    if (admin.role_key === "super_admin") {
+      await ctx.reply(
+        "🎮 مدیریت سرگرمی\n\nبخش موردنظر را انتخاب کنید.",
+        {
+          reply_markup: {
+            keyboard: [
+              ["🧠 مدیریت مسابقه"],
+              ["🔮 مدیریت فال"],
+              ["🎁 مدیریت جوایز"],
+              ["🔙 پنل Super Admin"],
+            ],
+            resize_keyboard: true,
+            one_time_keyboard: false,
+          },
+        }
+      );
+
+      return;
+    }
+
     const buttons = [];
 
     for (const section of ENTERTAINMENT_SECTIONS) {
@@ -333,12 +353,7 @@ async function showEntertainmentMenu(ctx) {
       return;
     }
 
-    const backButton =
-      admin.role_key === "super_admin"
-        ? "🔙 پنل Super Admin"
-        : "🔙 پنل ادمین";
-
-    buttons.push([backButton]);
+    buttons.push(["🔙 پنل ادمین"]);
 
     await ctx.reply(
       "🎮 سرگرمی\n\nبخش موردنظر را انتخاب کنید:",
