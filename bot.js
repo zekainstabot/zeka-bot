@@ -18,6 +18,15 @@ const { setBot: setDeliveryBot } = require("./services/delivery.service");
 const { setBot: setReportBot } = require("./services/report.service");
 const { setBot: setZekaMediaBot } = require("./services/zeka-media.service");
 
+const {
+  startZekaMediaExpirationService,
+  stopZekaMediaExpirationService,
+} = require("./services/zeka-media-expiration.service");
+
+const {
+  recoverStalePublishing,
+} = require("./repositories/zeka-media.repository");
+
 const { createBasicHandler } = require("./handlers/basic.handler");
 const { userBlockMiddleware } = require("./middleware/user-block.middleware");
 const { createAccountHandler } = require("./handlers/account.handler");
@@ -47,6 +56,7 @@ const { createDownloadHandler } = require("./handlers/download.handler");
 const { createAdminHandler } = require("./handlers/admin.handler");
 const { createSuperAdminHandler } = require("./handlers/super-admin.handler");
 const { createInstagramCookieHandler } = require("./handlers/instagram-cookie.handler");
+
 const {
   createZekaMediaHandler,
 } = require("./handlers/zeka-media.handler");
@@ -170,6 +180,7 @@ function createBot() {
     stopScheduledPublishing();
     stopProPurchaseNotificationScheduler();
     stopDeliveryRecoveryScheduler();
+    stopZekaMediaExpirationService();
 
     cleanupQuizTimers();
 
@@ -195,6 +206,16 @@ process.once("SIGTERM", async () => {
 
 async function startBot() {
   const telegramBot = createBot();
+
+  console.log("Recovering stale Zeka Media publishing items...");
+
+  const recoveredMediaItems = await recoverStalePublishing(10);
+
+  console.log(
+    `Zeka Media recovery finished. Unknown items: ${recoveredMediaItems.length}`
+  );
+
+  startZekaMediaExpirationService();
 
   console.log("Starting delivery recovery...");
 
@@ -227,6 +248,7 @@ async function startBot() {
       stopScheduledPublishing();
       stopProPurchaseNotificationScheduler();
       stopDeliveryRecoveryScheduler();
+      stopZekaMediaExpirationService();
 
       throw error;
     }
