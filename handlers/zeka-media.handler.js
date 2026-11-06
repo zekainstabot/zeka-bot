@@ -10,6 +10,26 @@ const CHANNEL = "@zeka_media";
 const PANEL_BUTTON = "📺 مدیریت زکا مدیا";
 const PANEL_PAGE_SIZE = 5;
 
+const PANEL_STATUSES = [
+  "PENDING",
+  "PUBLISHING",
+  "PUBLISH_UNKNOWN",
+  "PUBLISHED",
+  "REJECTED",
+  "FAILED",
+  "EXPIRED",
+];
+
+const STATUS_LABELS = {
+  PENDING: "📥 در انتظار بررسی",
+  PUBLISHING: "⏳ در حال انتشار",
+  PUBLISH_UNKNOWN: "⚠️ انتشار نامشخص",
+  PUBLISHED: "✅ منتشرشده",
+  REJECTED: "❌ ردشده",
+  FAILED: "🚫 ناموفق",
+  EXPIRED: "⌛ منقضی‌شده",
+};
+
 const CHANNEL_CAPTION = [
   "ZEKA MEDIA",
   "",
@@ -89,6 +109,72 @@ function buildReviewKeyboard(queueId) {
   };
 }
 
+function buildPanelKeyboard(counts) {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: `📥 در انتظار (${counts.PENDING || 0})`,
+          callback_data: "zeka_media:view:PENDING:0",
+        },
+        {
+          text: `⚠️ نامشخص (${counts.PUBLISH_UNKNOWN || 0})`,
+          callback_data: "zeka_media:view:PUBLISH_UNKNOWN:0",
+        },
+      ],
+      [
+        {
+          text: `⏳ در حال انتشار (${counts.PUBLISHING || 0})`,
+          callback_data: "zeka_media:view:PUBLISHING:0",
+        },
+        {
+          text: `✅ منتشرشده (${counts.PUBLISHED || 0})`,
+          callback_data: "zeka_media:view:PUBLISHED:0",
+        },
+      ],
+      [
+        {
+          text: `❌ ردشده (${counts.REJECTED || 0})`,
+          callback_data: "zeka_media:view:REJECTED:0",
+        },
+        {
+          text: `🚫 ناموفق (${counts.FAILED || 0})`,
+          callback_data: "zeka_media:view:FAILED:0",
+        },
+      ],
+      [
+        {
+          text: `⌛ منقضی‌شده (${counts.EXPIRED || 0})`,
+          callback_data: "zeka_media:view:EXPIRED:0",
+        },
+      ],
+    ],
+  };
+}
+
+async function sendPanelHome(ctx) {
+  const counts = await mediaRepository.getStatusCounts();
+
+  await ctx.reply(
+    [
+      "📺 مدیریت زکا مدیا",
+      "",
+      `📥 در انتظار بررسی: ${counts.PENDING || 0}`,
+      `⏳ در حال انتشار: ${counts.PUBLISHING || 0}`,
+      `⚠️ انتشار نامشخص: ${counts.PUBLISH_UNKNOWN || 0}`,
+      `✅ منتشرشده: ${counts.PUBLISHED || 0}`,
+      `❌ ردشده: ${counts.REJECTED || 0}`,
+      `🚫 ناموفق: ${counts.FAILED || 0}`,
+      `⌛ منقضی‌شده: ${counts.EXPIRED || 0}`,
+      "",
+      "برای مشاهده درخواست‌ها یکی از بخش‌های زیر را انتخاب کن.",
+    ].join("\n"),
+    {
+      reply_markup: buildPanelKeyboard(counts),
+    }
+  );
+}
+
 async function publishToChannel(queueItem) {
   if (!botInstance) {
     throw new Error("Zeka Media bot is not initialized");
@@ -115,12 +201,166 @@ async function publishToChannel(queueItem) {
   } catch (error) {
     stream.destroy();
 
-    // خطای درخواست تلگرام ممکن است بعد از انتشار واقعی رخ داده باشد.
-    // بنابراین نتیجه را نامشخص ثبت می‌کنیم تا انتشار تکراری اتفاق نیفتد.
+    // نتیجه درخواست تلگرام ممکن است نامشخص باشد.
+    // برای جلوگیری از انتشار تکراری، وضعیت UNKNOWN ثبت می‌شود.
     error.publishFailureType = "UNKNOWN";
 
     throw error;
   }
+}
+
+async function renderStatusPage(ctx, status, offset = 0) {
+  if (!PANEL_STATUSES.includes(status)) {
+    await ctx.reply("وضعیت انتخاب‌شده معتبر نیست.");
+    return;
+  }
+
+  const safeOffset = Math.max(
+    0,
+    Math.floor(Number(offset) || 0)
+  );
+
+  const total = await mediaRepository.countByStatus(status);
+
+  const items =
+    status === "PENDING"
+      ? await mediaRepository.listPending(
+          PANEL_PAGE_SIZE,
+          safeOffset
+        )
+      : await mediaRepository.listByStatus(
+          status,
+          PANEL_PAGE_SIZE,
+          safeOffset
+        );
+
+  const pageNumber =
+    Math.floor(safeOffset / PANEL_PAGE_SIZE) + 1;
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(total / PANEL_PAGE_SIZE)
+  );
+
+  await ctx.reply(
+    [
+      STATUS_LABELS[status],
+      "",
+      `تعداد کل: ${total}`,
+      `صفحه: ${pageNumber} از ${totalPages}`,
+    ].join("\n")
+  );
+
+  for (const item of items) {
+    const details = [
+      `شناسه: ${item.id}`,
+      `وضعیت: ${STATUS_LABELS[status]}`,
+      `نوع فایل: ${item.content_type || "UNKNOWN"}`,
+      item.original_url
+        ? `لینک منبع: ${item.original_url}`
+        : null,
+      item.published_message_id
+        ? `شناسه پیام کانال: ${item.published_message_id}`
+        : null,
+      item.file_path
+        ? `فایل: ${
+            fs.existsSync(item.file_path)
+              ? "موجود"
+              : "حذف‌شده یا در دسترس نیست"
+          }`
+        : "فایل: ثبت نشده",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    if (status === "PENDING") {
+      if (
+        !item.file_path ||
+        !fs.existsSync(item.file_path)
+      ) {
+        await ctx.reply(
+          `⚠️ فایل درخواست ${item.id} پیدا نشد.\n${details}`
+        );
+        continue;
+      }
+
+      const method = getChannelMediaMethod(item);
+      const stream = fs.createReadStream(item.file_path);
+
+      try {
+        await botInstance.telegram[method](
+          ctx.chat.id,
+          { source: stream },
+          {
+            caption: [
+              "📺 محتوای در انتظار بررسی زکا مدیا",
+              "",
+              details,
+              "",
+              "برای انتشار یا رد محتوا یکی از دکمه‌ها را بزن.",
+            ].join("\n"),
+            reply_markup: buildReviewKeyboard(item.id),
+          }
+        );
+      } catch (error) {
+        stream.destroy();
+
+        console.error(
+          `Failed to display Zeka Media item ${item.id}:`,
+          error
+        );
+
+        await ctx.reply(
+          `❌ نمایش محتوای ${item.id} ناموفق بود.`
+        );
+      }
+
+      continue;
+    }
+
+    await ctx.reply(details);
+  }
+
+  const navigationButtons = [];
+
+  if (safeOffset > 0) {
+    navigationButtons.push({
+      text: "⬅️ صفحه قبل",
+      callback_data: `zeka_media:view:${status}:${Math.max(
+        0,
+        safeOffset - PANEL_PAGE_SIZE
+      )}`,
+    });
+  }
+
+  if (safeOffset + PANEL_PAGE_SIZE < total) {
+    navigationButtons.push({
+      text: "صفحه بعد ➡️",
+      callback_data: `zeka_media:view:${status}:${safeOffset + PANEL_PAGE_SIZE}`,
+    });
+  }
+
+  const keyboard = [];
+
+  if (navigationButtons.length) {
+    keyboard.push(navigationButtons);
+  }
+
+  keyboard.push([
+    {
+      text: "🔙 بازگشت به مدیریت زکا مدیا",
+      callback_data: "zeka_media:home",
+    },
+  ]);
+
+  await ctx.reply(
+    "صفحه‌بندی درخواست‌ها",
+    {
+      reply_markup: {
+        inline_keyboard: keyboard,
+      },
+    }
+  );
 }
 
 async function handlePanel(ctx) {
@@ -143,101 +383,76 @@ async function handlePanel(ctx) {
       return;
     }
 
-    const items = await mediaRepository.listPending(
-      PANEL_PAGE_SIZE
-    );
+    await sendPanelHome(ctx);
 
-    const counts = await mediaRepository.getStatusCounts();
+    const pendingCount =
+      await mediaRepository.countByStatus("PENDING");
 
-    const pendingCount = counts.PENDING || 0;
-    const unknownCount = counts.PUBLISH_UNKNOWN || 0;
-
-    if (!items.length) {
-      await ctx.reply(
-        [
-          "📺 مدیریت زکا مدیا",
-          "",
-          "در حال حاضر محتوایی برای بررسی وجود ندارد.",
-          "",
-          `📥 در انتظار بررسی: ${pendingCount}`,
-          `⚠️ انتشار نامشخص: ${unknownCount}`,
-          `✅ منتشرشده: ${counts.PUBLISHED || 0}`,
-          `❌ ردشده: ${counts.REJECTED || 0}`,
-          `🚫 ناموفق: ${counts.FAILED || 0}`,
-        ].join("\n")
-      );
-      return;
-    }
-
-    await ctx.reply(
-      [
-        "📺 مدیریت زکا مدیا",
-        "",
-        `📥 در انتظار بررسی: ${pendingCount}`,
-        `⚠️ انتشار نامشخص: ${unknownCount}`,
-        `✅ منتشرشده: ${counts.PUBLISHED || 0}`,
-        `❌ ردشده: ${counts.REJECTED || 0}`,
-        `🚫 ناموفق: ${counts.FAILED || 0}`,
-        "",
-        `${items.length} مورد از درخواست‌های در انتظار نمایش داده می‌شود.`,
-      ].join("\n")
-    );
-
-    for (const item of items) {
-      const caption = [
-        "📺 محتوای در انتظار بررسی زکا مدیا",
-        "",
-        `شناسه: ${item.id}`,
-        `نوع فایل: ${item.content_type || "UNKNOWN"}`,
-        item.original_url
-          ? `لینک منبع: ${item.original_url}`
-          : null,
-        "",
-        "برای انتشار یا رد محتوا یکی از دکمه‌ها را بزن.",
-      ]
-        .filter((line) => line !== null)
-        .join("\n");
-
-      if (
-        !item.file_path ||
-        !fs.existsSync(item.file_path)
-      ) {
-        await ctx.reply(
-          `⚠️ فایل محتوای شماره ${item.id} پیدا نشد.`
-        );
-        continue;
-      }
-
-      const method = getChannelMediaMethod(item);
-      const stream = fs.createReadStream(item.file_path);
-
-      try {
-        await botInstance.telegram[method](
-          ctx.chat.id,
-          { source: stream },
-          {
-            caption,
-            reply_markup: buildReviewKeyboard(item.id),
-          }
-        );
-      } catch (error) {
-        stream.destroy();
-
-        console.error(
-          `Failed to display Zeka Media item ${item.id}:`,
-          error
-        );
-
-        await ctx.reply(
-          `❌ نمایش محتوای شماره ${item.id} ناموفق بود.`
-        );
-      }
+    if (pendingCount > 0) {
+      await renderStatusPage(ctx, "PENDING", 0);
     }
   } catch (error) {
     console.error("Zeka Media panel failed:", error);
 
     await ctx.reply(
       "❌ باز کردن پنل زکا مدیا با خطا مواجه شد. لاگ Render را بررسی کن."
+    );
+  }
+}
+
+async function handlePanelNavigation(ctx) {
+  const data = String(
+    ctx.callbackQuery?.data || ""
+  );
+
+  try {
+    const admin = await getAuthorizedAdmin(ctx.from?.id);
+
+    if (!admin) {
+      await ctx.answerCbQuery(
+        "⛔ دسترسی مدیریت زکا مدیا ندارید.",
+        { show_alert: true }
+      );
+      return;
+    }
+
+    if (data === "zeka_media:home") {
+      await ctx.answerCbQuery();
+      await sendPanelHome(ctx);
+      return;
+    }
+
+    const match = data.match(
+      /^zeka_media:view:(PENDING|PUBLISHING|PUBLISH_UNKNOWN|PUBLISHED|REJECTED|FAILED|EXPIRED):(\d+)$/
+    );
+
+    if (!match) {
+      await ctx.answerCbQuery("درخواست نامعتبر است.");
+      return;
+    }
+
+    await ctx.answerCbQuery();
+
+    await renderStatusPage(
+      ctx,
+      match[1],
+      Number(match[2])
+    );
+  } catch (error) {
+    console.error(
+      "Zeka Media panel navigation failed:",
+      error
+    );
+
+    try {
+      await ctx.answerCbQuery(
+        "خطا در نمایش درخواست‌ها.",
+        { show_alert: true }
+      );
+    } catch {}
+
+    await ctx.reply(
+      "❌ نمایش بخش انتخاب‌شده با خطا مواجه شد."
     );
   }
 }
@@ -304,7 +519,7 @@ async function handleApprove(ctx, queueId, telegramUserId) {
       current?.status === "EXPIRED"
         ? "مهلت بررسی تمام شده است."
         : current?.status === "PUBLISH_UNKNOWN"
-          ? "نتیجه انتشار قبلی نامشخص است؛ برای جلوگیری از انتشار تکراری بررسی دستی لازم است."
+          ? "نتیجه انتشار قبلی نامشخص است؛ بررسی دستی لازم است."
           : current?.status === "PUBLISHING"
             ? "این محتوا در حال انتشار است."
             : "این مورد قبلاً بررسی شده یا وجود ندارد.",
@@ -476,6 +691,11 @@ function createZekaMediaHandler(bot) {
   setBot(bot);
 
   bot.hears(PANEL_BUTTON, handlePanel);
+
+  bot.action(
+    /^zeka_media:(home|view:(PENDING|PUBLISHING|PUBLISH_UNKNOWN|PUBLISHED|REJECTED|FAILED|EXPIRED):\d+)$/,
+    handlePanelNavigation
+  );
 
   bot.action(
     /^zeka_media:(approve|reject):\d+$/,
