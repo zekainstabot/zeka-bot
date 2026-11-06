@@ -233,7 +233,10 @@ async function publishToChannel(queueItem) {
     !queueItem?.file_path ||
     !fs.existsSync(queueItem.file_path)
   ) {
-    const error = new Error("Queued media file is missing");
+    const error = new Error(
+      "فایل محلی موجود نیست. برای دانلود مجدد باید دکمه تلاش مجدد را بزنی."
+    );
+
     error.publishFailureType = "DEFINITE";
     throw error;
   }
@@ -254,7 +257,13 @@ async function publishToChannel(queueItem) {
   }
 }
 
-async function getAvailableMedia(item) {
+/**
+ * فایل موجود را برمی‌گرداند.
+ *
+ * دانلود مجدد فقط وقتی انجام می‌شود که allowRecovery برابر true باشد.
+ * این مقدار فقط در مسیر دکمه Retry دستی فعال می‌شود.
+ */
+async function getAvailableMedia(item, allowRecovery = false) {
   const cached = recoveredMediaFiles.get(Number(item.id));
 
   if (
@@ -275,6 +284,12 @@ async function getAvailableMedia(item) {
       filePath: item.file_path,
       contentType: item.content_type || "UNKNOWN",
     };
+  }
+
+  if (!allowRecovery) {
+    throw new Error(
+      "فایل محلی موجود نیست. برای دانلود مجدد، دکمه تلاش مجدد را بزن."
+    );
   }
 
   const recovered = await recoverZekaMediaFile(item);
@@ -409,6 +424,7 @@ async function renderStatusPage(ctx, status, offset = 0) {
       .filter(Boolean)
       .join("\n");
 
+    // فقط فایل موجود نمایش داده می‌شود؛ این بخش دانلود نمی‌کند.
     if (reviewable && fileAvailable) {
       try {
         await sendMediaPreview(ctx, item, {
@@ -443,7 +459,7 @@ async function renderStatusPage(ctx, status, offset = 0) {
           "",
           details,
           "",
-          "برای دریافت مجدد فایل از لینک اصلی، دکمه تلاش مجدد را بزن.",
+          "فایل محلی موجود نیست. برای دانلود مجدد، خودت دکمه تلاش مجدد را بزن.",
         ].join("\n"),
         {
           reply_markup: buildRetryKeyboard(item.id),
@@ -524,6 +540,7 @@ async function handlePanel(ctx) {
       await mediaRepository.countByStatus("PENDING");
 
     if (pendingCount > 0) {
+      // فقط نمایش فایل‌های موجود؛ بدون دانلود یا بازیابی خودکار
       await renderStatusPage(ctx, "PENDING", 0);
     }
   } catch (error) {
@@ -540,7 +557,6 @@ async function handlePanelNavigation(ctx) {
     ctx.callbackQuery?.data || ""
   );
 
-  // پاسخ تلگرام قبل از بررسی دسترسی و دیتابیس
   await answerCallback(ctx, "در حال بارگذاری...");
 
   try {
@@ -671,10 +687,11 @@ async function handleApprove(ctx, queueId, telegramUserId) {
   let media;
 
   try {
-    media = await getAvailableMedia(queueItem);
+    // فقط فایل موجود؛ هرگز دانلود مجدد نکن.
+    media = await getAvailableMedia(queueItem, false);
   } catch (error) {
     console.error(
-      `Zeka Media recovery before publish failed for ${queueId}:`,
+      `Zeka Media local file check failed for ${queueId}:`,
       error
     );
 
@@ -682,10 +699,10 @@ async function handleApprove(ctx, queueId, telegramUserId) {
 
     await ctx.reply(
       [
-        `❌ بازیابی فایل درخواست ${queueId} ناموفق بود.`,
+        `❌ انتشار درخواست ${queueId} انجام نشد.`,
         `علت: ${error.message}`,
         "",
-        "درخواست در بخش ناموفق باقی می‌ماند و می‌توانی دوباره تلاش کنی.",
+        "برای دریافت مجدد فایل، از دکمه تلاش مجدد استفاده کن.",
       ].join("\n")
     );
 
@@ -805,11 +822,12 @@ async function handleRetry(ctx, queueId) {
   await removeReviewButtons(ctx);
 
   await ctx.reply(
-    `⏳ دانلود مجدد درخواست ${queueId} شروع شد. پس از آماده شدن فایل، پیش‌نمایش ارسال می‌شود.`
+    `⏳ دانلود مجدد درخواست ${queueId} با درخواست شما شروع شد. پس از آماده شدن فایل، پیش‌نمایش ارسال می‌شود.`
   );
 
   try {
-    const media = await getAvailableMedia(item);
+    // تنها نقطه‌ای که اجازه دانلود مجدد دارد.
+    const media = await getAvailableMedia(item, true);
 
     await sendMediaPreview(ctx, item, media);
 
@@ -818,7 +836,7 @@ async function handleRetry(ctx, queueId) {
     );
   } catch (error) {
     console.error(
-      `Zeka Media retry failed for ${queueId}:`,
+      `Zeka Media manual retry failed for ${queueId}:`,
       error
     );
 
@@ -847,14 +865,13 @@ async function handleReviewAction(ctx) {
   const queueId = Number(match[2]);
   const telegramUserId = ctx.from?.id;
 
-  // پاسخ فوری به کلیک؛ قبل از دیتابیس، دسترسی یا دانلود
   await answerCallback(
     ctx,
     action === "approve"
       ? "در حال شروع انتشار..."
       : action === "reject"
         ? "در حال ثبت رد درخواست..."
-        : "در حال شروع بازیابی فایل..."
+        : "در حال شروع دانلود دستی..."
   );
 
   if (!botInstance) {
