@@ -1,10 +1,10 @@
-
 const { Markup } = require("telegraf");
 
 const mainMenu = Markup.keyboard([
   ["📥 دانلود", "👤 حساب من"],
   ["🎁 هدایا", "⭐ زکا پرو"],
   ["🛠 امکانات ویژه"],
+  ["💬 ارتباط با پشتیبانی"],
 ])
   .resize()
   .oneTime(false);
