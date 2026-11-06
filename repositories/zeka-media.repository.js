@@ -4,6 +4,17 @@ const {
 
 const db = getClient();
 
+const ALLOWED_STATUSES = [
+  "PENDING",
+  "PUBLISHING",
+  "APPROVED",
+  "REJECTED",
+  "PUBLISHED",
+  "EXPIRED",
+  "FAILED",
+  "PUBLISH_UNKNOWN",
+];
+
 async function createPending({
   jobId,
   filePath,
@@ -66,10 +77,15 @@ async function findByJobId(jobId) {
   return result.rows[0] || null;
 }
 
-async function listPending(limit = 20) {
+async function listPending(limit = 20, offset = 0) {
   const safeLimit = Math.max(
     1,
     Math.min(Number(limit) || 20, 100)
+  );
+
+  const safeOffset = Math.max(
+    0,
+    Number(offset) || 0
   );
 
   const result = await db.query(
@@ -80,8 +96,84 @@ async function listPending(limit = 20) {
         AND expires_at > NOW()
       ORDER BY created_at ASC
       LIMIT $1
+      OFFSET $2
     `,
-    [safeLimit]
+    [safeLimit, safeOffset]
+  );
+
+  return result.rows;
+}
+
+async function countByStatus(status) {
+  if (!ALLOWED_STATUSES.includes(status)) {
+    throw new Error(`Invalid Zeka Media status: ${status}`);
+  }
+
+  const result = await db.query(
+    `
+      SELECT COUNT(*)::INTEGER AS total
+      FROM zeka_media_queue
+      WHERE status = $1
+    `,
+    [status]
+  );
+
+  return result.rows[0]?.total || 0;
+}
+
+async function getStatusCounts() {
+  const result = await db.query(
+    `
+      SELECT
+        status,
+        COUNT(*)::INTEGER AS total
+      FROM zeka_media_queue
+      GROUP BY status
+    `
+  );
+
+  const counts = {};
+
+  for (const status of ALLOWED_STATUSES) {
+    counts[status] = 0;
+  }
+
+  for (const row of result.rows) {
+    counts[row.status] = row.total;
+  }
+
+  return counts;
+}
+
+async function listByStatus(
+  status,
+  limit = 20,
+  offset = 0
+) {
+  if (!ALLOWED_STATUSES.includes(status)) {
+    throw new Error(`Invalid Zeka Media status: ${status}`);
+  }
+
+  const safeLimit = Math.max(
+    1,
+    Math.min(Number(limit) || 20, 100)
+  );
+
+  const safeOffset = Math.max(
+    0,
+    Number(offset) || 0
+  );
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM zeka_media_queue
+      WHERE status = $1
+      ORDER BY updated_at DESC
+      LIMIT $2
+      OFFSET $3
+    `,
+    [status, safeLimit, safeOffset]
   );
 
   return result.rows;
@@ -163,6 +255,45 @@ async function markFailed(id) {
   return result.rows[0] || null;
 }
 
+async function markPublishUnknown(id) {
+  const result = await db.query(
+    `
+      UPDATE zeka_media_queue
+      SET
+        status = 'PUBLISH_UNKNOWN',
+        updated_at = NOW()
+      WHERE id = $1
+        AND status = 'PUBLISHING'
+      RETURNING *
+    `,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
+async function recoverStalePublishing(minutes = 10) {
+  const safeMinutes = Math.max(
+    1,
+    Math.min(Number(minutes) || 10, 1440)
+  );
+
+  const result = await db.query(
+    `
+      UPDATE zeka_media_queue
+      SET
+        status = 'PUBLISH_UNKNOWN',
+        updated_at = NOW()
+      WHERE status = 'PUBLISHING'
+        AND updated_at <= NOW() - ($1 * INTERVAL '1 minute')
+      RETURNING *
+    `,
+    [safeMinutes]
+  );
+
+  return result.rows;
+}
+
 async function restoreToPending(id) {
   const result = await db.query(
     `
@@ -204,10 +335,15 @@ module.exports = {
   findById,
   findByJobId,
   listPending,
+  countByStatus,
+  getStatusCounts,
+  listByStatus,
   claimForPublishing,
   reject,
   markPublished,
   markFailed,
+  markPublishUnknown,
+  recoverStalePublishing,
   restoreToPending,
   expirePending,
 };
