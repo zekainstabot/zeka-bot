@@ -1,3 +1,4 @@
+
 const {
   Markup,
 } = require("telegraf");
@@ -59,12 +60,10 @@ function buildSuperAdminMenu() {
   return Markup.keyboard([
     ["👥 کاربران", "💰 مالی"],
     ["⚙️ تنظیمات"],
-    ["📥 مدیریت درخواست‌ها"],
     [ENTERTAINMENT_BUTTON, "🌐 مدیریت پلتفرم‌ها"],
     ["🍪 کوکی اینستاگرام"],
     ["✨ مدیریت امکانات", "🆘 پشتیبانی"],
     ["📊 مانیتورینگ", "🛠 مدیریت ادمین"],
-    ["📋 گزارش‌ها", "🐞 گزارش مشکلات"],
     ["🔙 خروج از پنل Super Admin"],
   ])
     .resize()
@@ -105,10 +104,6 @@ async function handleSuperAdminCommand(ctx) {
   }
 }
 
-/*
- * این تابع فقط برای بازگشت از زیرمنوی سرگرمی استفاده می‌شود.
- * ورود اصلی به سرگرمی توسط admin.handler مدیریت می‌شود.
- */
 async function handleEntertainmentMenu(ctx) {
   const admin = await getSuperAdmin(ctx);
 
@@ -376,11 +371,6 @@ function createSuperAdminHandler(bot) {
 
   createSuperAdminFinanceHandler(bot);
 
-  /*
-   * دکمه 🎮 سرگرمی اینجا ثبت نمی‌شود.
-   * admin.handler آن را برای هر دو نقش مدیریت می‌کند.
-   */
-
   bot.hears(
     "🌐 مدیریت پلتفرم‌ها",
     handlePlatformMenu
@@ -395,10 +385,6 @@ function createSuperAdminHandler(bot) {
     "🔄 تازه‌سازی وضعیت پلتفرم‌ها",
     handlePlatformMenu
   );
-
-  /*
-   * دکمه 🧠 مدیریت مسابقه هم فقط در admin.handler ثبت می‌شود.
-   */
 
   bot.hears(
     "💎 مدیریت Pro",
