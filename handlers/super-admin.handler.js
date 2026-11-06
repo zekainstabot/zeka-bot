@@ -1,4 +1,3 @@
-
 const { Markup } = require("telegraf");
 
 const { mainMenu } = require("../config/bot-menus");
@@ -48,7 +47,7 @@ function buildSuperAdminMenu() {
   return Markup.keyboard([
     ["👥 کاربران", "💰 مالی"],
     [SETTINGS_BUTTON],
-    [ENTERTAINMENT_BUTTON, "✨ مدیریت امکانات"],
+    [ENTERTAINMENT_BUTTON],
     ["🆘 پشتیبانی", "🛠 مدیریت ادمین"],
     ["🔙 خروج از پنل Super Admin"],
   ])
