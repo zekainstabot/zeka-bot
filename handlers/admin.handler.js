@@ -143,7 +143,6 @@ const PERMISSION_BUTTONS = [
 ];
 
 const UNIMPLEMENTED_BUTTONS = [
-  "⚙️ تنظیمات",
   "✨ مدیریت امکانات",
 ];
 
