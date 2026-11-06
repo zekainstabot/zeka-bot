@@ -25,12 +25,17 @@ const STATUS_BUTTONS = [
 
 const NAVIGATION_BUTTONS = new Set([
   "🆘 پشتیبانی",
+  "💬 مدیریت پشتیبانی",
   "🔙 پنل Super Admin",
   "🔙 پنل ادمین",
   "🔙 پنل مدیریت",
   "🔙 خروج از پنل Super Admin",
   "🔙 خروج از پنل مدیریت",
   "⚙️ تنظیمات",
+  "🌐 مدیریت پلتفرم‌ها",
+  "🍪 کوکی اینستاگرام",
+  "📊 مانیتورینگ",
+  "🔙 تنظیمات",
   "🎮 سرگرمی",
   "👥 کاربران",
   "💰 مالی",
@@ -498,12 +503,8 @@ async function handleAdminReply(ctx, next) {
       senderUserId: admin.user_id,
       senderType: "ADMIN",
       message,
+      ticketStatus: "WAITING_USER",
     });
-
-    await supportRepository.updateTicketStatus(
-      pending.ticketId,
-      "WAITING_USER"
-    );
 
     let notificationSent = true;
 
