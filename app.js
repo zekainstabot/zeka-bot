@@ -102,7 +102,7 @@ async function handleWebApi(req, res, url) {
     }
   }
 
-  const match = url.pathname.match(/^\\/api\\/web\\/downloads\\/([a-zA-Z0-9_-]+)$/);
+  const match = url.pathname.startsWith("/api/web/downloads/") ? url.pathname.slice("/api/web/downloads/".length).match(/^([0-9]+)$/) : null;
   if (match && req.method === "GET") {
     const userId = String(url.searchParams.get("userId") || "");
     if (!/^\\d+$/.test(userId)) {
