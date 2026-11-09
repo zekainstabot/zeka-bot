@@ -110,8 +110,9 @@ function createFortuneHandler({
 }) {
     const openFortuneMenu = async (ctx) => {
     await ctx.reply(
-      "🔮 فال\n\n" +
-        "نوع فال موردنظرت را انتخاب کن:",
+      ctx.state?.language === "en"
+        ? "🔮 Fortune\n\nChoose the type of fortune you want:"
+        : "🔮 فال\n\nنوع فال موردنظرت را انتخاب کن:",
       fortuneMenu
     );
   };
