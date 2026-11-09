@@ -113,7 +113,9 @@ async function reserveCredit({
     }
 
     if (remainingToReserve > 0) {
-      throw new Error("Insufficient credit");
+      const error = new Error("Insufficient credit");
+      error.code = "INSUFFICIENT_CREDIT";
+      throw error;
     }
 
     await client.query("COMMIT");
