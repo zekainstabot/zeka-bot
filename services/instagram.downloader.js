@@ -805,6 +805,7 @@ async function downloadWithBrowserFallback({
       finalCost: null,
     };
   } catch (error) {
+    attemptErrors.push(error);
     console.error(
       "Instagram browser fallback failed:",
       error?.message || String(error)
@@ -983,6 +984,7 @@ try {
     })
   );
 } catch (error) {
+  attemptErrors.push(error);
   console.error("Instagram yt-dlp download failed:", {
     message: error?.message || String(error),
     code: error?.code || null,
@@ -1021,6 +1023,7 @@ try {
       return galleryResult;
     }
   } catch (error) {
+    attemptErrors.push(error);
     console.error(
       "Instagram gallery-dl fallback failed:",
       error?.stderr || error?.message || String(error)
@@ -1105,6 +1108,7 @@ try {
 
     return makeResult(files[0], instagramCaption);
   } catch (error) {
+    attemptErrors.push(error);
     console.error(
       "Instagram final cookie fallback failed:",
       error?.stderr || error?.message || String(error)
@@ -1114,10 +1118,13 @@ try {
       throw error;
     }
 
-    throw new Error(
-      "Instagram download failed after yt-dlp, gallery-dl, browser, and final cookie fallback. " +
-        (error?.message || String(error))
+    const combinedError = new Error(
+      "Instagram download failed. " +
+      attemptErrors.map((item) => item?.stderr || item?.message || String(item)).join(" | ")
     );
+    combinedError.code = error?.code || null;
+    combinedError.attemptErrors = attemptErrors;
+    throw combinedError;
   } finally {
     if (cookiePath) {
       try {
