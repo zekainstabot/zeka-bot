@@ -86,6 +86,11 @@ async function getAuthorizedAdmin(telegramUserId) {
   return allowed ? admin : null;
 }
 
+/**
+ * برای آزمایش مسیر آپلود:
+ * تصاویر با sendPhoto و ویدئوها با sendDocument ارسال می‌شوند.
+ * این تغییر فقط برای تشخیص مشکل sendVideo است.
+ */
 function getChannelMediaMethod(queueItem) {
   const type = String(
     queueItem.content_type || ""
@@ -106,7 +111,7 @@ function getChannelMediaMethod(queueItem) {
     type === "VIDEO" ||
     [".mp4", ".mov", ".webm", ".mkv"].includes(extension)
   ) {
-    return "sendVideo";
+    return "sendDocument";
   }
 
   return "sendDocument";
@@ -266,14 +271,7 @@ async function sendTelegramMedia({
     throw new Error("Zeka Media bot is not initialized");
   }
 
-  let fileInfo;
-
-  try {
-    fileInfo = getFileInfo(filePath);
-  } catch (error) {
-    error.zekaMediaStage = "FILE_CHECK";
-    throw error;
-  }
+  const fileInfo = getFileInfo(filePath);
 
   const method = getChannelMediaMethod({
     file_path: filePath,
