@@ -26,7 +26,7 @@ test("buildDeliveryCaption appends bot, channel and website details", () => {
 
   assert.equal(
     caption,
-    "فایل آماده شد\\n\\n🤖 ربات: @zekagpt_bot\\n📢 کانال: @zeka_media\\n🌐 سایت: https://zeka-media.onrender.com"
+    "فایل آماده شد\n\n🤖 ربات: @zekagpt_bot\n📢 کانال: @zeka_media\n🌐 سایت: https://zeka-media.onrender.com"
   );
 });
 
