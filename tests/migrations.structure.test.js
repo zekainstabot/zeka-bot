@@ -47,7 +47,7 @@ test("migration filenames are unique and numeric prefixes are valid", () => {
     .filter((file) => file.endsWith(".sql"));
 
   const numbers = files.map((file) =>
-    Number(file.match(/^(\\d+)_/)[1])
+    Number(file.match(/^(\d+)_/)[1])
   );
 
   assert.equal(new Set(files).size, files.length);
