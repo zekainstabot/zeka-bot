@@ -3,45 +3,28 @@ const { Markup } = require("telegraf");
 const mainMenu = Markup.keyboard([
   ["📥 دانلود", "👤 حساب من"],
   ["🎁 هدایا", "⭐ زکا پرو"],
+  ["🌐 اتصال به زکا مدیا"],
   ["🛠 امکانات ویژه"],
   ["💬 ارتباط با پشتیبانی"],
 ])
   .resize()
   .oneTime(false);
 
-const downloadMenu = Markup.keyboard([
-  ["🔙 بازگشت"],
-])
-  .resize();
-
+const downloadMenu = Markup.keyboard([["🔙 بازگشت"]]).resize();
 const accountMenu = Markup.keyboard([
   ["📊 اعتبار من", "🏆 سطح و XP"],
   ["🌐 زبان", "👤 اطلاعات حساب"],
   ["🔙 بازگشت"],
-])
-  .resize()
-  .persistent();
-
+]).resize().persistent();
 const gamesMenu = Markup.keyboard([
   ["🎡 گردونه شانس", "🧠 مسابقه"],
   ["❌ لغو مسابقه", "🔙 بازگشت"],
-])
-  .resize()
-  .persistent();
-
+]).resize().persistent();
 const fortuneMenu = Markup.keyboard([
   ["📖 فال حافظ", "❤️ فال عشق"],
   ["🌙 فال روزانه", "💰 فال مالی"],
   ["🎯 فال نیت"],
   ["🔙 بازگشت"],
-])
-  .resize()
-  .persistent();
+]).resize().persistent();
 
-module.exports = {
-  mainMenu,
-  downloadMenu,
-  accountMenu,
-  gamesMenu,
-  fortuneMenu,
-};
+module.exports = { mainMenu, downloadMenu, accountMenu, gamesMenu, fortuneMenu };
