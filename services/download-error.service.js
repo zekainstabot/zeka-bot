@@ -21,7 +21,7 @@ function classifyDownloadError(error) {
     error?.shortMessage,
   ].filter(Boolean).join(" ").toLowerCase();
 
-  if (error?.code === "DOWNLOAD_TIMEOUT" || /timed?\\s*out|timeout|etimedout/.test(text)) return "DOWNLOAD_TIMEOUT";
+  if (error?.code === "DOWNLOAD_TIMEOUT" || /timed?\s*out|timeout|etimedout/.test(text)) return "DOWNLOAD_TIMEOUT";
   if (/429|too many requests|rate.?limit|please wait a few minutes/.test(text)) return "INSTAGRAM_RATE_LIMITED";
   if (/ip.{0,30}(block|restrict|limit)|blocked.{0,30}ip|your ip address|request.{0,20}blocked|feedback_required/.test(text)) return "INSTAGRAM_IP_BLOCKED";
   if (/private video|private account|this account is private|not authorized to view|content is private/.test(text)) return "INSTAGRAM_PRIVATE_CONTENT";
