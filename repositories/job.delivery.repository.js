@@ -1,13 +1,14 @@
-const {
-  getClient,
-} = require("../database/client");
+const { getClient } = require("../database/client");
 
-const db = getClient();
+function getDb() {
+  return getClient();
+}
 
 async function createPending({
   jobId,
   telegramChatId,
 }) {
+  const db = getDb();
   const result = await db.query(
     `
       INSERT INTO job_deliveries (
@@ -20,10 +21,7 @@ async function createPending({
       DO NOTHING
       RETURNING *
     `,
-    [
-      jobId,
-      telegramChatId,
-    ]
+    [jobId, telegramChatId]
   );
 
   if (result.rows[0]) {
@@ -34,6 +32,7 @@ async function createPending({
 }
 
 async function findByJobId(jobId) {
+  const db = getDb();
   const result = await db.query(
     `
       SELECT *
@@ -47,10 +46,8 @@ async function findByJobId(jobId) {
   return result.rows[0] || null;
 }
 
-async function markSent(
-  jobId,
-  telegramMessageId
-) {
+async function markSent(jobId, telegramMessageId) {
+  const db = getDb();
   const result = await db.query(
     `
       UPDATE job_deliveries
@@ -62,16 +59,14 @@ async function markSent(
       WHERE job_id = $1
       RETURNING *
     `,
-    [
-      jobId,
-      telegramMessageId,
-    ]
+    [jobId, telegramMessageId]
   );
 
   return result.rows[0] || null;
 }
 
 async function markUnknown(jobId) {
+  const db = getDb();
   const result = await db.query(
     `
       UPDATE job_deliveries
@@ -88,6 +83,7 @@ async function markUnknown(jobId) {
 }
 
 async function markFailed(jobId) {
+  const db = getDb();
   const result = await db.query(
     `
       UPDATE job_deliveries
