@@ -165,14 +165,61 @@ async function handleWebApi(req, res, url) {
     const previewRequested = url.searchParams.get("preview") === "1";
     const isPreviewable = contentType.startsWith("image/") || contentType.startsWith("video/");
     const disposition = previewRequested && isPreviewable ? "inline" : "attachment";
-    res.writeHead(200, {
+    const commonHeaders = {
       "Content-Type": contentType,
-      "Content-Length": stat.size,
       "Content-Disposition": `${disposition}; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
       "Accept-Ranges": "bytes",
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
-    });
+    };
+
+    const rangeHeader = req.headers.range;
+    if (rangeHeader) {
+      const rangeMatch = /^bytes=(\\d*)-(\\d*)$/.exec(rangeHeader.trim());
+      if (!rangeMatch || (!rangeMatch[1] && !rangeMatch[2])) {
+        res.writeHead(416, { ...commonHeaders, "Content-Range": `bytes */${stat.size}` });
+        res.end();
+        return true;
+      }
+
+      let start;
+      let end;
+      if (!rangeMatch[1]) {
+        const suffixLength = Number(rangeMatch[2]);
+        if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+          res.writeHead(416, { ...commonHeaders, "Content-Range": `bytes */${stat.size}` });
+          res.end();
+          return true;
+        }
+        start = Math.max(0, stat.size - suffixLength);
+        end = stat.size - 1;
+      } else {
+        start = Number(rangeMatch[1]);
+        end = rangeMatch[2] ? Number(rangeMatch[2]) : stat.size - 1;
+      }
+
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= stat.size || start > end) {
+        res.writeHead(416, { ...commonHeaders, "Content-Range": `bytes */${stat.size}` });
+        res.end();
+        return true;
+      }
+
+      end = Math.min(end, stat.size - 1);
+      res.writeHead(206, {
+        ...commonHeaders,
+        "Content-Length": end - start + 1,
+        "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+      });
+      const rangeStream = fs.createReadStream(filePath, { start, end });
+      rangeStream.on("error", (error) => {
+        console.error("Web download range stream failed:", error);
+        res.destroy(error);
+      });
+      rangeStream.pipe(res);
+      return true;
+    }
+
+    res.writeHead(200, { ...commonHeaders, "Content-Length": stat.size });
     const stream = fs.createReadStream(filePath);
     stream.on("error", (error) => {
       console.error("Web download file stream failed:", error);
