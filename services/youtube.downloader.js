@@ -69,6 +69,7 @@ async function downloadYouTubeMedia({ url, jobId }) {
     socketTimeout: 30,
     retries: 2,
     fragmentRetries: 2,
+    extractorArgs: "youtube:player_client=web,mweb,tv",
   });
 
   const files = fs.readdirSync(directory)
