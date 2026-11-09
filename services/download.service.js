@@ -63,6 +63,9 @@ async function markDownloading(jobId) {
     jobId,
     {
       status: "DOWNLOADING",
+      progress_percent: 0,
+      progress_message: "در حال اتصال به اینستاگرام",
+      progress_updated_at: now,
       started_at: now,
       processing_at: now,
     },
@@ -78,6 +81,9 @@ async function markDownloaded(jobId, data = {}) {
     jobId,
     {
       status: "DOWNLOADED",
+      progress_percent: 100,
+      progress_message: "دانلود کامل شد؛ در حال آماده‌سازی فایل",
+      progress_updated_at: new Date(),
       content_id: data.contentId ?? null,
     },
     {
@@ -185,6 +191,8 @@ async function markFailed(
       failed_at: failedAt,
       error_code: errorCode,
       error_message: message,
+      progress_message: message,
+      progress_updated_at: failedAt,
     },
     {
       status: "FAILED",
