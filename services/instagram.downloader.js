@@ -27,6 +27,71 @@ const INSTAGRAM_GRAPHQL_URL =
 const INSTAGRAM_POST_DOC_ID =
   "27128499623469141";
 
+const DOWNLOAD_TIMEOUT_MS = 120000;
+
+async function runYtDlpWithProgress({ url, options, onProgress, timeoutMs = DOWNLOAD_TIMEOUT_MS }) {
+  const startedAt = Date.now();
+  let lastPercent = -1;
+  let lastUpdateAt = 0;
+  let progressWrites = Promise.resolve();
+
+  const consumeProgress = (chunk) => {
+    const lines = String(chunk || "").split(/[\\r\\n]+/);
+    for (const line of lines) {
+      const match = line.match(/(?:\\[download\\]\\s*)?(\\d{1,3}(?:\\.\\d+)?)%/i);
+      if (!match) continue;
+      const percent = Math.max(0, Math.min(99, Number(match[1])));
+      const now = Date.now();
+      if (!Number.isFinite(percent) || (percent === lastPercent && now - lastUpdateAt < 3000)) continue;
+      if (percent < lastPercent || (percent === lastPercent && now - lastUpdateAt < 3000)) continue;
+      lastPercent = percent;
+      lastUpdateAt = now;
+      if (typeof onProgress === "function") {
+        progressWrites = progressWrites
+          .then(() => onProgress({
+            percent,
+            message: percent >= 99 ? "تقریباً دانلود کامل شده است" : "در حال دریافت فایل از اینستاگرام",
+          }))
+          .catch((error) => console.error("Download progress update failed:", error?.message || error));
+      }
+    }
+  };
+
+  try {
+    let result;
+    if (typeof ytdlp.exec === "function") {
+      const subprocess = ytdlp.exec(
+        url,
+        { ...options, newline: true },
+        { timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: 20 * 1024 * 1024 }
+      );
+      subprocess.stderr?.on("data", consumeProgress);
+      subprocess.stdout?.on("data", consumeProgress);
+      result = await subprocess;
+    } else {
+      result = await ytdlp(
+        url,
+        { ...options, newline: true },
+        { timeout: timeoutMs, killSignal: "SIGKILL", maxBuffer: 20 * 1024 * 1024 }
+      );
+    }
+    await progressWrites;
+    return result;
+  } catch (error) {
+    await progressWrites;
+    if (
+      error?.timedOut ||
+      error?.code === "ETIMEDOUT" ||
+      Date.now() - startedAt >= timeoutMs
+    ) {
+      const timeoutError = new Error("دانلود از اینستاگرام بیش از ۲ دقیقه طول کشید و برای جلوگیری از انتظار طولانی متوقف شد. لطفاً کمی بعد دوباره تلاش کنید.");
+      timeoutError.code = "DOWNLOAD_TIMEOUT";
+      throw timeoutError;
+    }
+    throw error;
+  }
+}
+
 const SUPPORTED_MEDIA_EXTENSIONS = [
   ".mp4",
   ".mov",
@@ -753,6 +818,7 @@ async function downloadInstagramMedia({
   url,
   jobId,
   contentType = "OTHER",
+  onProgress = null,
 }) {
   const normalizedUrl = cleanInstagramUrl(url);
 
@@ -893,10 +959,11 @@ try {
     "Instagram yt-dlp primary attempt without cookies."
   );
 
-  const downloadResult = await ytdlp(
-    normalizedUrl,
-    downloadOptions
-  );
+  const downloadResult = await runYtDlpWithProgress({
+    url: normalizedUrl,
+    options: downloadOptions,
+    onProgress,
+  });
 
   instagramCaption = String(
     downloadResult?.stdout || ""
@@ -997,9 +1064,9 @@ try {
       );
     }
 
-    const cookieResult = await ytdlp(
-      normalizedUrl,
-            {
+    const cookieResult = await runYtDlpWithProgress({
+      url: normalizedUrl,
+      options: {
         output: outputTemplate,
         format,
         noPlaylist: true,
@@ -1011,8 +1078,9 @@ try {
         socketTimeout: 30,
         cookies: cookiePath,
         print: "description",
-      }
-    );
+      },
+      onProgress,
+    });
 
     instagramCaption = String(
       cookieResult?.stdout || ""
