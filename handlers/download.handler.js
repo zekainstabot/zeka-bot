@@ -10,6 +10,7 @@ function createDownloadHandler({
   const { sendDownloadReport } = require("../services/report.service");
   const { getBalance, shouldConsumeCredit } = require("../services/credit.service");
   const { getDownloadCost } = require("../services/cost.service");
+  const { getDownloadErrorMessage } = require("../services/download-error.service");
   const queueConfig = require("../config/queue");
   const downloadRequestCooldownRepository = require(
     "../repositories/download-request-cooldown.repository"
@@ -44,6 +45,12 @@ function createDownloadHandler({
     return `${String(minutes).padStart(2, "0")}:${String(
       remainingSeconds
     ).padStart(2, "0")}`;
+  }
+
+  function progressBar(value) {
+    const percent = Math.max(0, Math.min(99, Number(value) || 0));
+    const filled = Math.round(percent / 10);
+    return { percent, bar: "▓".repeat(filled) + "░".repeat(10 - filled) };
   }
 
   function statusKeyboard(jobId) {
@@ -183,7 +190,7 @@ function createDownloadHandler({
               messageId,
               undefined,
               job.status === "FAILED"
-                ? "❌ دانلود ناموفق بود."
+                ? "❌ دانلود انجام نشد.\n\n" + getDownloadErrorMessage(job.error_code)
                 : "❌ دانلود لغو شد."
             );
           } catch (error) {
@@ -201,7 +208,11 @@ function createDownloadHandler({
         if (job.status === "PROCESSING") {
           status = "⚙️ در حال پردازش...";
         } else if (job.status === "DOWNLOADING") {
-          status = "📥 در حال دانلود...";
+          const progress = progressBar(job.progress_percent);
+          status =
+            "📥 در حال دانلود...\n" +
+            progress.bar + " " + progress.percent + "٪\n" +
+            (job.progress_message || "در حال دریافت فایل از اینستاگرام");
         } else if (job.status === "SENDING") {
           status = "📤 فایل آماده شد؛ در حال ارسال...";
         } else if (job.status === "WAITING") {
@@ -241,7 +252,7 @@ function createDownloadHandler({
           }
         }
 
-        watcher.timer = setTimeout(update, 15000);
+        watcher.timer = setTimeout(update, 5000);
       } catch (error) {
         console.error(
           "Download status watcher failed:",
