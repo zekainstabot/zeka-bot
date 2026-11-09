@@ -140,6 +140,7 @@ function createAccountHandler({
     try {
       const language = ctx.match[1];
       await setLanguage(ctx.from.id, language);
+      ctx.state.language = language;
       await ctx.answerCbQuery(language === "en" ? "Language updated" : "زبان تغییر کرد");
       await ctx.reply(
         language === "en"
