@@ -14,6 +14,9 @@ const CHANNEL = "@zeka_media";
 const PANEL_BUTTON = "📺 مدیریت زکا مدیا";
 const PANEL_PAGE_SIZE = 5;
 
+// محدودیت آپلود Bot API ابری تلگرام
+const MAX_TELEGRAM_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 const PANEL_STATUSES = [
   "PENDING",
   "PUBLISHING",
@@ -224,35 +227,174 @@ async function safeDeleteFile(filePath) {
   }
 }
 
-async function publishToChannel(queueItem) {
+function getFileInfo(filePath) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    const error = new Error("فایل محلی موجود نیست.");
+    error.zekaMediaStage = "FILE_CHECK";
+    throw error;
+  }
+
+  const stats = fs.statSync(filePath);
+
+  if (!stats.isFile()) {
+    const error = new Error("مسیر فایل معتبر نیست.");
+    error.zekaMediaStage = "FILE_CHECK";
+    throw error;
+  }
+
+  return {
+    sizeBytes: stats.size,
+    sizeMB: Number(
+      (stats.size / (1024 * 1024)).toFixed(2)
+    ),
+  };
+}
+
+/**
+ * ارسال فایل به تلگرام همراه با ثبت حجم و مدت آپلود.
+ * هیچ Retry خودکاری در این تابع وجود ندارد.
+ */
+async function sendTelegramMedia({
+  chatId,
+  queueId,
+  filePath,
+  contentType,
+  caption,
+  replyMarkup,
+  purpose,
+}) {
   if (!botInstance) {
     throw new Error("Zeka Media bot is not initialized");
   }
 
-  if (
-    !queueItem?.file_path ||
-    !fs.existsSync(queueItem.file_path)
-  ) {
+  let fileInfo;
+
+  try {
+    fileInfo = getFileInfo(filePath);
+  } catch (error) {
+    error.zekaMediaStage = "FILE_CHECK";
+    throw error;
+  }
+
+  const method = getChannelMediaMethod({
+    file_path: filePath,
+    content_type: contentType,
+  });
+
+  console.log("Zeka Media upload started:", {
+    queueId,
+    purpose,
+    chatId,
+    method,
+    filePath,
+    fileSizeBytes: fileInfo.sizeBytes,
+    fileSizeMB: fileInfo.sizeMB,
+    maxUploadSizeMB: 50,
+  });
+
+  if (fileInfo.sizeBytes > MAX_TELEGRAM_UPLOAD_BYTES) {
     const error = new Error(
-      "فایل محلی موجود نیست. برای دانلود مجدد باید دکمه تلاش مجدد را بزنی."
+      `حجم فایل ${fileInfo.sizeMB} مگابایت است و از محدودیت ۵۰ مگابایتی آپلود تلگرام بیشتر است.`
     );
 
+    error.code = "ZEKA_MEDIA_FILE_TOO_LARGE";
+    error.zekaMediaStage = "FILE_TOO_LARGE";
+    error.fileSizeBytes = fileInfo.sizeBytes;
+    error.fileSizeMB = fileInfo.sizeMB;
+
+    console.error("Zeka Media upload rejected:", {
+      queueId,
+      purpose,
+      fileSizeBytes: fileInfo.sizeBytes,
+      fileSizeMB: fileInfo.sizeMB,
+      maxUploadSizeMB: 50,
+    });
+
+    throw error;
+  }
+
+  const startedAt = Date.now();
+  const stream = fs.createReadStream(filePath);
+
+  try {
+    const result = await botInstance.telegram[method](
+      chatId,
+      { source: stream },
+      {
+        caption,
+        ...(replyMarkup
+          ? { reply_markup: replyMarkup }
+          : {}),
+      }
+    );
+
+    const durationMs = Date.now() - startedAt;
+
+    console.log("Zeka Media upload completed:", {
+      queueId,
+      purpose,
+      method,
+      fileSizeBytes: fileInfo.sizeBytes,
+      fileSizeMB: fileInfo.sizeMB,
+      durationMs,
+      telegramMessageId: result?.message_id || null,
+    });
+
+    return result;
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+
+    stream.destroy();
+
+    error.zekaMediaStage = "TELEGRAM_UPLOAD";
+    error.fileSizeBytes = fileInfo.sizeBytes;
+    error.fileSizeMB = fileInfo.sizeMB;
+    error.uploadDurationMs = durationMs;
+
+    console.error("Zeka Media upload failed:", {
+      queueId,
+      purpose,
+      method,
+      fileSizeBytes: fileInfo.sizeBytes,
+      fileSizeMB: fileInfo.sizeMB,
+      durationMs,
+      errorCode: error.code || error.errno || null,
+      errorMessage: error.message,
+      telegramErrorCode: error.response?.error_code || null,
+      telegramDescription:
+        error.response?.description || null,
+    });
+
+    throw error;
+  }
+}
+
+async function publishToChannel(queueItem) {
+  if (!queueItem?.file_path) {
+    const error = new Error("مسیر فایل ثبت نشده است.");
     error.publishFailureType = "DEFINITE";
     throw error;
   }
 
-  const method = getChannelMediaMethod(queueItem);
-  const stream = fs.createReadStream(queueItem.file_path);
-
   try {
-    return await botInstance.telegram[method](
-      CHANNEL,
-      { source: stream },
-      { caption: CHANNEL_CAPTION }
-    );
+    return await sendTelegramMedia({
+      chatId: CHANNEL,
+      queueId: queueItem.id,
+      filePath: queueItem.file_path,
+      contentType: queueItem.content_type,
+      caption: CHANNEL_CAPTION,
+      purpose: "CHANNEL_PUBLISH",
+    });
   } catch (error) {
-    stream.destroy();
-    error.publishFailureType = "UNKNOWN";
+    if (
+      error.zekaMediaStage === "FILE_CHECK" ||
+      error.zekaMediaStage === "FILE_TOO_LARGE"
+    ) {
+      error.publishFailureType = "DEFINITE";
+    } else {
+      error.publishFailureType = "UNKNOWN";
+    }
+
     throw error;
   }
 }
@@ -333,27 +475,15 @@ async function sendMediaPreview(ctx, item, media) {
     .filter(Boolean)
     .join("\n");
 
-  const method = getChannelMediaMethod({
-    ...item,
-    file_path: media.filePath,
-    content_type: media.contentType,
+  return sendTelegramMedia({
+    chatId,
+    queueId: item.id,
+    filePath: media.filePath,
+    contentType: media.contentType,
+    caption,
+    replyMarkup: buildReviewKeyboard(item.id),
+    purpose: "ADMIN_PREVIEW",
   });
-
-  const stream = fs.createReadStream(media.filePath);
-
-  try {
-    await botInstance.telegram[method](
-      chatId,
-      { source: stream },
-      {
-        caption,
-        reply_markup: buildReviewKeyboard(item.id),
-      }
-    );
-  } catch (error) {
-    stream.destroy();
-    throw error;
-  }
 }
 
 async function renderStatusPage(ctx, status, offset = 0) {
@@ -439,9 +569,10 @@ async function renderStatusPage(ctx, status, offset = 0) {
 
         await ctx.reply(
           [
-            "⚠️ نمایش فایل ناموفق بود.",
+            "⚠️ ارسال پیش‌نمایش ناموفق بود.",
             "",
             details,
+            `علت: ${error.message}`,
           ].join("\n"),
           {
             reply_markup: buildRetryKeyboard(item.id),
@@ -729,7 +860,7 @@ async function handleApprove(ctx, queueId, telegramUserId) {
       await mediaRepository.markFailed(queueId);
 
       await ctx.reply(
-        `❌ انتشار محتوای ${queueId} انجام نشد؛ وضعیت آن ناموفق ثبت شد.`
+        `❌ انتشار محتوای ${queueId} انجام نشد؛ وضعیت آن ناموفق ثبت شد.\nعلت: ${error.message}`
       );
 
       return;
@@ -822,17 +953,21 @@ async function handleRetry(ctx, queueId) {
   await removeReviewButtons(ctx);
 
   await ctx.reply(
-    `⏳ دانلود مجدد درخواست ${queueId} با درخواست شما شروع شد. پس از آماده شدن فایل، پیش‌نمایش ارسال می‌شود.`
+    `⏳ درخواست ${queueId} در حال بازیابی دستی است. پس از آماده شدن فایل، پیش‌نمایش ارسال می‌شود.`
   );
+
+  let media;
+  let recoveryCompleted = false;
 
   try {
     // تنها نقطه‌ای که اجازه دانلود مجدد دارد.
-    const media = await getAvailableMedia(item, true);
+    media = await getAvailableMedia(item, true);
+    recoveryCompleted = true;
 
     await sendMediaPreview(ctx, item, media);
 
     await ctx.reply(
-      `✅ فایل درخواست ${queueId} بازیابی شد و برای بررسی ارسال شد.`
+      `✅ فایل درخواست ${queueId} بازیابی و پیش‌نمایش آن ارسال شد.`
     );
   } catch (error) {
     console.error(
@@ -840,11 +975,37 @@ async function handleRetry(ctx, queueId) {
       error
     );
 
-    await ctx.reply(
-      [
-        `❌ دانلود مجدد درخواست ${queueId} ناموفق بود.`,
+    let failureMessage;
+
+    if (error.zekaMediaStage === "FILE_TOO_LARGE") {
+      failureMessage = [
+        "❌ فایل بازیابی شد، اما حجم آن برای ارسال از طریق تلگرام بیش از حد مجاز است.",
+        `حجم فایل: ${error.fileSizeMB} مگابایت`,
+        "حداکثر حجم مجاز: ۵۰ مگابایت",
+      ].join("\n");
+    } else if (error.zekaMediaStage === "TELEGRAM_UPLOAD") {
+      failureMessage = [
+        "⚠️ فایل بازیابی شد، اما ارسال پیش‌نمایش به تلگرام ناموفق بود.",
+        `حجم فایل: ${error.fileSizeMB} مگابایت`,
+        `مدت تلاش برای ارسال: ${error.uploadDurationMs} میلی‌ثانیه`,
+        `خطا: ${error.message}`,
+        "",
+        "فایل بازیابی‌شده در حافظه موقت نگه داشته شده است. این خطا به معنی شکست دانلود نیست.",
+      ].join("\n");
+    } else if (recoveryCompleted) {
+      failureMessage = [
+        "⚠️ فایل بازیابی شد، اما مرحله آماده‌سازی یا ارسال پیش‌نمایش با خطا مواجه شد.",
         `علت: ${error.message}`,
-      ].join("\n"),
+      ].join("\n");
+    } else {
+      failureMessage = [
+        "❌ دانلود مجدد درخواست ناموفق بود.",
+        `علت: ${error.message}`,
+      ].join("\n");
+    }
+
+    await ctx.reply(
+      failureMessage,
       {
         reply_markup: buildRetryKeyboard(queueId),
       }
@@ -871,7 +1032,7 @@ async function handleReviewAction(ctx) {
       ? "در حال شروع انتشار..."
       : action === "reject"
         ? "در حال ثبت رد درخواست..."
-        : "در حال شروع دانلود دستی..."
+        : "در حال شروع عملیات دستی..."
   );
 
   if (!botInstance) {
