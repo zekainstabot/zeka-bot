@@ -1,0 +1,24 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { downloadPlatformMedia } = require("../services/generic-platform.downloader");
+
+test("generic downloader rejects unsupported platform", async () => {
+  await assert.rejects(
+    () => downloadPlatformMedia({ platform: "unknown", url: "https://example.com/a", jobId: "test" }),
+    /Unsupported platform/
+  );
+});
+
+test("generic downloader rejects mismatched host", async () => {
+  await assert.rejects(
+    () => downloadPlatformMedia({ platform: "reddit", url: "https://example.com/a", jobId: "test" }),
+    /Unsupported reddit URL/
+  );
+});
+
+test("generic downloader rejects non-HTTPS URL", async () => {
+  await assert.rejects(
+    () => downloadPlatformMedia({ platform: "vimeo", url: "http://vimeo.com/123", jobId: "test" }),
+    /Unsupported vimeo URL/
+  );
+});
