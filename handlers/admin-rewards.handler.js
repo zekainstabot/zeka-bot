@@ -13,7 +13,7 @@ const FEATURES = [
   },
   {
     key: "feature.missions",
-    title: "🎯 مأموریت‌ها",
+    title: "🎯 مدیریت مأموریت‌ها",
   },
   {
     key: "feature.luck",
@@ -26,7 +26,7 @@ function mainMenu(admin) {
     admin?.role_key === "super_admin";
 
   return Markup.keyboard([
-    ["👥 Referral", "🎯 مأموریت‌ها"],
+    ["👥 Referral", "🎯 مدیریت مأموریت‌ها"],
     ["🎰 شانس"],
     ["🔄 بروزرسانی وضعیت"],
     [
@@ -185,7 +185,7 @@ async function handleMissions(ctx) {
   await toggleFeature(
     ctx,
     "feature.missions",
-    "🎯 مأموریت‌ها"
+    "🎯 مدیریت مأموریت‌ها"
   );
 }
 
@@ -275,7 +275,7 @@ function createAdminRewardsHandler(bot) {
   );
 
   bot.hears(
-    "🎯 مأموریت‌ها",
+    "🎯 مدیریت مأموریت‌ها",
     handleMissions
   );
 
