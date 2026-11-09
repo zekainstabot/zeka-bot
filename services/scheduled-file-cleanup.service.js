@@ -142,7 +142,7 @@ async function getProtectedFilePaths() {
   const result = await db.query(`
     SELECT file_path
     FROM zeka_media_queue
-    WHERE status IN ('PENDING', 'PUBLISHING')
+    WHERE status IN ('PENDING', 'PUBLISHING', 'PUBLISH_UNKNOWN')
   `);
 
   return result.rows
