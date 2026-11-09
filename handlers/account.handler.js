@@ -12,14 +12,47 @@ function createAccountHandler({
     getLevelProgress,
   } = require("../services/account.service");
 
+  function getProRemainingText(account, language = "fa") {
+    if (!account.isPro) {
+      return language === "en" ? "Not active" : "فعال نیست";
+    }
+
+    if (!account.proExpiresAt) {
+      return language === "en" ? "Active (no expiry date)" : "فعال (بدون تاریخ انقضا)";
+    }
+
+    const remainingMs = new Date(account.proExpiresAt).getTime() - Date.now();
+    if (!Number.isFinite(remainingMs) || remainingMs <= 0) {
+      return language === "en" ? "Expired" : "منقضی شده";
+    }
+
+    const totalHours = Math.ceil(remainingMs / (60 * 60 * 1000));
+    const days = Math.floor(totalHours / 24);
+    const hours = totalHours % 24;
+    const remaining = language === "en"
+      ? [days ? `${days} day(s)` : "", hours ? `${hours} hour(s)` : ""].filter(Boolean).join(" and ") || "Less than an hour"
+      : [days ? `${days} روز` : "", hours ? `${hours} ساعت` : ""].filter(Boolean).join(" و ") || "کمتر از یک ساعت";
+    const expiry = new Date(account.proExpiresAt).toLocaleString(language === "en" ? "en-GB" : "fa-IR", {
+      timeZone: "Asia/Tehran",
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+
+    return language === "en"
+      ? `${remaining} remaining (expires: ${expiry})`
+      : `${remaining} باقی‌مانده (تاریخ انقضا: ${expiry})`;
+  }
+
   bot.hears("👤 حساب من", async (ctx) => {
     try {
       const user = await getOrCreateUser(ctx.from);
       const account = await getAccountSummary(user);
 
+      const language = account.language || ctx.state?.language || "fa";
       const proStatus = account.isPro
         ? "⭐ فعال"
         : "❌ فعال نیست";
+      const proRemaining = getProRemainingText(account, language);
 
       await ctx.reply(
         "👤 حساب من\n\n" +
@@ -29,7 +62,8 @@ function createAccountHandler({
           `🏆 سطح: ${account.level}\n` +
           `✨ XP: ${account.xp}\n` +
           `🔥 روزهای فعال متوالی: ${account.streakDays}\n\n` +
-          `⭐ زکا پرو: ${proStatus}`,
+          `⭐ زکا پرو: ${proStatus}\n` +
+          `⏳ مدت باقی‌مانده: ${proRemaining}`,
         accountMenu
       );
     } catch (error) {
@@ -166,7 +200,8 @@ function createAccountHandler({
           `🆔 شناسه تلگرام: ${account.telegramUserId}\n` +
           `🏆 سطح: ${account.level}\n` +
           `✨ XP: ${account.xp}\n` +
-          `⭐ زکا پرو: ${account.isPro ? "فعال" : "فعال نیست"}`,
+          `⭐ زکا پرو: ${account.isPro ? "فعال" : "فعال نیست"}\n` +
+          `⏳ مدت باقی‌مانده: ${getProRemainingText(account, account.language || ctx.state?.language || "fa")}`,
         accountMenu
       );
     } catch (error) {
