@@ -997,6 +997,10 @@ try {
       "Instagram rate limit detected on initial yt-dlp attempt."
     );
   }
+
+  if (error?.code === "DOWNLOAD_TIMEOUT") {
+    throw error;
+  }
 }
 
   let files = sortMediaFiles(getDownloadedFiles());
@@ -1105,6 +1109,10 @@ try {
       "Instagram final cookie fallback failed:",
       error?.stderr || error?.message || String(error)
     );
+
+    if (error?.code === "DOWNLOAD_TIMEOUT") {
+      throw error;
+    }
 
     throw new Error(
       "Instagram download failed after yt-dlp, gallery-dl, browser, and final cookie fallback. " +
