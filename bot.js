@@ -1,4 +1,5 @@
 
+const https = require("https");
 const { Telegraf } = require("telegraf");
 
 const {
@@ -75,6 +76,13 @@ const { createSupportHandler } = require("./handlers/support.handler");
 
 let bot = null;
 
+// تنظیم اتصال خروجی به Telegram API
+const telegramAgent = new https.Agent({
+  keepAlive: false,
+  family: 4,
+  timeout: 120000,
+});
+
 function createBot() {
   if (bot) {
     return bot;
@@ -86,6 +94,10 @@ function createBot() {
 
   bot = new Telegraf(config.bot.token, {
     handlerTimeout: 180_000,
+
+    telegram: {
+      agent: telegramAgent,
+    },
   });
 
   bot.catch((error, ctx) => {
@@ -187,6 +199,8 @@ function createBot() {
     if (bot) {
       await bot.stop("shutdown");
     }
+
+    telegramAgent.destroy();
   });
 
   register(async () => {
