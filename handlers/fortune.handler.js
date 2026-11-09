@@ -99,17 +99,17 @@ async function showFortune(
 
       creditNotice = charge.isPro
         ? (isEnglish
-            ? "\\n\\n⭐ Zeka Pro: no credits were deducted."
-            : "\\n\\n⭐ زکا پرو: اعتباری کسر نشد.")
+            ? "\n\n⭐ Zeka Pro: no credits were deducted."
+            : "\n\n⭐ زکا پرو: اعتباری کسر نشد.")
         : (isEnglish
-            ? `\\n\\n💳 Fortune cost: ${charge.cost} credits\\n💰 Remaining: ${charge.balance} credits`
-            : `\\n\\n💳 هزینه این فال: ${charge.cost} اعتبار\\n💰 اعتبار باقی‌مانده: ${charge.balance}`);
+            ? `\n\n💳 Fortune cost: ${charge.cost} credits\n💰 Remaining: ${charge.balance} credits`
+            : `\n\n💳 هزینه این فال: ${charge.cost} اعتبار\n💰 اعتبار باقی‌مانده: ${charge.balance}`);
     } catch (error) {
       if (error.code === "INSUFFICIENT_CREDIT") {
         await ctx.reply(
           isEnglish
-            ? `❌ Not enough credits.\\nCost: ${error.cost}\\nYour balance: ${error.balance}`
-            : `❌ اعتبار کافی نیست.\\n\\nهزینه این فال: ${error.cost} اعتبار\\nاعتبار فعلی: ${error.balance}\\n\\nاز بخش «📊 اعتبار من» می‌توانی اعتبارت را افزایش بدهی.`,
+            ? `❌ Not enough credits.\nCost: ${error.cost}\nYour balance: ${error.balance}`
+            : `❌ اعتبار کافی نیست.\n\nهزینه این فال: ${error.cost} اعتبار\nاعتبار فعلی: ${error.balance}\n\nاز بخش «📊 اعتبار من» می‌توانی اعتبارت را افزایش بدهی.`,
           fortuneMenu
         );
         return;
@@ -118,7 +118,7 @@ async function showFortune(
     }
 
     await ctx.reply(
-      `${title}${sourceNumber}\\n\\n` +
+      `${title}${sourceNumber}\n\n` +
         `${fortuneContent}${creditNotice}${footer}`,
       fortuneMenu
     );
