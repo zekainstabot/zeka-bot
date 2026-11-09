@@ -119,10 +119,6 @@ const PERMISSION_BUTTONS = [
     button: "🌐 مدیریت پلتفرم‌ها",
   },
   {
-    permission: "features",
-    button: "✨ مدیریت امکانات",
-  },
-  {
     permission: "monitoring",
     button: "📊 مانیتورینگ",
   },
@@ -135,10 +131,6 @@ const PERMISSION_BUTTONS = [
     button: "💎 مدیریت Pro",
   },
   ...ENTERTAINMENT_SECTIONS,
-];
-
-const UNIMPLEMENTED_BUTTONS = [
-  "✨ مدیریت امکانات",
 ];
 
 const ALL_PERMISSION_SECTIONS = [
