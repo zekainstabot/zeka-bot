@@ -262,6 +262,8 @@ async function handleCreateGiftCode(ctx) {
 }
 
 function createAdminRewardsHandler(bot) {
+  bot.command("giftcode", handleCreateGiftCode);
+
   bot.hears(
     MENU,
     showRewardsPanel
