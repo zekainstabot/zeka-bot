@@ -306,7 +306,7 @@ function createJobWorker(overrides = {}) {
       }
 
       try {
-        await deps.markFailed(job.id, error, "WORKER_ERROR");
+        await deps.markFailed(job.id, error, error?.code === "DOWNLOAD_TIMEOUT" ? "DOWNLOAD_TIMEOUT" : "WORKER_ERROR");
       } catch (markFailedError) {
         console.error(
           `Failed to mark job as FAILED: ${jobLabel}`,
