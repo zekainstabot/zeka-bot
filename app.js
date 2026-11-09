@@ -115,7 +115,7 @@ async function handleWebApi(req, res, url) {
     }
 
     const result = await db.query(
-      `SELECT j.id, j.status, m.file_path, m.expires_at, m.file_deleted_at
+      `SELECT j.id, j.status, m.file_path, m.content_type, m.expires_at, m.file_deleted_at
        FROM jobs j
        LEFT JOIN zeka_media_queue m ON m.job_id = j.id
        WHERE j.id = $1 AND j.user_id = $2
@@ -161,10 +161,15 @@ async function handleWebApi(req, res, url) {
       ".avif": "image/avif",
     };
     const fileName = path.basename(filePath).replace(/[^a-zA-Z0-9._-]/g, "_") || "zeka-media";
+    const contentType = contentTypes[extension] || "application/octet-stream";
+    const previewRequested = url.searchParams.get("preview") === "1";
+    const isPreviewable = contentType.startsWith("image/") || contentType.startsWith("video/");
+    const disposition = previewRequested && isPreviewable ? "inline" : "attachment";
     res.writeHead(200, {
-      "Content-Type": contentTypes[extension] || "application/octet-stream",
+      "Content-Type": contentType,
       "Content-Length": stat.size,
-      "Content-Disposition": `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "Content-Disposition": `${disposition}; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "Accept-Ranges": "bytes",
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
     });
@@ -186,9 +191,12 @@ async function handleWebApi(req, res, url) {
     }
     const result = await db.query(
       `SELECT j.id, j.job_id, j.status, j.error_code, j.created_at, j.completed_at,
-              r.id AS request_id, r.original_url
+              r.id AS request_id, r.original_url,
+              m.content_type AS media_content_type,
+              m.file_deleted_at, m.expires_at
        FROM jobs j
        INNER JOIN requests r ON r.id = j.request_id
+       LEFT JOIN zeka_media_queue m ON m.job_id = j.id
        WHERE j.id = $1 AND j.user_id = $2
        LIMIT 1`,
       [match[1], userId]
@@ -205,6 +213,8 @@ async function handleWebApi(req, res, url) {
       createdAt: row.created_at,
       completedAt: row.completed_at,
       originalUrl: row.original_url,
+      mediaContentType: row.media_content_type || null,
+      previewAvailable: Boolean(row.media_content_type && !row.file_deleted_at && row.expires_at && new Date(row.expires_at).getTime() > Date.now()),
     });
     return true;
   }
