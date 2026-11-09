@@ -492,7 +492,7 @@ function createDownloadHandler({
       }
 
       const consumesCredit = await shouldConsumeCredit(user.id);
-      const downloadCost = getDownloadCost(parsed.contentType);
+      const downloadCost = getDownloadCost(parsed.contentType, parsed.platform);
       const remainingCredit = await getBalance(user.id);
 
       const creditMessage = consumesCredit
