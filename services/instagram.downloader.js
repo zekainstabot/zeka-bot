@@ -36,9 +36,9 @@ async function runYtDlpWithProgress({ url, options, onProgress, timeoutMs = DOWN
   let progressWrites = Promise.resolve();
 
   const consumeProgress = (chunk) => {
-    const lines = String(chunk || "").split(/[\\r\\n]+/);
+    const lines = String(chunk || "").split(/[\r\n]+/);
     for (const line of lines) {
-      const match = line.match(/(?:\\[download\\]\\s*)?(\\d{1,3}(?:\\.\\d+)?)%/i);
+      const match = line.match(/(?:\[download\]\s*)?(\d{1,3}(?:\.\d+)?)%/i);
       if (!match) continue;
       const percent = Math.max(0, Math.min(99, Number(match[1])));
       const now = Date.now();
@@ -805,7 +805,6 @@ async function downloadWithBrowserFallback({
       finalCost: null,
     };
   } catch (error) {
-    attemptErrors.push(error);
     console.error(
       "Instagram browser fallback failed:",
       error?.message || String(error)
@@ -832,6 +831,8 @@ async function downloadInstagramMedia({
     jobDirectory,
     outputTemplate,
   } = createOutputTemplate(jobId);
+
+  const attemptErrors = [];
 
   if (normalizedContentType === "PROFILE") {
     console.log("Instagram profile URL detected.");
@@ -1048,6 +1049,7 @@ try {
       "Browser fallback returned no media file."
     );
   } catch (error) {
+    attemptErrors.push(error);
     console.error(
       "Instagram browser fallback failed:",
       error?.message || String(error)
