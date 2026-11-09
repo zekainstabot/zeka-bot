@@ -54,9 +54,8 @@ async function showFortune(
       ctx.state?.language === "en";
 
     const useEnglishFortune =
-      ["love", "hafez"].includes(slug) &&
       isEnglish &&
-      fortune.content_en;
+      Boolean(fortune.content_en);
 
     const title =
       (useEnglishFortune
@@ -118,7 +117,9 @@ function createFortuneHandler({
   };
 
   bot.hears("🔮 فال", openFortuneMenu);
-  bot.hears("📜 فال حافظ", openFortuneMenu);
+  bot.hears("📜 فال حافظ", async (ctx) => {
+    await showFortune(ctx, "hafez", "📖 فال حافظ");
+  });
 
   for (
     const [label, slug] of Object.entries(
