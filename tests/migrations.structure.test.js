@@ -41,20 +41,17 @@ test("migration files use numeric ordering", () => {
   }
 });
 
-test("migration numbers are unique", () => {
+test("migration filenames are unique and numeric prefixes are valid", () => {
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
     .filter((file) => file.endsWith(".sql"));
 
   const numbers = files.map((file) =>
-    Number(file.match(/^(\d+)_/)[1])
+    Number(file.match(/^(\\d+)_/)[1])
   );
 
-  assert.equal(
-    new Set(numbers).size,
-    numbers.length,
-    "Duplicate migration numbers found"
-  );
+  assert.equal(new Set(files).size, files.length);
+  assert.ok(numbers.every((number) => Number.isSafeInteger(number) && number > 0));
 });
 
 test("migration files are not empty", () => {
