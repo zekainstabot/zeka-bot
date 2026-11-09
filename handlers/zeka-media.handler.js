@@ -70,6 +70,19 @@ async function answerCallback(ctx, message = "") {
   }
 }
 
+// پیام اطلاع‌رسانی نباید عملیات اصلی را متوقف کند.
+async function safeReply(ctx, message, extra = undefined) {
+  try {
+    return await ctx.reply(message, extra);
+  } catch (error) {
+    console.warn(
+      "Zeka Media notification failed; continuing operation:",
+      error.message
+    );
+    return null;
+  }
+}
+
 async function getAuthorizedAdmin(telegramUserId) {
   const admin = await adminService.getAdminByTelegramId(
     telegramUserId
@@ -102,7 +115,7 @@ function getChannelMediaMethod(queueItem) {
 
   if (
     type === "PHOTO" ||
-    ["IMAGE"].includes(type) ||
+    type === "IMAGE" ||
     [".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(extension)
   ) {
     return "sendPhoto";
@@ -249,9 +262,8 @@ function getFileInfo(filePath) {
 }
 
 /**
- * ارسال فایل به تلگرام با استریم مستقیم از دیسک.
- * این مسیر فایل را کامل داخل RAM نمی‌خواند.
- * هیچ Retry خودکاری در این تابع وجود ندارد.
+ * ارسال مستقیم فایل از دیسک به تلگرام.
+ * بدون خواندن کامل فایل در RAM و بدون Retry خودکار.
  */
 async function sendTelegramMedia({
   chatId,
@@ -320,15 +332,13 @@ async function sendTelegramMedia({
       forceDocument: !isPhoto,
     });
 
-    const durationMs = Date.now() - startedAt;
-
     console.log("Zeka Media upload completed:", {
       queueId,
       purpose,
       method,
       fileSizeBytes: fileInfo.sizeBytes,
       fileSizeMB: fileInfo.sizeMB,
-      durationMs,
+      durationMs: Date.now() - startedAt,
       telegramMessageId: result?.message_id || null,
     });
 
@@ -391,10 +401,6 @@ async function publishToChannel(queueItem) {
   }
 }
 
-/**
- * فایل موجود را برمی‌گرداند.
- * دانلود مجدد فقط در مسیر Retry دستی مجاز است.
- */
 async function getAvailableMedia(item, allowRecovery = false) {
   const cached = recoveredMediaFiles.get(Number(item.id));
 
@@ -621,7 +627,8 @@ async function handlePanel(ctx) {
   } catch (error) {
     console.error("Zeka Media panel failed:", error);
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       "❌ باز کردن پنل زکا مدیا با خطا مواجه شد. لاگ Render را بررسی کن."
     );
   }
@@ -638,14 +645,15 @@ async function handlePanelNavigation(ctx) {
     const admin = await getAuthorizedAdmin(ctx.from?.id);
 
     if (!admin) {
-      await ctx.reply(
+      await safeReply(
+        ctx,
         "⛔ دسترسی مدیریت زکا مدیا ندارید."
       );
       return;
     }
 
     if (!botInstance) {
-      await ctx.reply("❌ ربات آماده نیست.");
+      await safeReply(ctx, "❌ ربات آماده نیست.");
       return;
     }
 
@@ -659,7 +667,7 @@ async function handlePanelNavigation(ctx) {
     );
 
     if (!match) {
-      await ctx.reply("درخواست نامعتبر است.");
+      await safeReply(ctx, "درخواست نامعتبر است.");
       return;
     }
 
@@ -674,7 +682,8 @@ async function handlePanelNavigation(ctx) {
       error
     );
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       "❌ نمایش بخش انتخاب‌شده با خطا مواجه شد."
     );
   }
@@ -702,7 +711,8 @@ async function handleReject(ctx, queueId, telegramUserId) {
   if (!rejected) {
     const current = await mediaRepository.findById(queueId);
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       current?.status === "EXPIRED"
         ? "⌛ مهلت بررسی این درخواست تمام شده است."
         : "⚠️ این درخواست قبلاً بررسی شده یا وجود ندارد."
@@ -728,7 +738,8 @@ async function handleReject(ctx, queueId, telegramUserId) {
 
   await removeReviewButtons(ctx);
 
-  await ctx.reply(
+  await safeReply(
+    ctx,
     `❌ محتوای زکا مدیا با شناسه ${queueId} رد شد.`
   );
 }
@@ -742,7 +753,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
   if (!queueItem) {
     const current = await mediaRepository.findById(queueId);
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       current?.status === "EXPIRED"
         ? "⌛ مهلت بررسی تمام شده است."
         : current?.status === "PUBLISH_UNKNOWN"
@@ -755,7 +767,9 @@ async function handleApprove(ctx, queueId, telegramUserId) {
     return;
   }
 
-  await ctx.reply(
+  // این پیام فقط اطلاع‌رسانی است؛ شکست آن نباید انتشار را متوقف کند.
+  await safeReply(
+    ctx,
     `⏳ درخواست ${queueId} در حال آماده‌سازی و انتشار در کانال است.`
   );
 
@@ -771,7 +785,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
 
     await mediaRepository.markFailed(queueId);
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       [
         `❌ انتشار درخواست ${queueId} انجام نشد.`,
         `علت: ${error.message}`,
@@ -805,7 +820,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
     if (error.publishFailureType === "DEFINITE") {
       await mediaRepository.markFailed(queueId);
 
-      await ctx.reply(
+      await safeReply(
+        ctx,
         [
           `❌ انتشار محتوای ${queueId} انجام نشد.`,
           `علت: ${error.message}`,
@@ -822,7 +838,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
 
     await mediaRepository.markPublishUnknown(queueId);
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       [
         `⚠️ نتیجه انتشار محتوای ${queueId} مشخص نیست.`,
         "",
@@ -840,7 +857,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
   if (!messageId) {
     await mediaRepository.markPublishUnknown(queueId);
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       `⚠️ تلگرام پاسخ معتبر برای محتوای ${queueId} برنگرداند. وضعیت انتشار نامشخص ثبت شد.`
     );
 
@@ -856,7 +874,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
     if (!published) {
       await mediaRepository.markPublishUnknown(queueId);
 
-      await ctx.reply(
+      await safeReply(
+        ctx,
         `⚠️ محتوا در کانال ارسال شد، اما ثبت وضعیت آن کامل نشد. شناسه پیام کانال: ${messageId}`
       );
 
@@ -877,7 +896,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
       );
     }
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       `⚠️ محتوا احتمالاً منتشر شده، اما ثبت نتیجه آن در دیتابیس با خطا مواجه شد. شناسه پیام کانال: ${messageId}`
     );
 
@@ -889,7 +909,8 @@ async function handleApprove(ctx, queueId, telegramUserId) {
 
   await removeReviewButtons(ctx);
 
-  await ctx.reply(
+  await safeReply(
+    ctx,
     `✅ محتوای زکا مدیا با شناسه ${queueId} منتشر شد.\nشناسه پیام کانال: ${messageId}`
   );
 }
@@ -898,7 +919,8 @@ async function handleRetry(ctx, queueId) {
   const item = await mediaRepository.findById(queueId);
 
   if (!item || !["PENDING", "FAILED"].includes(item.status)) {
-    await ctx.reply(
+    await safeReply(
+      ctx,
       "⚠️ این درخواست دیگر قابل بازیابی نیست."
     );
     return;
@@ -906,14 +928,16 @@ async function handleRetry(ctx, queueId) {
 
   await removeReviewButtons(ctx);
 
-  await ctx.reply(
+  await safeReply(
+    ctx,
     `⏳ درخواست ${queueId} در حال بازیابی دستی فایل است.`
   );
 
   try {
     await getAvailableMedia(item, true);
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       [
         `✅ فایل درخواست ${queueId} بازیابی شد.`,
         "",
@@ -929,7 +953,8 @@ async function handleRetry(ctx, queueId) {
       error
     );
 
-    await ctx.reply(
+    await safeReply(
+      ctx,
       [
         `❌ بازیابی فایل درخواست ${queueId} ناموفق بود.`,
         `علت: ${error.message}`,
@@ -966,12 +991,13 @@ async function handleReviewAction(ctx) {
   );
 
   if (!botInstance) {
-    await ctx.reply("❌ ربات آماده نیست.");
+    await safeReply(ctx, "❌ ربات آماده نیست.");
     return;
   }
 
   if (activeActions.has(queueId)) {
-    await ctx.reply(
+    await safeReply(
+      ctx,
       `⏳ عملیات دیگری برای درخواست ${queueId} در حال انجام است.`
     );
     return;
@@ -983,7 +1009,8 @@ async function handleReviewAction(ctx) {
     const admin = await getAuthorizedAdmin(telegramUserId);
 
     if (!admin) {
-      await ctx.reply(
+      await safeReply(
+        ctx,
         "⛔ دسترسی مدیریت زکا مدیا ندارید."
       );
       return;
@@ -1006,16 +1033,10 @@ async function handleReviewAction(ctx) {
       error
     );
 
-    try {
-      await ctx.reply(
-        "❌ پردازش درخواست زکا مدیا با خطا مواجه شد. لاگ Render را بررسی کن."
-      );
-    } catch (replyError) {
-      console.error(
-        "Could not send Zeka Media error message:",
-        replyError
-      );
-    }
+    await safeReply(
+      ctx,
+      "❌ پردازش درخواست زکا مدیا با خطا مواجه شد. لاگ Render را بررسی کن."
+    );
   } finally {
     activeActions.delete(queueId);
   }
