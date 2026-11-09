@@ -27,7 +27,9 @@ async function showFortune(
 
     if (!category) {
       await ctx.reply(
-        "❌ این نوع فال پیدا نشد.",
+        ctx.state?.language === "en"
+          ? "❌ This fortune category was not found."
+          : "❌ این نوع فال پیدا نشد.",
         fortuneMenu
       );
       return;
@@ -40,24 +42,50 @@ async function showFortune(
 
     if (!fortune) {
       await ctx.reply(
-        "⏳ این بخش هنوز فال ثبت‌شده ندارد.",
+        ctx.state?.language === "en"
+          ? "⏳ There are no fortunes in this section yet."
+          : "⏳ این بخش هنوز فال ثبت‌شده ندارد.",
         fortuneMenu
       );
       return;
     }
 
+    const isEnglish =
+      ctx.state?.language === "en";
+
+    const useEnglishFortune =
+      slug === "love" &&
+      isEnglish &&
+      fortune.content_en;
+
     const title =
-      fortune.title || label;
+      (useEnglishFortune
+        ? fortune.title_en
+        : fortune.title) ||
+      (isEnglish && slug === "love"
+        ? "❤️ Love Fortune"
+        : label);
+
+    const fortuneContent =
+      useEnglishFortune
+        ? fortune.content_en
+        : fortune.content;
 
     const sourceNumber =
       fortune.source_number
-        ? `\n🔢 شماره: ${fortune.source_number}`
+        ? isEnglish
+          ? `\n🔢 Number: ${fortune.source_number}`
+          : `\n🔢 شماره: ${fortune.source_number}`
         : "";
+
+    const footer =
+      isEnglish
+        ? "\n\n🔮 For another fortune, tap this button again.\n\nℹ️ For entertainment and reflection only; not a prediction."
+        : "\n\n🔮 برای دریافت یک فال دیگر، دوباره همین گزینه را بزن.\n\nℹ️ این فال صرفاً برای سرگرمی و تأمل است و پیش‌بینی قطعی نیست.";
 
     await ctx.reply(
       `${title}${sourceNumber}\n\n` +
-        `${fortune.content}\n\n` +
-        "🔮 برای دریافت یک فال دیگر، دوباره همین گزینه را بزن.",
+        `${fortuneContent}${footer}`,
       fortuneMenu
     );
   } catch (error) {
@@ -67,7 +95,9 @@ async function showFortune(
     );
 
     await ctx.reply(
-      "❌ دریافت فال انجام نشد. لطفاً دوباره تلاش کن.",
+      ctx.state?.language === "en"
+        ? "❌ Could not load the fortune. Please try again."
+        : "❌ دریافت فال انجام نشد. لطفاً دوباره تلاش کن.",
       fortuneMenu
     );
   }
