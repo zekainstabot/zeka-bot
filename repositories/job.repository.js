@@ -214,7 +214,8 @@ async function recover(id) {
         AND status IN (
           'WAITING',
           'PROCESSING',
-          'DOWNLOADING'
+          'DOWNLOADING',
+          'DOWNLOADED'
         )
       RETURNING *
     `,
