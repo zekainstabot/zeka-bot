@@ -1,3 +1,4 @@
+
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
@@ -25,14 +26,21 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function getTelegramUploadConfig(contentType) {
-  const normalizedType = String(
-    contentType || "video"
-  )
+function getTelegramUploadConfig(contentType, forceDocument = false) {
+  const normalizedType = String(contentType || "video")
     .trim()
     .toLowerCase();
 
-  if (normalizedType === "photo") {
+  if (forceDocument || normalizedType === "document") {
+    return {
+      endpoint: "sendDocument",
+      fieldName: "document",
+      mimeType: "application/octet-stream",
+      label: "document",
+    };
+  }
+
+  if (normalizedType === "photo" || normalizedType === "image") {
     return {
       endpoint: "sendPhoto",
       fieldName: "photo",
@@ -50,15 +58,6 @@ function getTelegramUploadConfig(contentType) {
     };
   }
 
-  if (normalizedType === "document") {
-    return {
-      endpoint: "sendDocument",
-      fieldName: "document",
-      mimeType: "application/octet-stream",
-      label: "document",
-    };
-  }
-
   return {
     endpoint: "sendVideo",
     fieldName: "video",
@@ -71,8 +70,10 @@ function createMultipartRequest({
   token,
   chatId,
   filePath,
-  caption,
-  contentType,
+  caption = "",
+  contentType = "video",
+  replyMarkup = null,
+  forceDocument = false,
 }) {
   return new Promise((resolve, reject) => {
     if (!token) {
@@ -85,116 +86,92 @@ function createMultipartRequest({
       return;
     }
 
-    if (!filePath) {
-      reject(new Error("File path is required"));
-      return;
-    }
-
-    if (!fs.existsSync(filePath)) {
-      reject(
-        new Error(`Downloaded file does not exist: ${filePath}`)
-      );
+    if (!filePath || !fs.existsSync(filePath)) {
+      reject(new Error(`Downloaded file does not exist: ${filePath}`));
       return;
     }
 
     const stats = fs.statSync(filePath);
 
-    if (!stats.isFile()) {
-      reject(
-        new Error(`Downloaded path is not a file: ${filePath}`)
-      );
+    if (!stats.isFile() || stats.size <= 0) {
+      reject(new Error("Downloaded file is invalid or empty"));
       return;
     }
 
-    if (stats.size <= 0) {
-      reject(new Error("Downloaded file is empty"));
-      return;
-    }
-
-    const uploadConfig =
-      getTelegramUploadConfig(contentType);
+    const uploadConfig = getTelegramUploadConfig(
+      contentType,
+      forceDocument
+    );
 
     const boundary =
       "----ZekaTelegramBoundary" +
       crypto.randomBytes(16).toString("hex");
 
-    const fileName = path.basename(filePath);
+    const fileName = path.basename(filePath).replace(/["\r\n]/g, "_");
 
-    let captionValue =
-      typeof caption === "string"
-        ? caption.trim()
-        : "";
+    let captionValue = String(caption || "").trim();
 
     if (captionValue.length > 1024) {
-      captionValue =
-        captionValue.slice(0, 1021) + "...";
+      captionValue = captionValue.slice(0, 1021) + "...";
     }
 
-    const chatIdPart =
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="chat_id"\r\n\r\n` +
-      `${chatId}\r\n`;
+    const fields = [
+      ["chat_id", String(chatId)],
+    ];
 
-    const filePart =
+    if (captionValue) {
+      fields.push(["caption", captionValue]);
+    }
+
+    if (replyMarkup) {
+      fields.push(["reply_markup", JSON.stringify(replyMarkup)]);
+    }
+
+    let fieldsBuffer = Buffer.alloc(0);
+
+    for (const [name, value] of fields) {
+      fieldsBuffer = Buffer.concat([
+        fieldsBuffer,
+        Buffer.from(
+          `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="${name}"\r\n\r\n` +
+          `${value}\r\n`,
+          "utf8"
+        ),
+      ]);
+    }
+
+    const fileHeader = Buffer.from(
       `--${boundary}\r\n` +
       `Content-Disposition: form-data; name="${uploadConfig.fieldName}"; filename="${fileName}"\r\n` +
-      `Content-Type: ${uploadConfig.mimeType}\r\n\r\n`;
-
-        const captionPart = captionValue
-      ? `\r\n--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="caption"\r\n\r\n` +
-        `${captionValue}\r\n`
-      : "";
-    const ending =
-      `\r\n--${boundary}--\r\n`;
-
-    const chatIdBuffer = Buffer.from(
-      chatIdPart,
+      `Content-Type: ${uploadConfig.mimeType}\r\n\r\n`,
       "utf8"
     );
 
-    const fileBuffer = Buffer.from(
-      filePart,
-      "utf8"
-    );
-
-    const captionBuffer = Buffer.from(
-      captionPart,
-      "utf8"
-    );
-
-    const endingBuffer = Buffer.from(
-      ending,
+    const ending = Buffer.from(
+      `\r\n--${boundary}--\r\n`,
       "utf8"
     );
 
     const contentLength =
-      chatIdBuffer.length +
-      fileBuffer.length +
+      fieldsBuffer.length +
+      fileHeader.length +
       stats.size +
-      captionBuffer.length +
-      endingBuffer.length;
-
-    const options = {
-      hostname: "api.telegram.org",
-      port: 443,
-      path: `/bot${token}/${uploadConfig.endpoint}`,
-      method: "POST",
-      headers: {
-        "Content-Type":
-          `multipart/form-data; boundary=${boundary}`,
-        "Content-Length": contentLength,
-        "Connection": "close",
-      },
-      timeout: 120000,
-    };
-
-    console.log(
-      `Direct Telegram ${uploadConfig.label} upload started: ${fileName} (${stats.size} bytes)`
-    );
+      ending.length;
 
     const request = https.request(
-      options,
+      {
+        hostname: "api.telegram.org",
+        port: 443,
+        path: `/bot${token}/${uploadConfig.endpoint}`,
+        method: "POST",
+        headers: {
+          "Content-Type": `multipart/form-data; boundary=${boundary}`,
+          "Content-Length": contentLength,
+          "Connection": "close",
+        },
+        timeout: 180000,
+      },
       (response) => {
         let responseData = "";
 
@@ -205,86 +182,119 @@ function createMultipartRequest({
         });
 
         response.on("end", () => {
+          let parsed;
+
+          try {
+            parsed = JSON.parse(responseData);
+          } catch {
+            parsed = null;
+          }
+
           if (
             response.statusCode >= 200 &&
-            response.statusCode < 300
+            response.statusCode < 300 &&
+            parsed?.ok === true
           ) {
-            let parsed;
-
-            try {
-              parsed = JSON.parse(responseData);
-            } catch {
-              parsed = null;
-            }
-
-            if (parsed && parsed.ok === false) {
-              reject(
-                new Error(
-                  `Telegram API error: ${
-                    parsed.description || responseData
-                  }`
-                )
-              );
-              return;
-            }
-
-            console.log(
-              `Direct Telegram ${uploadConfig.label} upload successful: HTTP ${response.statusCode}`
-            );
-
-            resolve({
-              success: true,
-              response: parsed,
-            });
-
+            resolve(parsed);
             return;
           }
 
-          reject(
-            new Error(
-              `Telegram ${uploadConfig.endpoint} failed: HTTP ${
-                response.statusCode
-              } - ${responseData}`
-            )
+          const error = new Error(
+            parsed?.description ||
+            `Telegram ${uploadConfig.endpoint} failed: HTTP ${response.statusCode}`
           );
+
+          error.response = parsed;
+          error.telegramHttpStatus = response.statusCode;
+
+          reject(error);
         });
       }
     );
 
     request.on("timeout", () => {
-      request.destroy(
-        new Error(
-          `Telegram ${uploadConfig.label} upload request timed out`
-        )
-      );
+      request.destroy(new Error("Telegram upload timed out"));
     });
 
-    request.on("error", (error) => {
-      reject(error);
-    });
+    request.on("error", reject);
 
-    request.write(chatIdBuffer);
-    request.write(fileBuffer);
+    request.write(fieldsBuffer);
+    request.write(fileHeader);
 
-    const fileStream =
-      fs.createReadStream(filePath);
+    const fileStream = fs.createReadStream(filePath);
 
     fileStream.on("error", (error) => {
       request.destroy(error);
     });
 
     fileStream.on("end", () => {
-      request.write(captionBuffer);
-      request.write(endingBuffer);
+      request.write(ending);
       request.end();
     });
 
-    fileStream.pipe(request, {
-      end: false,
-    });
+    fileStream.pipe(request, { end: false });
   });
 }
 
+/**
+ * ارسال فایل با یک تلاش و بدون Retry.
+ * برای انتشار زکا مدیا در کانال استفاده می‌شود.
+ */
+async function sendFileToChatOnce({
+  chatId,
+  filePath,
+  caption = "",
+  contentType = "video",
+  replyMarkup = null,
+  forceDocument = false,
+}) {
+  const bot = getBot();
+
+  if (!chatId) {
+    throw new Error("Telegram destination chat ID is required");
+  }
+
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error("Downloaded file does not exist");
+  }
+
+  const stats = fs.statSync(filePath);
+
+  if (!stats.isFile() || stats.size <= 0) {
+    throw new Error("Downloaded file is invalid or empty");
+  }
+
+  console.log("Telegram single upload started:", {
+    chatId,
+    filePath,
+    fileSizeBytes: stats.size,
+    contentType,
+    forceDocument,
+  });
+
+  const result = await createMultipartRequest({
+    token: bot.telegram.token,
+    chatId: String(chatId),
+    filePath,
+    caption,
+    contentType,
+    replyMarkup,
+    forceDocument,
+  });
+
+  console.log("Telegram single upload completed:", {
+    chatId,
+    fileSizeBytes: stats.size,
+    messageId: result?.result?.message_id || null,
+  });
+
+  return result.result;
+}
+
+/**
+ * ارسال فایل خصوصی.
+ * سه تلاش قبلی برای این مسیر حفظ شده است.
+ */
 async function sendFileToUser({
   telegramUserId,
   telegramChatId,
@@ -298,75 +308,42 @@ async function sendFileToUser({
     throw new Error("Telegram destination chat ID is required");
   }
 
-  if (!filePath) {
-    throw new Error("File path is required");
-  }
-
-  if (!fs.existsSync(filePath)) {
-    throw new Error(
-      `Downloaded file does not exist: ${filePath}`
-    );
+  if (!filePath || !fs.existsSync(filePath)) {
+    throw new Error(`Downloaded file does not exist: ${filePath}`);
   }
 
   const stats = fs.statSync(filePath);
 
-  if (!stats.isFile()) {
-    throw new Error(
-      `Downloaded path is not a file: ${filePath}`
-    );
-  }
-
-  if (stats.size <= 0) {
-    throw new Error(
-      `Downloaded file is empty: ${filePath}`
-    );
+  if (!stats.isFile() || stats.size <= 0) {
+    throw new Error(`Downloaded file is empty or invalid: ${filePath}`);
   }
 
   const bot = getBot();
-
   const token = bot.telegram.token;
   const chatId = String(destinationChatId);
-  const uploadConfig =
-    getTelegramUploadConfig(contentType);
+  const uploadConfig = getTelegramUploadConfig(contentType);
 
-  console.log(
-    `Sending downloaded file to Telegram user: ${chatId}`
-  );
-
-  console.log(
-    `Telegram upload file: ${filePath} (${stats.size} bytes)`
-  );
-
-  console.log(
-    `Telegram content type: ${contentType}`
-  );
-
-  console.log(
-    `Telegram upload method: ${uploadConfig.endpoint}`
-  );
+  console.log("Sending downloaded file to Telegram user:", chatId);
+  console.log("Telegram upload file:", filePath, stats.size);
+  console.log("Telegram content type:", contentType);
+  console.log("Telegram upload method:", uploadConfig.endpoint);
 
   const maxAttempts = 3;
-
   let lastError = null;
 
-  for (
-    let attempt = 1;
-    attempt <= maxAttempts;
-    attempt++
-  ) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       console.log(
         `Direct Telegram ${uploadConfig.label} upload attempt ${attempt}/${maxAttempts}`
       );
 
-      const result =
-        await createMultipartRequest({
-          token,
-          chatId,
-          filePath,
-          caption,
-          contentType,
-        });
+      const result = await createMultipartRequest({
+        token,
+        chatId,
+        filePath,
+        caption,
+        contentType,
+      });
 
       console.log(
         `Direct Telegram ${uploadConfig.label} upload successful on attempt ${attempt}`
@@ -377,31 +354,25 @@ async function sendFileToUser({
         chatId,
         filePath,
         contentType,
-        response: result.response,
+        response: result,
       };
     } catch (error) {
       lastError = error;
 
       console.error(
         `Direct Telegram ${uploadConfig.label} upload failed on attempt ${attempt}/${maxAttempts}:`,
-        error?.message || error
+        error.message
       );
 
       if (attempt < maxAttempts) {
         const delay = attempt * 3000;
 
-        console.log(
-          `Retrying direct Telegram ${uploadConfig.label} upload in ${delay}ms...`
-        );
+        console.log(`Retrying upload in ${delay}ms...`);
 
         await sleep(delay);
       }
     }
   }
-
-  console.error(
-    `Direct Telegram ${uploadConfig.label} upload failed after ${maxAttempts} attempts.`
-  );
 
   throw lastError;
 }
@@ -410,4 +381,5 @@ module.exports = {
   setBot,
   getBot,
   sendFileToUser,
+  sendFileToChatOnce,
 };
