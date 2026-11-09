@@ -14,6 +14,8 @@ const HOSTS = {
   twitch: ["twitch.tv", "www.twitch.tv", "clips.twitch.tv"],
   vimeo: ["vimeo.com", "www.vimeo.com", "player.vimeo.com"],
   dailymotion: ["dailymotion.com", "www.dailymotion.com", "dai.ly"],
+  snapchat: ["snapchat.com", "www.snapchat.com", "story.snapchat.com"],
+  threads: ["threads.net", "www.threads.net"],
 };
 
 function detectContentType(filePath) {
