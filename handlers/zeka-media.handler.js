@@ -14,7 +14,6 @@ const CHANNEL = "@zeka_media";
 const PANEL_BUTTON = "📺 مدیریت زکا مدیا";
 const PANEL_PAGE_SIZE = 5;
 
-// محدودیت آپلود Bot API ابری تلگرام
 const MAX_TELEGRAM_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 const PANEL_STATUSES = [
@@ -251,7 +250,7 @@ function getFileInfo(filePath) {
 }
 
 /**
- * ارسال فایل به تلگرام همراه با ثبت حجم و مدت آپلود.
+ * ارسال فایل به تلگرام با Buffer.
  * هیچ Retry خودکاری در این تابع وجود ندارد.
  */
 async function sendTelegramMedia({
@@ -314,12 +313,16 @@ async function sendTelegramMedia({
   }
 
   const startedAt = Date.now();
-  const stream = fs.createReadStream(filePath);
 
   try {
+    const fileBuffer = await fs.promises.readFile(filePath);
+
     const result = await botInstance.telegram[method](
       chatId,
-      { source: stream },
+      {
+        source: fileBuffer,
+        filename: path.basename(filePath),
+      },
       {
         caption,
         ...(replyMarkup
@@ -343,8 +346,6 @@ async function sendTelegramMedia({
     return result;
   } catch (error) {
     const durationMs = Date.now() - startedAt;
-
-    stream.destroy();
 
     error.zekaMediaStage = "TELEGRAM_UPLOAD";
     error.fileSizeBytes = fileInfo.sizeBytes;
@@ -401,9 +402,7 @@ async function publishToChannel(queueItem) {
 
 /**
  * فایل موجود را برمی‌گرداند.
- *
- * دانلود مجدد فقط وقتی انجام می‌شود که allowRecovery برابر true باشد.
- * این مقدار فقط در مسیر دکمه Retry دستی فعال می‌شود.
+ * دانلود مجدد فقط در مسیر Retry دستی مجاز است.
  */
 async function getAvailableMedia(item, allowRecovery = false) {
   const cached = recoveredMediaFiles.get(Number(item.id));
@@ -554,7 +553,6 @@ async function renderStatusPage(ctx, status, offset = 0) {
       .filter(Boolean)
       .join("\n");
 
-    // فقط فایل موجود نمایش داده می‌شود؛ این بخش دانلود نمی‌کند.
     if (reviewable && fileAvailable) {
       try {
         await sendMediaPreview(ctx, item, {
@@ -671,7 +669,6 @@ async function handlePanel(ctx) {
       await mediaRepository.countByStatus("PENDING");
 
     if (pendingCount > 0) {
-      // فقط نمایش فایل‌های موجود؛ بدون دانلود یا بازیابی خودکار
       await renderStatusPage(ctx, "PENDING", 0);
     }
   } catch (error) {
@@ -818,7 +815,6 @@ async function handleApprove(ctx, queueId, telegramUserId) {
   let media;
 
   try {
-    // فقط فایل موجود؛ هرگز دانلود مجدد نکن.
     media = await getAvailableMedia(queueItem, false);
   } catch (error) {
     console.error(
@@ -960,7 +956,6 @@ async function handleRetry(ctx, queueId) {
   let recoveryCompleted = false;
 
   try {
-    // تنها نقطه‌ای که اجازه دانلود مجدد دارد.
     media = await getAvailableMedia(item, true);
     recoveryCompleted = true;
 
