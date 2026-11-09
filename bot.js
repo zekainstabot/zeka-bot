@@ -252,27 +252,52 @@ async function startBot() {
 
   startProPurchaseNotificationScheduler(telegramBot);
 
-  try {
-    await telegramBot.launch();
+  const maxPollingConflictRetries = 12;
+  let pollingStarted = false;
 
-    console.log("Telegram bot started.");
-  } catch (error) {
-    const isPollingConflict =
-      error?.response?.error_code === 409 &&
-      String(error?.message || "").includes("getUpdates");
+  for (let attempt = 1; attempt <= maxPollingConflictRetries; attempt += 1) {
+    try {
+      await telegramBot.launch();
+      pollingStarted = true;
+      console.log("Telegram bot started.");
+      break;
+    } catch (error) {
+      const isPollingConflict =
+        error?.response?.error_code === 409 &&
+        String(error?.message || "").includes("getUpdates");
 
-    if (!isPollingConflict) {
-      stopScheduledPublishing();
-      stopProPurchaseNotificationScheduler();
-      stopDeliveryRecoveryScheduler();
-      stopZekaMediaExpirationService();
+      if (!isPollingConflict) {
+        stopScheduledPublishing();
+        stopProPurchaseNotificationScheduler();
+        stopDeliveryRecoveryScheduler();
+        stopZekaMediaExpirationService();
+        throw error;
+      }
 
-      throw error;
+      console.error(
+        `Telegram polling conflict (attempt ${attempt}/${maxPollingConflictRetries}). Retrying after deployment overlap window.`,
+        error?.message || error
+      );
+
+      try {
+        await telegramBot.stop("polling-conflict-retry");
+      } catch (stopError) {
+        // The polling loop may already have stopped after the 409 response.
+      }
+
+      if (attempt < maxPollingConflictRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
     }
+  }
 
-    console.error(
-      "Telegram polling conflict detected. Scheduled publishing and Pro notifications will continue in this process.",
-      error?.message || error
+  if (!pollingStarted) {
+    stopScheduledPublishing();
+    stopProPurchaseNotificationScheduler();
+    stopDeliveryRecoveryScheduler();
+    stopZekaMediaExpirationService();
+    throw new Error(
+      `Telegram polling could not start after ${maxPollingConflictRetries} conflict retries.`
     );
   }
 }
