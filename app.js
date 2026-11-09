@@ -133,9 +133,12 @@ async function handleWebApi(req, res, url) {
       return true;
     }
 
-    const downloadRoot = path.resolve(os.tmpdir(), "zeka-instagram") + path.sep;
+    const allowedDownloadRoots = [
+      "zeka-instagram",
+      "zeka-instagram-downloads",
+    ].map((directory) => path.resolve(os.tmpdir(), directory) + path.sep);
     const filePath = path.resolve(String(row.file_path));
-    if (!filePath.startsWith(downloadRoot)) {
+    if (!allowedDownloadRoots.some((root) => filePath.startsWith(root))) {
       sendJson(res, 403, { error: "INVALID_FILE_PATH" });
       return true;
     }
