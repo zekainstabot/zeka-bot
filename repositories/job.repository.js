@@ -278,6 +278,9 @@ async function update(id, updates, client = null) {
     "cancelled_at",
     "error_code",
     "error_message",
+    "progress_percent",
+    "progress_message",
+    "progress_updated_at",
   ];
 
   const entries = Object.entries(updates).filter(
