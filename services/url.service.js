@@ -52,6 +52,26 @@ const PLATFORM_PATTERNS = [
       "pin.it",
     ],
   },
+  {
+    platform: "reddit",
+    hosts: ["reddit.com", "www.reddit.com", "old.reddit.com", "redd.it", "www.redd.it"],
+  },
+  {
+    platform: "soundcloud",
+    hosts: ["soundcloud.com", "www.soundcloud.com", "m.soundcloud.com", "on.soundcloud.com"],
+  },
+  {
+    platform: "twitch",
+    hosts: ["twitch.tv", "www.twitch.tv", "clips.twitch.tv"],
+  },
+  {
+    platform: "vimeo",
+    hosts: ["vimeo.com", "www.vimeo.com", "player.vimeo.com"],
+  },
+  {
+    platform: "dailymotion",
+    hosts: ["dailymotion.com", "www.dailymotion.com", "dai.ly"],
+  },
 ];
 
 const INSTAGRAM_CONTENT_TYPES = {
