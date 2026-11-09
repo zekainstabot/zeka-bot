@@ -72,6 +72,14 @@ const PLATFORM_PATTERNS = [
     platform: "dailymotion",
     hosts: ["dailymotion.com", "www.dailymotion.com", "dai.ly"],
   },
+  {
+    platform: "snapchat",
+    hosts: ["snapchat.com", "www.snapchat.com", "story.snapchat.com"],
+  },
+  {
+    platform: "threads",
+    hosts: ["threads.net", "www.threads.net"],
+  },
 ];
 
 const INSTAGRAM_CONTENT_TYPES = {
