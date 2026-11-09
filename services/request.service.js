@@ -100,7 +100,7 @@ async function createDownloadRequest({
         request.id,
         {
           status: "FAILED",
-          error_code: "JOB_CREATION_FAILED",
+          error_code: error.code || "JOB_CREATION_FAILED",
           error_message:
             error instanceof Error
               ? error.message
