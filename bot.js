@@ -252,21 +252,27 @@ async function startBot() {
 
   startProPurchaseNotificationScheduler(telegramBot);
 
-  const maxPollingConflictRetries = 12;
-  let pollingStarted = false;
+  const maxTelegramStartupRetries = 12;
+  let telegramStarted = false;
 
-  for (let attempt = 1; attempt <= maxPollingConflictRetries; attempt += 1) {
+  for (let attempt = 1; attempt <= maxTelegramStartupRetries; attempt += 1) {
     try {
       await telegramBot.launch();
-      pollingStarted = true;
+      telegramStarted = true;
       console.log("Telegram bot started.");
       break;
     } catch (error) {
+      const errorCode = error?.response?.error_code;
+      const networkCode = error?.code || error?.cause?.code;
+      const message = String(error?.message || "");
       const isPollingConflict =
-        error?.response?.error_code === 409 &&
-        String(error?.message || "").includes("getUpdates");
+        errorCode === 409 && message.includes("getUpdates");
+      const isTemporaryNetworkError =
+        ["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND", "ECONNREFUSED", "EPIPE"].includes(networkCode) ||
+        error?.type === "system" ||
+        /network|fetch failed|socket hang up|connection reset/i.test(message);
 
-      if (!isPollingConflict) {
+      if (!isPollingConflict && !isTemporaryNetworkError) {
         stopScheduledPublishing();
         stopProPurchaseNotificationScheduler();
         stopDeliveryRecoveryScheduler();
@@ -274,30 +280,35 @@ async function startBot() {
         throw error;
       }
 
+      const retryDelayMs = Math.min(5000 * attempt, 30000);
       console.error(
-        `Telegram polling conflict (attempt ${attempt}/${maxPollingConflictRetries}). Retrying after deployment overlap window.`,
-        error?.message || error
+        `Telegram startup temporarily failed (attempt ${attempt}/${maxTelegramStartupRetries}). Retrying in ${Math.round(retryDelayMs / 1000)}s.`,
+        {
+          errorCode: errorCode || null,
+          networkCode: networkCode || null,
+          message,
+        }
       );
 
       try {
-        await telegramBot.stop("polling-conflict-retry");
+        await telegramBot.stop("startup-retry");
       } catch (stopError) {
-        // The polling loop may already have stopped after the 409 response.
+        // Polling may not have started.
       }
 
-      if (attempt < maxPollingConflictRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+      if (attempt < maxTelegramStartupRetries) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
       }
     }
   }
 
-  if (!pollingStarted) {
+  if (!telegramStarted) {
     stopScheduledPublishing();
     stopProPurchaseNotificationScheduler();
     stopDeliveryRecoveryScheduler();
     stopZekaMediaExpirationService();
     throw new Error(
-      `Telegram polling could not start after ${maxPollingConflictRetries} conflict retries.`
+      `Telegram could not start after ${maxTelegramStartupRetries} attempts due to repeated network or polling conflicts.`
     );
   }
 }
