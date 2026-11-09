@@ -54,7 +54,7 @@ async function showFortune(
       ctx.state?.language === "en";
 
     const useEnglishFortune =
-      slug === "love" &&
+      ["love", "hafez"].includes(slug) &&
       isEnglish &&
       fortune.content_en;
 
@@ -64,7 +64,9 @@ async function showFortune(
         : fortune.title) ||
       (isEnglish && slug === "love"
         ? "❤️ Love Fortune"
-        : label);
+        : isEnglish && slug === "hafez"
+          ? "📖 Hafez Fortune"
+          : label);
 
     const fortuneContent =
       useEnglishFortune
