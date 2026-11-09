@@ -10,6 +10,10 @@ const {
 } = require("../services/tiktok.service");
 
 const {
+  downloadYouTube,
+} = require("../services/youtube.service");
+
+const {
   sendFileToUser,
 } = require("../services/delivery.service");
 
@@ -42,6 +46,7 @@ const defaultDependencies = {
   userRepository,
   downloadInstagram,
   downloadTikTok,
+  downloadYouTube,
   sendFileToUser,
   deliveryRepository,
   mediaRepository,
@@ -88,6 +93,8 @@ function createJobWorker(overrides = {}) {
         result = await deps.downloadInstagram(job);
       } else if (job.platform === "tiktok") {
         result = await deps.downloadTikTok(job);
+      } else if (job.platform === "youtube") {
+        result = await deps.downloadYouTube(job);
       } else {
         throw new Error(`Unsupported platform: ${job.platform}`);
       }
