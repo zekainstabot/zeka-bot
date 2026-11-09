@@ -1,10 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const { execFile } = require("child_process");
-const { promisify } = require("util");
+const ytdlp = require("yt-dlp-exec");
 
-const execFileAsync = promisify(execFile);
 const DOWNLOAD_ROOT = path.join(os.tmpdir(), "zeka-youtube");
 const ALLOWED_HOSTS = new Set([
   "youtube.com",
@@ -24,7 +22,7 @@ function getContentType(filePath) {
 
 function cleanText(value) {
   if (typeof value !== "string") return "";
-  const result = value.replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n").trim();
+  const result = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   return !result || ["NA", "null", "None"].includes(result) ? "" : result.slice(0, 1024);
 }
 
@@ -42,6 +40,23 @@ function readCaption(directory) {
   return "";
 }
 
+function buildYtDlpOptions(output) {
+  return {
+    verbose: true,
+    output,
+    format: "best[ext=mp4]/best",
+    mergeOutputFormat: "mp4",
+    noPlaylist: true,
+    restrictFilenames: true,
+    writeInfoJson: true,
+    socketTimeout: 30,
+    retries: 2,
+    fragmentRetries: 2,
+    impersonate: "chrome",
+    extractorArgs: "youtube:player_client=web,mweb,tv,ios,android",
+  };
+}
+
 async function downloadYouTubeMedia({ url, jobId }) {
   if (!url || !jobId) throw new Error("YouTube URL and job ID are required");
 
@@ -56,37 +71,20 @@ async function downloadYouTubeMedia({ url, jobId }) {
     throw new Error("Unsupported YouTube URL");
   }
 
-  const directory = path.join(DOWNLOAD_ROOT, String(jobId));
+  const safeJobId = String(jobId).replace(/[^a-zA-Z0-9_-]/g, "_");
+  const directory = path.join(DOWNLOAD_ROOT, safeJobId);
   fs.mkdirSync(directory, { recursive: true });
   const output = path.join(directory, "%(id)s.%(ext)s");
-  const python = process.env.PYTHON || "python3";
-  const args = [
-    "-m", "yt_dlp",
-    "--verbose",
-    "--output", output,
-    "--format", "best[ext=mp4]/best",
-    "--merge-output-format", "mp4",
-    "--no-playlist",
-    "--restrict-filenames",
-    "--write-info-json",
-    "--socket-timeout", "30",
-    "--retries", "2",
-    "--fragment-retries", "2",
-    "--impersonate", "chrome",
-    "--extractor-args", "youtube:player_client=web,mweb,tv,ios,android",
-    "--",
-    parsed.toString(),
-  ];
 
   try {
-    await execFileAsync(python, args, {
+    await ytdlp(parsed.toString(), buildYtDlpOptions(output), {
       timeout: 15 * 60 * 1000,
       maxBuffer: 10 * 1024 * 1024,
       windowsHide: true,
     });
   } catch (error) {
-    const details = [error.stderr, error.stdout, error.message].filter(Boolean).join("\\n");
-    console.error("YouTube Python yt-dlp failed:", {
+    const details = [error.stderr, error.stdout, error.message].filter(Boolean).join("\n");
+    console.error("YouTube yt-dlp execution failed:", {
       message: error.message,
       code: error.code,
       signal: error.signal,
@@ -99,12 +97,17 @@ async function downloadYouTubeMedia({ url, jobId }) {
   const files = fs.readdirSync(directory)
     .map((name) => path.join(directory, name))
     .filter((file) => {
-      try { return fs.statSync(file).isFile() && ["VIDEO", "PHOTO"].includes(getContentType(file)); }
-      catch { return false; }
+      try {
+        return fs.statSync(file).isFile() && ["VIDEO", "PHOTO"].includes(getContentType(file));
+      } catch {
+        return false;
+      }
     })
     .sort((a, b) => fs.statSync(b).size - fs.statSync(a).size);
 
-  if (!files.length) throw new Error("YouTube download finished without a supported media file");
+  if (!files.length) {
+    throw new Error("YouTube download finished without a supported media file");
+  }
 
   const filePath = files[0];
   return {
@@ -118,4 +121,7 @@ async function downloadYouTubeMedia({ url, jobId }) {
   };
 }
 
-module.exports = { downloadYouTubeMedia };
+module.exports = {
+  downloadYouTubeMedia,
+  buildYtDlpOptions,
+};
