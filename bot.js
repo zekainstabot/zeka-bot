@@ -38,6 +38,7 @@ const { createProHandler } = require("./handlers/pro.handler");
 const { createFeaturesHandler } = require("./handlers/features.handler");
 const { createHelpHandler } = require("./handlers/help.handler");
 const { createNavigationHandler } = require("./handlers/navigation.handler");
+const { createLanguageMiddleware } = require("./services/language.service");
 
 const {
   startScheduledPublishing,
@@ -122,6 +123,9 @@ function createBot() {
 
     return next();
   });
+
+  // Apply the saved language to each user update.
+  bot.use(createLanguageMiddleware());
 
   // جلوگیری از دسترسی کاربران مسدودشده
   bot.use(userBlockMiddleware);
