@@ -305,10 +305,14 @@ async function sendFileToUser({
   const destinationChatId = telegramChatId || telegramUserId;
 
   if (!destinationChatId) {
-    throw new Error("Telegram destination chat ID is required");
+    throw new Error("Telegram user ID is required");
   }
 
-  if (!filePath || !fs.existsSync(filePath)) {
+  if (!filePath) {
+    throw new Error("File path is required");
+  }
+
+  if (!fs.existsSync(filePath)) {
     throw new Error(`Downloaded file does not exist: ${filePath}`);
   }
 
