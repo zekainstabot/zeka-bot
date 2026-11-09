@@ -5,6 +5,7 @@ const os = require("os");
 
 const { initializeDatabase } = require("./database/bootstrap");
 const { getClient, close } = require("./database/client");
+const { getDownloadErrorMessage } = require("./services/download-error.service");
 const { startBot } = require("./bot");
 const bugReportCleanupService = require("./services/bug-report-cleanup.service");
 const { startTempFileCleanupService } = require("./services/scheduled-file-cleanup.service");
@@ -258,6 +259,7 @@ async function handleWebApi(req, res, url) {
       id: String(row.id),
       status: row.status,
       errorCode: row.error_code,
+      errorMessage: row.status === "FAILED" ? getDownloadErrorMessage(row.error_code) : null,
       progressPercent: Number(row.progress_percent || 0),
       progressMessage: row.progress_message || null,
       progressUpdatedAt: row.progress_updated_at || null,
