@@ -47,12 +47,6 @@ function createDownloadHandler({
     ).padStart(2, "0")}`;
   }
 
-  function progressBar(value) {
-    const percent = Math.max(0, Math.min(99, Number(value) || 0));
-    const filled = Math.round(percent / 10);
-    return { percent, bar: "▓".repeat(filled) + "░".repeat(10 - filled) };
-  }
-
   function statusKeyboard(jobId) {
     return {
       reply_markup: {
@@ -208,11 +202,7 @@ function createDownloadHandler({
         if (job.status === "PROCESSING") {
           status = "⚙️ در حال پردازش...";
         } else if (job.status === "DOWNLOADING") {
-          const progress = progressBar(job.progress_percent);
-          status =
-            "📥 در حال دانلود...\n" +
-            progress.bar + " " + progress.percent + "٪\n" +
-            (job.progress_message || "در حال دریافت فایل از اینستاگرام");
+          status = "📥 در حال دانلود...";
         } else if (job.status === "SENDING") {
           status = "📤 فایل آماده شد؛ در حال ارسال...";
         } else if (job.status === "WAITING") {
@@ -252,7 +242,7 @@ function createDownloadHandler({
           }
         }
 
-        watcher.timer = setTimeout(update, 5000);
+        watcher.timer = setTimeout(update, 15000);
       } catch (error) {
         console.error(
           "Download status watcher failed:",
