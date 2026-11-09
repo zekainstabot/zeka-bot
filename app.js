@@ -107,6 +107,52 @@ async function handleWebApi(req, res, url) {
   }
 
 
+  if (url.pathname === "/api/web/downloads" && req.method === "GET") {
+    const userId = String(url.searchParams.get("userId") || "");
+    if (!/^\\d+$/.test(userId)) {
+      sendJson(res, 400, { error: "INVALID_USER" });
+      return true;
+    }
+
+    const result = await db.query(
+      `SELECT j.id, j.status, j.error_code, j.created_at, j.completed_at,
+              j.progress_percent, j.progress_message, j.progress_updated_at,
+              r.original_url,
+              m.content_type AS media_content_type,
+              m.file_deleted_at, m.expires_at
+       FROM jobs j
+       INNER JOIN requests r ON r.id = j.request_id
+       LEFT JOIN zeka_media_queue m ON m.job_id = j.id
+       WHERE j.user_id = $1
+       ORDER BY j.created_at DESC, j.id DESC
+       LIMIT 25`,
+      [userId]
+    );
+
+    const downloads = result.rows.map((row) => ({
+      id: String(row.id),
+      status: row.status,
+      errorCode: row.error_code,
+      errorMessage: row.status === "FAILED" ? getDownloadErrorMessage(row.error_code) : null,
+      progressPercent: Number(row.progress_percent || 0),
+      progressMessage: row.progress_message || null,
+      progressUpdatedAt: row.progress_updated_at || null,
+      createdAt: row.created_at,
+      completedAt: row.completed_at,
+      originalUrl: row.original_url,
+      mediaContentType: row.media_content_type || null,
+      previewAvailable: Boolean(
+        row.media_content_type &&
+        !row.file_deleted_at &&
+        row.expires_at &&
+        new Date(row.expires_at).getTime() > Date.now()
+      ),
+    }));
+
+    sendJson(res, 200, { downloads });
+    return true;
+  }
+
   const fileMatch = url.pathname.startsWith("/api/web/downloads/") ? url.pathname.slice("/api/web/downloads/".length).match(/^([0-9]+)\/file$/) : null;
   if (fileMatch && req.method === "GET") {
     const userId = String(url.searchParams.get("userId") || "");
