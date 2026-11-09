@@ -307,7 +307,7 @@ function createJobWorker(overrides = {}) {
       }
 
       try {
-        await deps.markFailed(job.id, error, classifyDownloadError(error));
+        await deps.markFailed(job.id, error, job.platform === "instagram" && !downloadedFilePath ? classifyDownloadError(error) : "WORKER_ERROR");
       } catch (markFailedError) {
         console.error(
           `Failed to mark job as FAILED: ${jobLabel}`,
