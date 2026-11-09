@@ -109,10 +109,15 @@ test("reset clears shutdown state and handlers", async () => {
 
   shutdown.reset();
 
+  assert.equal(
+    shutdown.isShuttingDown(),
+    false
+  );
+
   await shutdown.shutdown("SECOND");
 
   assert.equal(
     callCount,
-    2
+    1
   );
 });
