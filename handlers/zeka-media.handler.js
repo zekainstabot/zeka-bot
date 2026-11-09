@@ -250,7 +250,7 @@ function getFileInfo(filePath) {
 }
 
 /**
- * ارسال فایل به تلگرام با Buffer.
+ * ارسال فایل به تلگرام.
  * هیچ Retry خودکاری در این تابع وجود ندارد.
  */
 async function sendTelegramMedia({
@@ -452,39 +452,6 @@ async function getAvailableMedia(item, allowRecovery = false) {
   return media;
 }
 
-async function sendMediaPreview(ctx, item, media) {
-  const chatId = ctx.chat?.id;
-
-  if (!chatId) {
-    throw new Error("شناسه گفتگوی ادمین در دسترس نیست.");
-  }
-
-  const caption = [
-    "📺 محتوای زکا مدیا",
-    "",
-    `شناسه: ${item.id}`,
-    `وضعیت: ${STATUS_LABELS[item.status] || item.status}`,
-    `نوع فایل: ${media.contentType || "UNKNOWN"}`,
-    item.original_url
-      ? `لینک منبع: ${item.original_url}`
-      : null,
-    "",
-    "محتوا را بررسی کن و سپس تأیید یا رد کن.",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  return sendTelegramMedia({
-    chatId,
-    queueId: item.id,
-    filePath: media.filePath,
-    contentType: media.contentType,
-    caption,
-    replyMarkup: buildReviewKeyboard(item.id),
-    purpose: "ADMIN_PREVIEW",
-  });
-}
-
 async function renderStatusPage(ctx, status, offset = 0) {
   if (!PANEL_STATUSES.includes(status)) {
     await ctx.reply("وضعیت انتخاب‌شده معتبر نیست.");
@@ -554,29 +521,18 @@ async function renderStatusPage(ctx, status, offset = 0) {
       .join("\n");
 
     if (reviewable && fileAvailable) {
-      try {
-        await sendMediaPreview(ctx, item, {
-          filePath: mediaPath,
-          contentType: item.content_type || "UNKNOWN",
-        });
-      } catch (error) {
-        console.error(
-          `Failed to display Zeka Media item ${item.id}:`,
-          error
-        );
-
-        await ctx.reply(
-          [
-            "⚠️ ارسال پیش‌نمایش ناموفق بود.",
-            "",
-            details,
-            `علت: ${error.message}`,
-          ].join("\n"),
-          {
-            reply_markup: buildRetryKeyboard(item.id),
-          }
-        );
-      }
+      await ctx.reply(
+        [
+          "📄 درخواست زکا مدیا",
+          "",
+          details,
+          "",
+          "برای انتشار، تأیید و انتشار را بزن.",
+        ].join("\n"),
+        {
+          reply_markup: buildReviewKeyboard(item.id),
+        }
+      );
 
       continue;
     }
@@ -588,7 +544,7 @@ async function renderStatusPage(ctx, status, offset = 0) {
           "",
           details,
           "",
-          "فایل محلی موجود نیست. برای دانلود مجدد، خودت دکمه تلاش مجدد را بزن.",
+          "فایل محلی موجود نیست. برای دانلود مجدد، دکمه تلاش مجدد را بزن.",
         ].join("\n"),
         {
           reply_markup: buildRetryKeyboard(item.id),
@@ -809,7 +765,7 @@ async function handleApprove(ctx, queueId, telegramUserId) {
   }
 
   await ctx.reply(
-    `⏳ درخواست ${queueId} در حال آماده‌سازی و انتشار است.`
+    `⏳ درخواست ${queueId} در حال آماده‌سازی و انتشار در کانال است.`
   );
 
   let media;
@@ -830,7 +786,10 @@ async function handleApprove(ctx, queueId, telegramUserId) {
         `علت: ${error.message}`,
         "",
         "برای دریافت مجدد فایل، از دکمه تلاش مجدد استفاده کن.",
-      ].join("\n")
+      ].join("\n"),
+      {
+        reply_markup: buildRetryKeyboard(queueId),
+      }
     );
 
     return;
@@ -856,7 +815,15 @@ async function handleApprove(ctx, queueId, telegramUserId) {
       await mediaRepository.markFailed(queueId);
 
       await ctx.reply(
-        `❌ انتشار محتوای ${queueId} انجام نشد؛ وضعیت آن ناموفق ثبت شد.\nعلت: ${error.message}`
+        [
+          `❌ انتشار محتوای ${queueId} انجام نشد.`,
+          `علت: ${error.message}`,
+          "",
+          "در صورت نیاز، عملیات دانلود مجدد را دستی اجرا کن.",
+        ].join("\n"),
+        {
+          reply_markup: buildRetryKeyboard(queueId),
+        }
       );
 
       return;
@@ -949,20 +916,21 @@ async function handleRetry(ctx, queueId) {
   await removeReviewButtons(ctx);
 
   await ctx.reply(
-    `⏳ درخواست ${queueId} در حال بازیابی دستی است. پس از آماده شدن فایل، پیش‌نمایش ارسال می‌شود.`
+    `⏳ درخواست ${queueId} در حال بازیابی دستی فایل است.`
   );
 
-  let media;
-  let recoveryCompleted = false;
-
   try {
-    media = await getAvailableMedia(item, true);
-    recoveryCompleted = true;
-
-    await sendMediaPreview(ctx, item, media);
+    await getAvailableMedia(item, true);
 
     await ctx.reply(
-      `✅ فایل درخواست ${queueId} بازیابی و پیش‌نمایش آن ارسال شد.`
+      [
+        `✅ فایل درخواست ${queueId} بازیابی شد.`,
+        "",
+        "برای انتشار در کانال، دکمه زیر را بزن.",
+      ].join("\n"),
+      {
+        reply_markup: buildReviewKeyboard(queueId),
+      }
     );
   } catch (error) {
     console.error(
@@ -970,37 +938,13 @@ async function handleRetry(ctx, queueId) {
       error
     );
 
-    let failureMessage;
-
-    if (error.zekaMediaStage === "FILE_TOO_LARGE") {
-      failureMessage = [
-        "❌ فایل بازیابی شد، اما حجم آن برای ارسال از طریق تلگرام بیش از حد مجاز است.",
-        `حجم فایل: ${error.fileSizeMB} مگابایت`,
-        "حداکثر حجم مجاز: ۵۰ مگابایت",
-      ].join("\n");
-    } else if (error.zekaMediaStage === "TELEGRAM_UPLOAD") {
-      failureMessage = [
-        "⚠️ فایل بازیابی شد، اما ارسال پیش‌نمایش به تلگرام ناموفق بود.",
-        `حجم فایل: ${error.fileSizeMB} مگابایت`,
-        `مدت تلاش برای ارسال: ${error.uploadDurationMs} میلی‌ثانیه`,
-        `خطا: ${error.message}`,
-        "",
-        "فایل بازیابی‌شده در حافظه موقت نگه داشته شده است. این خطا به معنی شکست دانلود نیست.",
-      ].join("\n");
-    } else if (recoveryCompleted) {
-      failureMessage = [
-        "⚠️ فایل بازیابی شد، اما مرحله آماده‌سازی یا ارسال پیش‌نمایش با خطا مواجه شد.",
-        `علت: ${error.message}`,
-      ].join("\n");
-    } else {
-      failureMessage = [
-        "❌ دانلود مجدد درخواست ناموفق بود.",
-        `علت: ${error.message}`,
-      ].join("\n");
-    }
-
     await ctx.reply(
-      failureMessage,
+      [
+        `❌ بازیابی فایل درخواست ${queueId} ناموفق بود.`,
+        `علت: ${error.message}`,
+        "",
+        "برای تلاش دوباره باید دکمه تلاش مجدد را دستی بزنی.",
+      ].join("\n"),
       {
         reply_markup: buildRetryKeyboard(queueId),
       }
@@ -1027,7 +971,7 @@ async function handleReviewAction(ctx) {
       ? "در حال شروع انتشار..."
       : action === "reject"
         ? "در حال ثبت رد درخواست..."
-        : "در حال شروع عملیات دستی..."
+        : "در حال شروع بازیابی دستی..."
   );
 
   if (!botInstance) {
