@@ -101,3 +101,11 @@ test("parseUrl accepts URLs without protocol", () => {
   assert.equal(result.valid, true);
   assert.equal(result.platform, "instagram");
 });
+
+test("detectPlatform detects additional supported platforms", () => {
+  assert.equal(detectPlatform("https://www.reddit.com/r/test/comments/abc/"), "reddit");
+  assert.equal(detectPlatform("https://soundcloud.com/artist/track"), "soundcloud");
+  assert.equal(detectPlatform("https://www.twitch.tv/example"), "twitch");
+  assert.equal(detectPlatform("https://vimeo.com/123456"), "vimeo");
+  assert.equal(detectPlatform("https://www.dailymotion.com/video/x123"), "dailymotion");
+});
