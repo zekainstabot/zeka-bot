@@ -12,6 +12,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://zeka_test:zeka_test@127.0.0.1:5432/zeka_test
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
