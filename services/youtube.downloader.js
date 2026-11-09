@@ -1,8 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
-const ytdlp = require("yt-dlp-exec");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
 
+const execFileAsync = promisify(execFile);
 const DOWNLOAD_ROOT = path.join(os.tmpdir(), "zeka-youtube");
 const ALLOWED_HOSTS = new Set([
   "youtube.com",
@@ -22,7 +24,7 @@ function getContentType(filePath) {
 
 function cleanText(value) {
   if (typeof value !== "string") return "";
-  const result = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  const result = value.replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n").trim();
   return !result || ["NA", "null", "None"].includes(result) ? "" : result.slice(0, 1024);
 }
 
@@ -57,20 +59,41 @@ async function downloadYouTubeMedia({ url, jobId }) {
   const directory = path.join(DOWNLOAD_ROOT, String(jobId));
   fs.mkdirSync(directory, { recursive: true });
   const output = path.join(directory, "%(id)s.%(ext)s");
+  const python = process.env.PYTHON || "python3";
+  const args = [
+    "-m", "yt_dlp",
+    "--output", output,
+    "--format", "best[ext=mp4]/best",
+    "--merge-output-format", "mp4",
+    "--no-playlist",
+    "--no-warnings",
+    "--restrict-filenames",
+    "--write-info-json",
+    "--socket-timeout", "30",
+    "--retries", "2",
+    "--fragment-retries", "2",
+    "--impersonate", "chrome",
+    "--",
+    parsed.toString(),
+  ];
 
-  await ytdlp(parsed.toString(), {
-    output,
-    format: "best[ext=mp4]/best",
-    mergeOutputFormat: "mp4",
-    noPlaylist: true,
-    noWarnings: true,
-    restrictFilenames: true,
-    writeInfoJson: true,
-    socketTimeout: 30,
-    retries: 2,
-    fragmentRetries: 2,
-    extractorArgs: "youtube:player_client=web,mweb,tv",
-  });
+  try {
+    await execFileAsync(python, args, {
+      timeout: 15 * 60 * 1000,
+      maxBuffer: 10 * 1024 * 1024,
+      windowsHide: true,
+    });
+  } catch (error) {
+    const details = [error.stderr, error.stdout, error.message].filter(Boolean).join("\\n");
+    console.error("YouTube Python yt-dlp failed:", {
+      message: error.message,
+      code: error.code,
+      signal: error.signal,
+      stderr: String(error.stderr || "").slice(-5000),
+      stdout: String(error.stdout || "").slice(-5000),
+    });
+    throw new Error(details.slice(-5000) || "YouTube download failed");
+  }
 
   const files = fs.readdirSync(directory)
     .map((name) => path.join(directory, name))
