@@ -175,7 +175,7 @@ async function handleWebApi(req, res, url) {
 
     const rangeHeader = req.headers.range;
     if (rangeHeader) {
-      const rangeMatch = /^bytes=(\\d*)-(\\d*)$/.exec(rangeHeader.trim());
+      const rangeMatch = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
       if (!rangeMatch || (!rangeMatch[1] && !rangeMatch[2])) {
         res.writeHead(416, { ...commonHeaders, "Content-Range": `bytes */${stat.size}` });
         res.end();
