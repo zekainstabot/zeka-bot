@@ -9,7 +9,7 @@ const MENU = "🎁 مدیریت جوایز";
 const FEATURES = [
   {
     key: "feature.referral",
-    title: "👥 Referral",
+    title: "👥 مدیریت رفرال",
   },
   {
     key: "feature.missions",
@@ -26,7 +26,7 @@ function mainMenu(admin) {
     admin?.role_key === "super_admin";
 
   return Markup.keyboard([
-    ["👥 Referral", "🎯 مدیریت مأموریت‌ها"],
+    ["👥 مدیریت رفرال", "🎯 مدیریت مأموریت‌ها"],
     ["🎰 شانس"],
     ["🔄 بروزرسانی وضعیت"],
     [
@@ -177,7 +177,7 @@ async function handleReferral(ctx) {
   await toggleFeature(
     ctx,
     "feature.referral",
-    "👥 Referral"
+    "👥 مدیریت رفرال"
   );
 }
 
@@ -270,7 +270,7 @@ function createAdminRewardsHandler(bot) {
   );
 
   bot.hears(
-    "👥 Referral",
+    "👥 مدیریت رفرال",
     handleReferral
   );
 
