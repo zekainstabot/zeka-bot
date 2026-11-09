@@ -22,7 +22,7 @@ function getContentType(filePath) {
 
 function cleanText(value) {
   if (typeof value !== "string") return "";
-  const result = value.replace(/\\r\\n/g, "\\n").replace(/\\r/g, "\\n").trim();
+  const result = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   return !result || ["NA", "null", "None"].includes(result) ? "" : result.slice(0, 1024);
 }
 
