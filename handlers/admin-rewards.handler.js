@@ -2,6 +2,7 @@ const { Markup } = require("telegraf");
 
 const adminService = require("../services/admin.service");
 const settingsService = require("../services/settings.service");
+const giftCodeRepository = require("../repositories/gift-code.repository");
 
 const MENU = "🎁 مدیریت جوایز";
 
@@ -123,7 +124,7 @@ async function showRewardsPanel(ctx) {
       `${statusIcon(luck)} شانس: ${
         luck ? "فعال" : "غیرفعال"
       }\n\n` +
-      "برای تغییر وضعیت، بخش موردنظر را انتخاب کنید.",
+      "برای تغییر وضعیت، بخش موردنظر را انتخاب کنید.\n\nساخت کد هدیه:\n/giftcode CODE CREDIT XP PRO_DAYS MAX_USES\nنمونه: /giftcode ZEKA100 100 50 0 100\nبرای استفاده نامحدود، MAX_USES را 0 بگذار.",
     mainMenu(admin)
   );
 }
@@ -198,6 +199,66 @@ async function handleLuck(ctx) {
 
 async function handleRefresh(ctx) {
   await showRewardsPanel(ctx);
+}
+
+
+async function handleCreateGiftCode(ctx) {
+  const admin = await requirePermission(ctx);
+  if (!admin) return;
+
+  const parts = String(ctx.message?.text || "").trim().split(/\\s+/);
+  if (parts.length !== 6) {
+    await ctx.reply(
+      "فرمت دستور:\n/giftcode CODE CREDIT XP PRO_DAYS MAX_USES\nنمونه: /giftcode ZEKA100 100 50 0 100"
+    );
+    return;
+  }
+
+  const [, rawCode, rawCredit, rawXp, rawProDays, rawMaxUses] = parts;
+  const code = String(rawCode).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+  const creditAmount = Number(rawCredit);
+  const xpAmount = Number(rawXp);
+  const proDays = Number(rawProDays);
+  const maxUsesValue = Number(rawMaxUses);
+
+  if (
+    code.length < 3 || code.length > 50 ||
+    !Number.isFinite(creditAmount) || creditAmount < 0 ||
+    !Number.isInteger(xpAmount) || xpAmount < 0 ||
+    !Number.isInteger(proDays) || proDays < 0 ||
+    !Number.isInteger(maxUsesValue) || maxUsesValue < 0 ||
+    (creditAmount === 0 && xpAmount === 0 && proDays === 0)
+  ) {
+    await ctx.reply("مقادیر کد هدیه معتبر نیستند. حداقل یکی از اعتبار، XP یا روز پرو باید بیشتر از صفر باشد.");
+    return;
+  }
+
+  try {
+    const gift = await giftCodeRepository.create({
+      code,
+      description: "هدیه ساخته‌شده توسط مدیریت",
+      creditAmount,
+      xpAmount,
+      proDays,
+      maxUses: maxUsesValue === 0 ? null : maxUsesValue,
+      perUserLimit: 1,
+      createdBy: admin.user_id,
+      status: "ACTIVE"
+    });
+
+    await ctx.reply(
+      "✅ کد هدیه ساخته شد.\n\n" +
+      `🎟 کد: ${gift.code}\n` +
+      `💳 اعتبار: ${creditAmount}\n` +
+      `✨ XP: ${xpAmount}\n` +
+      `⭐ روز پرو: ${proDays}\n` +
+      `👥 سقف استفاده: ${maxUsesValue === 0 ? "نامحدود" : maxUsesValue}`
+    );
+  } catch (error) {
+    console.error("Admin gift code creation failed:", error);
+    const duplicate = error.code === "23505";
+    await ctx.reply(duplicate ? "❌ این کد قبلاً ساخته شده است." : "❌ ساخت کد هدیه انجام نشد.");
+  }
 }
 
 function createAdminRewardsHandler(bot) {
