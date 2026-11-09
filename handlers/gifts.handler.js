@@ -1,162 +1,28 @@
 "use strict";
-
 const { Markup } = require("telegraf");
 const { getOrCreateUser } = require("../services/user.service");
 const { redeemGiftCode, getUserRewards } = require("../services/gift.service");
-
+const { getReferralSummary, getMissionOverview, claimMissionReward } = require("../services/engagement.service");
 const pendingGiftCode = new Set();
-
-function giftsMenu() {
-  return Markup.keyboard([
-    ["🎟 ثبت کد هدیه"],
-    ["🎁 جوایز دریافتی من"],
-    ["🔙 بازگشت"]
-  ]).resize().persistent();
-}
-
+function giftsMenu() { return Markup.keyboard([["🎟 ثبت کد هدیه"],["🎁 جوایز دریافتی من"],["👥 دعوت دوستان","🎯 مأموریت‌ها"],["🔙 بازگشت"]]).resize().persistent(); }
 function formatReward(item, language) {
-  const date = new Date(item.created_at);
-  const dateText = Number.isNaN(date.getTime())
-    ? ""
-    : date.toLocaleDateString(language === "en" ? "en-US" : "fa-IR");
-  const parts = [];
-  if (Number(item.credit_amount) > 0) parts.push(`+${Number(item.credit_amount)} ${language === "en" ? "credits" : "اعتبار"}`);
-  if (Number(item.xp_amount) > 0) parts.push(`+${Number(item.xp_amount)} XP`);
-  if (Number(item.pro_days) > 0) parts.push(`+${Number(item.pro_days)} ${language === "en" ? "Pro days" : "روز پرو"}`);
-  return `• ${parts.join("، ") || (language === "en" ? "Reward" : "جایزه")} ${dateText ? "— " + dateText : ""}`;
+ const d=new Date(item.created_at); const date=Number.isNaN(d.getTime())?"":d.toLocaleDateString(language==="en"?"en-US":"fa-IR");
+ const p=[]; if(Number(item.credit_amount)>0)p.push(`+${Number(item.credit_amount)} ${language==="en"?"credits":"اعتبار"}`); if(Number(item.xp_amount)>0)p.push(`+${Number(item.xp_amount)} XP`); if(Number(item.pro_days)>0)p.push(`+${Number(item.pro_days)} ${language==="en"?"Pro days":"روز پرو"}`); return `• ${p.join("، ")||(language==="en"?"Reward":"جایزه")} ${date?"— "+date:""}`;
 }
-
 function giftErrorMessage(error, language) {
-  const fa = {
-    INVALID_CODE: "کد واردشده معتبر نیست.",
-    GIFT_NOT_FOUND: "این کد هدیه وجود ندارد.",
-    GIFT_INACTIVE: "این کد هدیه غیرفعال شده است.",
-    GIFT_NOT_STARTED: "زمان استفاده از این کد هنوز شروع نشده است.",
-    GIFT_EXPIRED: "مهلت استفاده از این کد به پایان رسیده است.",
-    GIFT_EXHAUSTED: "ظرفیت استفاده از این کد تکمیل شده است.",
-    GIFT_ALREADY_USED: "قبلاً از این کد هدیه استفاده کرده‌ای.",
-    GIFT_EMPTY: "این کد در حال حاضر جایزه‌ای ندارد.",
-    GIFT_GRANT_FAILED: "ثبت جایزه انجام نشد. دوباره تلاش کن."
-  };
-  const en = {
-    INVALID_CODE: "The gift code is invalid.",
-    GIFT_NOT_FOUND: "This gift code does not exist.",
-    GIFT_INACTIVE: "This gift code has been disabled.",
-    GIFT_NOT_STARTED: "This gift code is not available yet.",
-    GIFT_EXPIRED: "This gift code has expired.",
-    GIFT_EXHAUSTED: "This gift code has reached its usage limit.",
-    GIFT_ALREADY_USED: "You have already redeemed this gift code.",
-    GIFT_EMPTY: "This gift code has no reward.",
-    GIFT_GRANT_FAILED: "The reward could not be saved. Please try again."
-  };
-  const key = String(error?.message || "");
-  return (language === "en" ? en : fa)[key] ||
-    (language === "en" ? "Something went wrong while redeeming the code." : "هنگام ثبت کد هدیه خطایی رخ داد.");
+ const fa={INVALID_CODE:"کد واردشده معتبر نیست.",GIFT_NOT_FOUND:"این کد هدیه وجود ندارد.",GIFT_INACTIVE:"این کد هدیه غیرفعال شده است.",GIFT_NOT_STARTED:"زمان استفاده از این کد هنوز شروع نشده است.",GIFT_EXPIRED:"مهلت استفاده از این کد به پایان رسیده است.",GIFT_EXHAUSTED:"ظرفیت استفاده از این کد تکمیل شده است.",GIFT_ALREADY_USED:"قبلاً از این کد هدیه استفاده کرده‌ای.",GIFT_EMPTY:"این کد در حال حاضر جایزه‌ای ندارد.",GIFT_GRANT_FAILED:"ثبت جایزه انجام نشد. دوباره تلاش کن."};
+ const en={INVALID_CODE:"The gift code is invalid.",GIFT_NOT_FOUND:"This gift code does not exist.",GIFT_INACTIVE:"This gift code has been disabled.",GIFT_NOT_STARTED:"This gift code is not available yet.",GIFT_EXPIRED:"This gift code has expired.",GIFT_EXHAUSTED:"This gift code has reached its usage limit.",GIFT_ALREADY_USED:"You have already redeemed this gift code.",GIFT_EMPTY:"This gift code has no reward.",GIFT_GRANT_FAILED:"The reward could not be saved. Please try again."};
+ return (language==="en"?en:fa)[String(error?.message||"")]||(language==="en"?"Something went wrong.":"خطایی رخ داد.");
 }
-
-function createGiftsHandler({ bot, mainMenu }) {
-  bot.hears("🎁 هدایا", async (ctx) => {
-    pendingGiftCode.delete(ctx.from.id);
-    await ctx.reply(
-      ctx.state?.language === "en"
-        ? "🎁 Gifts\n\nRedeem a gift code or view the rewards you have received."
-        : "🎁 هدایا\n\nکد هدیه‌ات را ثبت کن یا جایزه‌هایی را که دریافت کرده‌ای ببین.",
-      giftsMenu()
-    );
-  });
-
-  bot.hears("🎟 ثبت کد هدیه", async (ctx) => {
-    pendingGiftCode.add(ctx.from.id);
-    await ctx.reply(
-      ctx.state?.language === "en"
-        ? "🎟 Send your gift code in one message.\n\nYou can cancel using 🔙 Back."
-        : "🎟 کد هدیه را در یک پیام بفرست.\n\nبرای لغو، «🔙 بازگشت» را بزن.",
-      Markup.keyboard([["🔙 بازگشت"]]).resize().persistent()
-    );
-  });
-
-  bot.hears("🎁 جوایز دریافتی من", async (ctx) => {
-    try {
-      const user = await getOrCreateUser(ctx.from);
-      const rewards = await getUserRewards(user.id, 10);
-      const language = ctx.state?.language || "fa";
-
-      if (!rewards.length) {
-        await ctx.reply(
-          language === "en"
-            ? "🎁 You have not received any rewards yet."
-            : "🎁 هنوز جایزه‌ای دریافت نکرده‌ای.",
-          giftsMenu()
-        );
-        return;
-      }
-
-      const lines = rewards.map((item) => formatReward(item, language));
-      await ctx.reply(
-        (language === "en" ? "🎁 Your latest rewards\n\n" : "🎁 آخرین جوایز دریافتی تو\n\n") +
-          lines.join("\n"),
-        giftsMenu()
-      );
-    } catch (error) {
-      console.error("User reward history failed:", error);
-      await ctx.reply(
-        ctx.state?.language === "en"
-          ? "Could not load your rewards. Please try again."
-          : "دریافت فهرست جوایز انجام نشد. دوباره تلاش کن.",
-        giftsMenu()
-      );
-    }
-  });
-
-  bot.hears("🔙 بازگشت", async (ctx, next) => {
-    if (!pendingGiftCode.has(ctx.from.id)) return next();
-    pendingGiftCode.delete(ctx.from.id);
-    await ctx.reply(
-      ctx.state?.language === "en" ? "Gift code entry cancelled." : "ثبت کد هدیه لغو شد.",
-      giftsMenu()
-    );
-  });
-
-  bot.on("text", async (ctx, next) => {
-    if (!pendingGiftCode.has(ctx.from?.id)) return next();
-
-    const code = String(ctx.message?.text || "").trim();
-    if (!code || code.startsWith("/")) {
-      await ctx.reply(
-        ctx.state?.language === "en"
-          ? "Please send a valid gift code, or tap Back to cancel."
-          : "لطفاً کد هدیه را ارسال کن یا برای لغو «🔙 بازگشت» را بزن.",
-        giftsMenu()
-      );
-      return;
-    }
-
-    pendingGiftCode.delete(ctx.from.id);
-
-    try {
-      const user = await getOrCreateUser(ctx.from);
-      const reward = await redeemGiftCode({ userId: user.id, code });
-      const language = ctx.state?.language || "fa";
-      const details = [];
-      if (reward.creditAmount > 0) details.push(`💳 +${reward.creditAmount} ${language === "en" ? "credits" : "اعتبار"}`);
-      if (reward.xpAmount > 0) details.push(`✨ +${reward.xpAmount} XP`);
-      if (reward.proDays > 0) details.push(`⭐ +${reward.proDays} ${language === "en" ? "Pro days" : "روز زکا پرو"}`);
-
-      await ctx.reply(
-        (language === "en" ? "🎉 Gift redeemed successfully!\n\n" : "🎉 کد هدیه با موفقیت ثبت شد!\n\n") +
-          (reward.description ? reward.description + "\n" : "") +
-          details.join("\n"),
-        giftsMenu()
-      );
-    } catch (error) {
-      console.error("Gift code redemption failed:", {
-        telegramUserId: ctx.from.id,
-        codeLength: code.length,
-        error: error.message
-      });
-      await ctx.reply(giftErrorMessage(error, ctx.state?.language || "fa"), giftsMenu());
-    }
-  });
+function createGiftsHandler({bot,mainMenu}) {
+ bot.hears("🎁 هدایا",async ctx=>{pendingGiftCode.delete(ctx.from.id); await ctx.reply(ctx.state?.language==="en"?"🎁 Gifts\nRedeem codes, view rewards, invite friends or complete missions.":"🎁 هدایا\nکد هدیه ثبت کن، جوایزت را ببین، دوستانت را دعوت کن یا مأموریت انجام بده.",giftsMenu());});
+ bot.hears("🎟 ثبت کد هدیه",async ctx=>{pendingGiftCode.add(ctx.from.id); await ctx.reply(ctx.state?.language==="en"?"Send your gift code in one message. Tap Back to cancel.":"کد هدیه را در یک پیام بفرست. برای لغو «🔙 بازگشت» را بزن.",Markup.keyboard([["🔙 بازگشت"]]).resize());});
+ bot.hears("🎁 جوایز دریافتی من",async ctx=>{try{const u=await getOrCreateUser(ctx.from);const rows=await getUserRewards(u.id,10);const en=ctx.state?.language==="en";await ctx.reply(rows.length?(en?"🎁 Your latest rewards\n\n":"🎁 آخرین جوایز دریافتی\n\n")+rows.map(x=>formatReward(x,en?"en":"fa")).join("\n"):(en?"No rewards received yet.":"هنوز جایزه‌ای دریافت نکرده‌ای."),giftsMenu());}catch(e){console.error("Reward history failed:",e);await ctx.reply(ctx.state?.language==="en"?"Could not load rewards.":"دریافت جوایز انجام نشد.",giftsMenu());}});
+ bot.hears("👥 دعوت دوستان",async ctx=>{try{const u=await getOrCreateUser(ctx.from);const me=ctx.botInfo||await ctx.telegram.getMe();const s=await getReferralSummary(u.id,me.username);const en=ctx.state?.language==="en";const msg=en?`👥 Invite friends\n\nYour personal link:\n${s.link||"Unavailable"}\n\nRegistered: ${s.total}\nCompleted: ${s.completed}\n\nYou receive 20 credits + 50 XP when your friend completes their first successful download.`:`👥 دعوت دوستان\n\nلینک اختصاصی تو:\n${s.link||"در دسترس نیست"}\n\nدعوت‌شده‌ها: ${s.total}\nدعوت موفق: ${s.completed}\n\nبا اولین دانلود موفق دوستت، ۲۰ اعتبار و ۵۰ XP می‌گیری.`;const extra=s.link?Markup.inlineKeyboard([[Markup.button.url(en?"Open invite link":"باز کردن لینک دعوت",s.link)]]):giftsMenu();await ctx.reply(msg,extra);}catch(e){console.error("Referral page failed:",e);await ctx.reply("نمایش لینک دعوت انجام نشد.",giftsMenu());}});
+ bot.hears("🎯 مأموریت‌ها",async ctx=>{try{const u=await getOrCreateUser(ctx.from);const rows=await getMissionOverview(u.id);const en=ctx.state?.language==="en";if(!rows.length){await ctx.reply(en?"No active missions right now.":"فعلاً مأموریت فعالی وجود ندارد.",giftsMenu());return;}const lines=rows.map(m=>{const title=en?({first_download:"First download",download_3:"Active downloader",invite_friend:"Invite a friend"}[m.mission_key]||m.mission_key):m.title_key;const state=m.user_status==="CLAIMED"?(en?"Claimed":"دریافت‌شده"):m.user_status==="COMPLETED"?(en?"Ready to claim":"آماده دریافت"):(en?"In progress":"در حال انجام");return `• ${title}\n  ${Math.floor(Number(m.progress))}/${Number(m.target_value)} — ${state}\n  🎁 ${Number(m.credit_reward)} credits + ${Number(m.xp_reward)} XP`;});const buttons=rows.filter(m=>m.user_status==="COMPLETED"&&!m.claimed_at).map(m=>[Markup.button.callback((en?"Claim: ":"دریافت جایزه: ")+(en?({first_download:"First download",download_3:"Active downloader",invite_friend:"Invite a friend"}[m.mission_key]||m.mission_key):m.title_key),`mission_claim:${m.user_mission_id}`)]);await ctx.reply((en?"🎯 Missions\n\n":"🎯 مأموریت‌ها\n\n")+lines.join("\n\n"),Markup.inlineKeyboard([...buttons,[Markup.button.callback(en?"Refresh":"به‌روزرسانی","mission_refresh")]]));}catch(e){console.error("Mission list failed:",e);await ctx.reply(ctx.state?.language==="en"?"Could not load missions.":"بارگذاری مأموریت‌ها انجام نشد.",giftsMenu());}});
+ bot.action(/^mission_claim:(\d+)$/,async ctx=>{try{await ctx.answerCbQuery();const u=await getOrCreateUser(ctx.from);const r=await claimMissionReward(u.id,Number(ctx.match[1]),Boolean(u.is_pro&&(!u.pro_expires_at||new Date(u.pro_expires_at)>new Date())));const en=ctx.state?.language==="en";await ctx.reply(en?`🎉 Reward claimed!\n+${r.creditAmount} credits\n+${r.xpAmount} XP`:`🎉 جایزه دریافت شد!\n+${r.creditAmount} اعتبار\n+${r.xpAmount} XP`,giftsMenu());}catch(e){console.error("Mission claim failed:",e);await ctx.answerCbQuery(ctx.state?.language==="en"?"Not claimable":"این جایزه قابل دریافت نیست",{show_alert:true});}});
+ bot.action("mission_refresh",async ctx=>{await ctx.answerCbQuery();await ctx.reply(ctx.state?.language==="en"?"Tap 🎯 Missions to refresh the list.":"برای تازه‌سازی، دوباره «🎯 مأموریت‌ها» را بزن.",giftsMenu());});
+ bot.hears("🔙 بازگشت",async(ctx,next)=>{if(!pendingGiftCode.has(ctx.from.id))return next();pendingGiftCode.delete(ctx.from.id);await ctx.reply(ctx.state?.language==="en"?"Gift code entry cancelled.":"ثبت کد هدیه لغو شد.",giftsMenu());});
+ bot.on("text",async(ctx,next)=>{if(!pendingGiftCode.has(ctx.from?.id))return next();const code=String(ctx.message?.text||"").trim();if(!code||code.startsWith("/")){await ctx.reply(ctx.state?.language==="en"?"Send a valid code or tap Back.":"کد معتبر بفرست یا «بازگشت» را بزن.",giftsMenu());return;}pendingGiftCode.delete(ctx.from.id);try{const u=await getOrCreateUser(ctx.from);const r=await redeemGiftCode({userId:u.id,code});const en=ctx.state?.language==="en";const d=[];if(r.creditAmount>0)d.push(`💳 +${r.creditAmount} ${en?"credits":"اعتبار"}`);if(r.xpAmount>0)d.push(`✨ +${r.xpAmount} XP`);if(r.proDays>0)d.push(`⭐ +${r.proDays} ${en?"Pro days":"روز پرو"}`);await ctx.reply((en?"🎉 Gift redeemed!\n\n":"🎉 کد هدیه ثبت شد!\n\n")+(r.description?r.description+"\n":"")+d.join("\n"),giftsMenu());}catch(e){console.error("Gift redemption failed:",{userId:ctx.from.id,error:e.message});await ctx.reply(giftErrorMessage(e,ctx.state?.language||"fa"),giftsMenu());}});
 }
-
-module.exports = { createGiftsHandler };
+module.exports={createGiftsHandler};
