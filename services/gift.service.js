@@ -4,7 +4,7 @@ const { getPool } = require("../database/pool");
 const { grantRewardInTransaction } = require("./reward.service");
 
 function normalizeCode(value) {
-  return String(value || "").trim().toUpperCase().replace(/\\s+/g, "");
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
 async function redeemGiftCode({ userId, code }) {
