@@ -106,10 +106,10 @@ async function handleWebApi(req, res, url) {
   }
 
 
-  const fileMatch = url.pathname.startsWith("/api/web/downloads/") ? url.pathname.slice("/api/web/downloads/".length).match(/^([0-9]+)\\/file$/) : null;
+  const fileMatch = url.pathname.startsWith("/api/web/downloads/") ? url.pathname.slice("/api/web/downloads/".length).match(/^([0-9]+)\/file$/) : null;
   if (fileMatch && req.method === "GET") {
     const userId = String(url.searchParams.get("userId") || "");
-    if (!/^\\d+$/.test(userId)) {
+    if (!/^\d+$/.test(userId)) {
       sendJson(res, 400, { error: "INVALID_USER" });
       return true;
     }
