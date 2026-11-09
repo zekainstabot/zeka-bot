@@ -38,12 +38,16 @@ const STATUS_LABELS = {
 };
 
 const CHANNEL_CAPTION = [
-  "ZEKA MEDIA",
+  "📺 زکا مدیا | ZEKA MEDIA",
   "",
-  "Discover more with Zeka Media.",
+  "✨ دنیای محتوای جذاب، در یک جا!",
   "",
-  "Bot: @zekagpt_bot",
-  "Channel: @zeka_media",
+  "📌 برای دیدن مطالب بیشتر همراه ما باشید.",
+  "",
+  "🤖 ربات: @zekagpt_bot",
+  "📢 کانال: @zeka_media",
+  "",
+  "#ZekaMedia",
 ].join("\n");
 
 let botInstance = null;
