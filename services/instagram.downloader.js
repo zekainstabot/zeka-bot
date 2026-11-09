@@ -820,6 +820,17 @@ async function downloadInstagramMedia({
   contentType = "OTHER",
   onProgress = null,
 }) {
+  if (typeof url !== "string" || !url.trim()) {
+    throw new Error("Instagram URL is required");
+  }
+
+  if (
+    (typeof jobId !== "string" && typeof jobId !== "number") ||
+    !String(jobId).trim()
+  ) {
+    throw new Error("Job ID is required");
+  }
+
   const normalizedUrl = cleanInstagramUrl(url);
 
   const normalizedContentType =
