@@ -1,4 +1,7 @@
 const http = require("http");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
 
 const { initializeDatabase } = require("./database/bootstrap");
 const { getClient, close } = require("./database/client");
@@ -100,6 +103,78 @@ async function handleWebApi(req, res, url) {
       }
       return true;
     }
+  }
+
+
+  const fileMatch = url.pathname.startsWith("/api/web/downloads/") ? url.pathname.slice("/api/web/downloads/".length).match(/^([0-9]+)\\/file$/) : null;
+  if (fileMatch && req.method === "GET") {
+    const userId = String(url.searchParams.get("userId") || "");
+    if (!/^\\d+$/.test(userId)) {
+      sendJson(res, 400, { error: "INVALID_USER" });
+      return true;
+    }
+
+    const result = await db.query(
+      `SELECT j.id, j.status, m.file_path, m.expires_at, m.file_deleted_at
+       FROM jobs j
+       LEFT JOIN zeka_media_queue m ON m.job_id = j.id
+       WHERE j.id = $1 AND j.user_id = $2
+       LIMIT 1`,
+      [fileMatch[1], userId]
+    );
+    const row = result.rows[0];
+    if (!row || row.status !== "COMPLETED" || !row.file_path) {
+      sendJson(res, 404, { error: "DOWNLOAD_FILE_NOT_FOUND" });
+      return true;
+    }
+    if (row.file_deleted_at || !row.expires_at || new Date(row.expires_at).getTime() <= Date.now()) {
+      sendJson(res, 410, { error: "DOWNLOAD_FILE_EXPIRED" });
+      return true;
+    }
+
+    const downloadRoot = path.resolve(os.tmpdir(), "zeka-instagram") + path.sep;
+    const filePath = path.resolve(String(row.file_path));
+    if (!filePath.startsWith(downloadRoot)) {
+      sendJson(res, 403, { error: "INVALID_FILE_PATH" });
+      return true;
+    }
+
+    let stat;
+    try {
+      stat = await fs.promises.stat(filePath);
+      if (!stat.isFile() || stat.size <= 0) throw new Error("INVALID_FILE");
+    } catch {
+      sendJson(res, 410, { error: "DOWNLOAD_FILE_MISSING" });
+      return true;
+    }
+
+    const extension = path.extname(filePath).toLowerCase();
+    const contentTypes = {
+      ".mp4": "video/mp4",
+      ".mov": "video/quicktime",
+      ".webm": "video/webm",
+      ".mkv": "video/x-matroska",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".png": "image/png",
+      ".webp": "image/webp",
+      ".avif": "image/avif",
+    };
+    const fileName = path.basename(filePath).replace(/[^a-zA-Z0-9._-]/g, "_") || "zeka-media";
+    res.writeHead(200, {
+      "Content-Type": contentTypes[extension] || "application/octet-stream",
+      "Content-Length": stat.size,
+      "Content-Disposition": `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    const stream = fs.createReadStream(filePath);
+    stream.on("error", (error) => {
+      console.error("Web download file stream failed:", error);
+      res.destroy(error);
+    });
+    stream.pipe(res);
+    return true;
   }
 
   const match = url.pathname.startsWith("/api/web/downloads/") ? url.pathname.slice("/api/web/downloads/".length).match(/^([0-9]+)$/) : null;
