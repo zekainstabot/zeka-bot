@@ -212,6 +212,13 @@ function createJobWorker(overrides = {}) {
           : 0,
       });
 
+      try {
+        const { recordDownloadCompleted } = require("../services/engagement.service");
+        await recordDownloadCompleted(user.id);
+      } catch (engagementError) {
+        console.error(`Engagement progress update failed for job ${jobLabel}:`, engagementError?.message || engagementError);
+      }
+
       console.log(`Worker completed job: ${jobLabel}`);
 
       return {
