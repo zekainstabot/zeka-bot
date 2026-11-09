@@ -102,7 +102,7 @@ function createJobWorker(overrides = {}) {
         result = await deps.downloadYouTube(job);
       } else if ([
         "facebook", "x", "pinterest", "reddit",
-        "soundcloud", "twitch", "vimeo", "dailymotion",
+        "soundcloud", "twitch", "vimeo", "dailymotion", "snapchat", "threads",
       ].includes(job.platform)) {
         result = await deps.downloadGenericPlatform(job);
       } else {
