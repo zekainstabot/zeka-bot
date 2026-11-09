@@ -123,13 +123,34 @@ function createAccountHandler({
     }
   });
 
+  const { setLanguage } = require("../services/language.service");
+  const { Markup } = require("telegraf");
+
   bot.hears("🌐 زبان", async (ctx) => {
     await ctx.reply(
-      "🌐 زبان\n\n" +
-        `زبان فعلی حساب شما: ${ctx.from.language_code || "fa"}\n\n` +
-        "بخش انتخاب زبان در مرحله بعد تکمیل می‌شود.",
-      accountMenu
+      "🌐 زبان\n\nزبان را انتخاب کنید:",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("🇮🇷 فارسی", "language:set:fa")],
+        [Markup.button.callback("🇬🇧 English", "language:set:en")],
+      ])
     );
+  });
+
+  bot.action(/^language:set:(fa|en)$/, async (ctx) => {
+    try {
+      const language = ctx.match[1];
+      await setLanguage(ctx.from.id, language);
+      await ctx.answerCbQuery(language === "en" ? "Language updated" : "زبان تغییر کرد");
+      await ctx.reply(
+        language === "en"
+          ? "Language changed to English. Use /start to refresh all menus."
+          : "زبان با موفقیت به فارسی تغییر کرد. برای به‌روزرسانی منوها /start را بزن.",
+        mainMenu
+      );
+    } catch (error) {
+      console.error("Language update failed:", error);
+      await ctx.answerCbQuery("Could not change language", { show_alert: true });
+    }
   });
 
   bot.hears("👤 اطلاعات حساب", async (ctx) => {
