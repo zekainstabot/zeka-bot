@@ -109,7 +109,7 @@ async function handleWebApi(req, res, url) {
 
   if (url.pathname === "/api/web/downloads" && req.method === "GET") {
     const userId = String(url.searchParams.get("userId") || "");
-    if (!/^\\d+$/.test(userId)) {
+    if (!/^\d+$/.test(userId)) {
       sendJson(res, 400, { error: "INVALID_USER" });
       return true;
     }
