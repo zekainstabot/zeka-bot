@@ -4,6 +4,7 @@ const path = require("path");
 
 const adminService = require("../services/admin.service");
 const mediaRepository = require("../repositories/zeka-media.repository");
+const deliveryService = require("../services/delivery.service");
 const { deleteFile } = require("../services/file.service");
 const {
   recoverZekaMediaFile,
@@ -86,11 +87,6 @@ async function getAuthorizedAdmin(telegramUserId) {
   return allowed ? admin : null;
 }
 
-/**
- * برای آزمایش مسیر آپلود:
- * تصاویر با sendPhoto و ویدئوها با sendDocument ارسال می‌شوند.
- * این تغییر فقط برای تشخیص مشکل sendVideo است.
- */
 function getChannelMediaMethod(queueItem) {
   const type = String(
     queueItem.content_type || ""
@@ -102,16 +98,10 @@ function getChannelMediaMethod(queueItem) {
 
   if (
     type === "PHOTO" ||
+    ["IMAGE"].includes(type) ||
     [".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(extension)
   ) {
     return "sendPhoto";
-  }
-
-  if (
-    type === "VIDEO" ||
-    [".mp4", ".mov", ".webm", ".mkv"].includes(extension)
-  ) {
-    return "sendDocument";
   }
 
   return "sendDocument";
@@ -255,7 +245,8 @@ function getFileInfo(filePath) {
 }
 
 /**
- * ارسال فایل به تلگرام.
+ * ارسال فایل به تلگرام با استریم مستقیم از دیسک.
+ * این مسیر فایل را کامل داخل RAM نمی‌خواند.
  * هیچ Retry خودکاری در این تابع وجود ندارد.
  */
 async function sendTelegramMedia({
@@ -287,6 +278,7 @@ async function sendTelegramMedia({
     fileSizeBytes: fileInfo.sizeBytes,
     fileSizeMB: fileInfo.sizeMB,
     maxUploadSizeMB: 50,
+    uploadMode: "DIRECT_STREAM",
   });
 
   if (fileInfo.sizeBytes > MAX_TELEGRAM_UPLOAD_BYTES) {
@@ -313,21 +305,16 @@ async function sendTelegramMedia({
   const startedAt = Date.now();
 
   try {
-    const fileBuffer = await fs.promises.readFile(filePath);
+    const isPhoto = method === "sendPhoto";
 
-    const result = await botInstance.telegram[method](
+    const result = await deliveryService.sendFileToChatOnce({
       chatId,
-      {
-        source: fileBuffer,
-        filename: path.basename(filePath),
-      },
-      {
-        caption,
-        ...(replyMarkup
-          ? { reply_markup: replyMarkup }
-          : {}),
-      }
-    );
+      filePath,
+      caption,
+      contentType: isPhoto ? "photo" : "document",
+      replyMarkup: replyMarkup || null,
+      forceDocument: !isPhoto,
+    });
 
     const durationMs = Date.now() - startedAt;
 
@@ -345,7 +332,9 @@ async function sendTelegramMedia({
   } catch (error) {
     const durationMs = Date.now() - startedAt;
 
-    error.zekaMediaStage = "TELEGRAM_UPLOAD";
+    error.zekaMediaStage =
+      error.zekaMediaStage || "TELEGRAM_UPLOAD";
+
     error.fileSizeBytes = fileInfo.sizeBytes;
     error.fileSizeMB = fileInfo.sizeMB;
     error.uploadDurationMs = durationMs;
