@@ -39,7 +39,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
       keyboard: [
         ["📢 مدیریت انتشار محتوا"],
         ["🎡 گردونه شانس", "🧠 مسابقه"],
-        ["📜 فال حافظ"],
+        ["🔮 فال"],
         ["🔙 بازگشت"],
       ],
       resize_keyboard: true,
