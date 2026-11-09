@@ -42,6 +42,8 @@ const CHANNEL_CAPTION = [
   "",
   "✨ دنیای محتوای جذاب، در یک جا!",
   "",
+  "🌐 وب‌سایت: https://zeka-media.onrender.com",
+  "",
   "📌 برای دیدن مطالب بیشتر همراه ما باشید.",
   "",
   "🤖 ربات: @zekagpt_bot",
