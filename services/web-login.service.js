@@ -1,45 +1,54 @@
 "use strict";
 
-const { createHash, createHmac, randomInt } = require("crypto");
+const { createHash, randomBytes } = require("crypto");
 const { getClient } = require("../database/client");
 
-function hashToken(token) {
-  return createHash("sha256").update(token).digest("hex");
+function hashLoginCode(code) {
+  return createHash("sha256").update(code).digest("hex");
 }
 
-function hashCode(token, code) {
-  const botToken = process.env.BOT_TOKEN;
-  if (!botToken) throw new Error("BOT_TOKEN is not configured");
-  return createHmac("sha256", botToken).update(`${token}:${code}`).digest("hex");
-}
-
-async function issueWebLoginCode(token, user) {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token || "")) {
-    return { ok: false, reason: "INVALID_LINK" };
-  }
-
-  const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
+async function getOrCreateWebLoginCode(user) {
+  if (!user?.id) throw new Error("User is required");
   const db = getClient();
-  const result = await db.query(
-    `
-      UPDATE web_login_challenges
-      SET user_id = $2,
-          code_hash = $3
-      WHERE token_hash = $1
-        AND user_id IS NULL
-        AND code_hash IS NULL
-        AND verified_at IS NULL
-        AND expires_at > NOW()
-      RETURNING id
-    `,
-    [hashToken(token), user.id, hashCode(token, code)]
+
+  const existing = await db.query(
+    `SELECT id FROM web_login_credentials
+     WHERE user_id = $1 AND revoked_at IS NULL LIMIT 1`,
+    [user.id]
   );
 
-  if (!result.rows[0]) {
-    return { ok: false, reason: "EXPIRED_OR_USED" };
-  }
+  if (existing.rows[0]) return { code: null, existing: true };
 
-  return { ok: true, code };
+  const code = randomBytes(18).toString("base64url").toUpperCase();
+  await db.query(
+    `INSERT INTO web_login_credentials (user_id, code_hash)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE
+       SET code_hash = EXCLUDED.code_hash,
+           updated_at = NOW(),
+           revoked_at = NULL`,
+    [user.id, hashLoginCode(code)]
+  );
+
+  return { code, existing: false };
 }
 
-module.exports = { issueWebLoginCode };
+async function regenerateWebLoginCode(user) {
+  if (!user?.id) throw new Error("User is required");
+  const code = randomBytes(18).toString("base64url").toUpperCase();
+  const db = getClient();
+
+  await db.query(
+    `INSERT INTO web_login_credentials (user_id, code_hash)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id) DO UPDATE
+       SET code_hash = EXCLUDED.code_hash,
+           updated_at = NOW(),
+           revoked_at = NULL`,
+    [user.id, hashLoginCode(code)]
+  );
+
+  return code;
+}
+
+module.exports = { getOrCreateWebLoginCode, regenerateWebLoginCode };
