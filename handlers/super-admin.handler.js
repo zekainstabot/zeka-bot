@@ -46,11 +46,10 @@ async function getSuperAdmin(ctx) {
 
 function buildSuperAdminMenu() {
   return Markup.keyboard([
-    ["👥 کاربران", "💰 مالی"],
-    [SETTINGS_BUTTON],
-    [ENTERTAINMENT_BUTTON],
-    ["📺 مدیریت زکا مدیا"],
-    ["🆘 پشتیبانی", "🛠 مدیریت ادمین"],
+    ["👥 کاربران", "🛠 مدیریت ادمین"],
+    ["💰 مالی", "📺 مدیریت زکا مدیا"],
+    ["🆘 پشتیبانی"],
+    [SETTINGS_BUTTON, ENTERTAINMENT_BUTTON],
     ["🔙 خروج از پنل Super Admin"],
   ])
     .resize()
@@ -59,8 +58,7 @@ function buildSuperAdminMenu() {
 
 function buildSettingsMenu() {
   return Markup.keyboard([
-    ["🌐 مدیریت پلتفرم‌ها"],
-    ["🍪 کوکی اینستاگرام"],
+    ["🌐 مدیریت پلتفرم‌ها", "🍪 کوکی اینستاگرام"],
     ["📊 مانیتورینگ"],
     ["🔙 پنل Super Admin"],
   ])
@@ -129,8 +127,7 @@ async function handleEntertainmentMenu(ctx) {
   await ctx.reply(
     "🎮 مدیریت سرگرمی\n\nبخش موردنظر را انتخاب کنید.",
     Markup.keyboard([
-      ["🧠 مدیریت مسابقه"],
-      ["🔮 مدیریت فال"],
+      ["🧠 مدیریت مسابقه", "🔮 مدیریت فال"],
       ["🎁 مدیریت جوایز"],
       ["🔙 پنل Super Admin"],
     ])
