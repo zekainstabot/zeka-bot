@@ -21,7 +21,10 @@ const PLATFORM_PATTERNS = [
     hosts: [
       "youtube.com",
       "www.youtube.com",
+      "m.youtube.com",
+      "music.youtube.com",
       "youtu.be",
+      "www.youtube-nocookie.com",
     ],
   },
   {
