@@ -117,7 +117,7 @@ function createBot() {
       ctx.update?.update_id,
       ctx.updateType,
       ctx.from?.id,
-      ctx.message?.text || ""
+      ctx.message?.text ? "[redacted]" : ""
     );
 
     return next();
