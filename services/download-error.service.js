@@ -21,10 +21,10 @@ function classifyDownloadError(error) {
     error?.shortMessage,
   ].filter(Boolean).join(" ").toLowerCase();
 
-  if (error?.code === "DOWNLOAD_TIMEOUT" || /timed?s*out|timeout|etimedout/.test(text)) return "DOWNLOAD_TIMEOUT";
+  if (error?.code === "DOWNLOAD_TIMEOUT" || /timed?\\s*out|timeout|etimedout/.test(text)) return "DOWNLOAD_TIMEOUT";
   if (/429|too many requests|rate.?limit|please wait a few minutes/.test(text)) return "INSTAGRAM_RATE_LIMITED";
   if (/ip.{0,30}(block|restrict|limit)|blocked.{0,30}ip|your ip address|request.{0,20}blocked|feedback_required/.test(text)) return "INSTAGRAM_IP_BLOCKED";
-  if (/private video|private account|this account is private|login required|not authorized to view|content is private/.test(text)) return "INSTAGRAM_PRIVATE_CONTENT";
+  if (/private video|private account|this account is private|not authorized to view|content is private/.test(text)) return "INSTAGRAM_PRIVATE_CONTENT";
   if (/login required|cookies are needed|authentication required|please log in|sign in to confirm|not logged in/.test(text)) return "INSTAGRAM_LOGIN_REQUIRED";
   if (/404|not found|media not found|post not found|does not exist|page isn't available|page not available/.test(text)) return "INSTAGRAM_CONTENT_NOT_FOUND";
   if (/invalid url|unsupported url|unable to extract|shortcode.*(invalid|could not)|instagram url.*invalid/.test(text)) return "INVALID_INSTAGRAM_URL";
