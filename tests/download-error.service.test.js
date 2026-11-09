@@ -52,6 +52,13 @@ test("prefers a recognized explicit error code", () => {
   assert.equal(classifyDownloadError(error), "DOWNLOAD_TIMEOUT");
 });
 
+test("provides a specific message for insufficient credit", () => {
+  assert.match(
+    getDownloadErrorMessage("INSUFFICIENT_CREDIT"),
+    /اعتبار کافی/
+  );
+});
+
 test("returns a safe Persian fallback for unknown codes", () => {
   assert.match(getDownloadErrorMessage("UNKNOWN_CODE"), /دانلود/);
 });
