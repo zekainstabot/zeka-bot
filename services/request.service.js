@@ -22,6 +22,10 @@ async function createDownloadRequest({
     throw new Error("Platform is required");
   }
 
+  if (!originalUrl) {
+    throw new Error("Original URL is required");
+  }
+
   const platformEnabled = await isPlatformEnabled(platform);
 
   if (!platformEnabled) {
@@ -33,10 +37,6 @@ async function createDownloadRequest({
     error.platform = platform;
 
     throw error;
-  }
-
-  if (!originalUrl) {
-    throw new Error("Original URL is required");
   }
 
   const finalNormalizedUrl =
