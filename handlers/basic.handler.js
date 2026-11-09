@@ -6,10 +6,6 @@ const {
   getAdminByTelegramId,
 } = require("../services/admin.service");
 
-const {
-  issueWebLoginCode,
-} = require("../services/web-login.service");
-
 function createBasicHandler({
   bot,
   mainMenu,
@@ -24,38 +20,6 @@ function createBasicHandler({
         await getOrCreateUser(
           ctx.from
         );
-
-      const startPayload = String(ctx.startPayload || "");
-
-      if (startPayload.startsWith("web_")) {
-        try {
-          const result = await issueWebLoginCode(
-            startPayload.slice(4),
-            user
-          );
-
-          if (!result.ok) {
-            await ctx.reply(
-              "این لینک ورود معتبر نیست یا منقضی شده است. به سایت زکا مدیا برگرد و یک کد جدید بگیر."
-            );
-            return;
-          }
-
-          await ctx.reply(
-            "🔐 کد ورود زکا مدیا\n\n" +
-            "کد یک‌بارمصرف شما:\n" +
-            `<code>${result.code}</code>\n\n` +
-            "این کد تا ۱۰ دقیقه معتبر است و فقط در سایت رسمی zeka-media.onrender.com واردش کن.\n" +
-            "این کد را برای هیچ‌کس نفرست.",
-            { parse_mode: "HTML" }
-          );
-          return;
-        } catch (error) {
-          console.error("Web login code issue failed:", error);
-          await ctx.reply("فعلاً امکان ساخت کد ورود وجود ندارد. کمی بعد دوباره تلاش کن.");
-          return;
-        }
-      }
 
       let role = "user";
 
