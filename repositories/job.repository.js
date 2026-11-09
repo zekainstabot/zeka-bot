@@ -136,7 +136,8 @@ async function findRecoverable(limit = 100) {
       WHERE status IN (
         'WAITING',
         'PROCESSING',
-        'DOWNLOADING'
+        'DOWNLOADING',
+        'DOWNLOADED'
       )
       ORDER BY
         priority DESC,
@@ -194,13 +195,20 @@ async function recover(id) {
           CASE
             WHEN status IN (
               'PROCESSING',
-              'DOWNLOADING'
+              'DOWNLOADING',
+              'DOWNLOADED'
             )
             THEN 1
             ELSE 0
           END,
         started_at = NULL,
         processing_at = NULL,
+        sending_at = NULL,
+        error_code = NULL,
+        error_message = NULL,
+        progress_percent = 0,
+        progress_message = 'در صف پردازش',
+        progress_updated_at = NOW(),
         updated_at = NOW()
       WHERE id = $1
         AND status IN (
