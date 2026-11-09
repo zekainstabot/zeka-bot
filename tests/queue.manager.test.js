@@ -2,10 +2,21 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const queueManager = require("../queue/manager");
+const jobRepository = require("../repositories/job.repository");
+
+const originalClaim = jobRepository.claim;
+const queuedJobs = new Map();
+
+test.beforeEach(() => {
+  queuedJobs.clear();
+  jobRepository.claim = async (jobId) => queuedJobs.get(String(jobId)) || null;
+});
 
 test.afterEach(() => {
   queueManager.clear();
   queueManager.resetProcessor();
+  jobRepository.claim = originalClaim;
+  queuedJobs.clear();
 });
 
 test("queue manager exposes the expected API", () => {
@@ -64,6 +75,7 @@ test("queue manager processes a queued job", async () => {
     created_at: new Date().toISOString(),
   };
 
+  queuedJobs.set(String(job.id), job);
   queueManager.add(job);
 
   await queueManager.processNext();
@@ -107,6 +119,7 @@ test("queue manager removes a waiting job", async () => {
     created_at: new Date().toISOString(),
   };
 
+  queuedJobs.set(String(job.id), job);
   queueManager.add(job);
 
   await new Promise((resolve) =>
@@ -173,6 +186,8 @@ test("queue manager clear removes waiting jobs", () => {
     created_at: new Date().toISOString(),
   };
 
+  queuedJobs.set(String(job1.id), job1);
+  queuedJobs.set(String(job2.id), job2);
   queueManager.add(job1);
   queueManager.add(job2);
 
