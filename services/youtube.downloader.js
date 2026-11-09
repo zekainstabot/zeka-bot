@@ -62,17 +62,18 @@ async function downloadYouTubeMedia({ url, jobId }) {
   const python = process.env.PYTHON || "python3";
   const args = [
     "-m", "yt_dlp",
+    "--verbose",
     "--output", output,
     "--format", "best[ext=mp4]/best",
     "--merge-output-format", "mp4",
     "--no-playlist",
-    "--no-warnings",
     "--restrict-filenames",
     "--write-info-json",
     "--socket-timeout", "30",
     "--retries", "2",
     "--fragment-retries", "2",
     "--impersonate", "chrome",
+    "--extractor-args", "youtube:player_client=web,mweb,tv,ios,android",
     "--",
     parsed.toString(),
   ];
