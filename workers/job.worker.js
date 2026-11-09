@@ -1,4 +1,5 @@
 const userRepository = require("../repositories/user.repository");
+const { classifyDownloadError } = require("../services/download-error.service");
 
 const {
   downloadInstagram,
@@ -306,7 +307,7 @@ function createJobWorker(overrides = {}) {
       }
 
       try {
-        await deps.markFailed(job.id, error, error?.code === "DOWNLOAD_TIMEOUT" ? "DOWNLOAD_TIMEOUT" : "WORKER_ERROR");
+        await deps.markFailed(job.id, error, classifyDownloadError(error));
       } catch (markFailedError) {
         console.error(
           `Failed to mark job as FAILED: ${jobLabel}`,
