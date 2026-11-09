@@ -56,7 +56,7 @@ async function handleWebApi(req, res, url) {
       const body = await readJson(req);
       const userId = String(body.userId || "");
       const inputUrl = String(body.url || "").trim();
-      if (!/^\\d+$/.test(userId) || !inputUrl || inputUrl.length > 2048) {
+      if (!/^\d+$/.test(userId) || !inputUrl || inputUrl.length > 2048) {
         sendJson(res, 400, { error: "INVALID_INPUT" });
         return true;
       }
@@ -105,7 +105,7 @@ async function handleWebApi(req, res, url) {
   const match = url.pathname.startsWith("/api/web/downloads/") ? url.pathname.slice("/api/web/downloads/".length).match(/^([0-9]+)$/) : null;
   if (match && req.method === "GET") {
     const userId = String(url.searchParams.get("userId") || "");
-    if (!/^\\d+$/.test(userId)) {
+    if (!/^\d+$/.test(userId)) {
       sendJson(res, 400, { error: "INVALID_USER" });
       return true;
     }
