@@ -238,6 +238,7 @@ async function handleWebApi(req, res, url) {
     }
     const result = await db.query(
       `SELECT j.id, j.job_id, j.status, j.error_code, j.created_at, j.completed_at,
+              j.progress_percent, j.progress_message, j.progress_updated_at,
               r.id AS request_id, r.original_url,
               m.content_type AS media_content_type,
               m.file_deleted_at, m.expires_at
@@ -257,6 +258,9 @@ async function handleWebApi(req, res, url) {
       id: String(row.id),
       status: row.status,
       errorCode: row.error_code,
+      progressPercent: Number(row.progress_percent || 0),
+      progressMessage: row.progress_message || null,
+      progressUpdatedAt: row.progress_updated_at || null,
       createdAt: row.created_at,
       completedAt: row.completed_at,
       originalUrl: row.original_url,
