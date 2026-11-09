@@ -291,6 +291,26 @@ async function sendFileToChatOnce({
   return result.result;
 }
 
+const DELIVERY_FOOTER = [
+  "🤖 ربات: @zekagpt_bot",
+  "📢 کانال: @zeka_media",
+  "🌐 سایت: https://zeka-media.onrender.com",
+].join("\n");
+
+function buildDeliveryCaption(caption = "") {
+  const original = String(caption || "").trim();
+  const separator = original ? "\n\n" : "";
+  const availableLength = 1024 - DELIVERY_FOOTER.length - separator.length;
+
+  if (original.length <= availableLength) {
+    return original + separator + DELIVERY_FOOTER;
+  }
+
+  const suffix = "...";
+  const shortened = original.slice(0, Math.max(0, availableLength - suffix.length)).trimEnd();
+  return shortened + suffix + "\n\n" + DELIVERY_FOOTER;
+}
+
 /**
  * ارسال فایل خصوصی.
  * سه تلاش قبلی برای این مسیر حفظ شده است.
@@ -345,7 +365,7 @@ async function sendFileToUser({
         token,
         chatId,
         filePath,
-        caption,
+        caption: buildDeliveryCaption(caption),
         contentType,
       });
 
@@ -386,4 +406,5 @@ module.exports = {
   getBot,
   sendFileToUser,
   sendFileToChatOnce,
+  buildDeliveryCaption,
 };
