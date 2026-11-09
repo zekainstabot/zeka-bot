@@ -59,7 +59,7 @@ async function createDownloadRequest({
     throw error;
   }
 
-  const calculatedCost = getDownloadCost(contentType);
+  const calculatedCost = getDownloadCost(contentType, platform);
 
   const finalEstimatedCost =
     estimatedCost ?? calculatedCost;
