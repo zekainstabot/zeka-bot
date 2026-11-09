@@ -26,6 +26,10 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Check JavaScript syntax
+        run: |
+          find . -path ./node_modules -prune -o -name '*.js' -print0 | xargs -0 -n1 node --check
+
       - name: Run test suite
         run: npm test
 
