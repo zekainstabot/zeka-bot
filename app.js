@@ -94,7 +94,7 @@ async function handleWebApi(req, res, url) {
       });
       return true;
     } catch (error) {
-      if (error.message === "Insufficient credit") {
+      if (error.code === "INSUFFICIENT_CREDIT" || error.message === "Insufficient credit") {
         sendJson(res, 402, { error: "INSUFFICIENT_CREDIT" });
       } else if (error.code === "DUPLICATE_ACTIVE_REQUEST") {
         sendJson(res, 409, { error: "DUPLICATE_ACTIVE_REQUEST" });
