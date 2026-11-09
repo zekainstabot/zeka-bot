@@ -108,4 +108,6 @@ test("detectPlatform detects additional supported platforms", () => {
   assert.equal(detectPlatform("https://www.twitch.tv/example"), "twitch");
   assert.equal(detectPlatform("https://vimeo.com/123456"), "vimeo");
   assert.equal(detectPlatform("https://www.dailymotion.com/video/x123"), "dailymotion");
+  assert.equal(detectPlatform("https://www.snapchat.com/spotlight/abc"), "snapchat");
+  assert.equal(detectPlatform("https://www.threads.net/@user/post/abc"), "threads");
 });
