@@ -21,6 +21,24 @@ test("delivery service exposes the expected API", () => {
   );
 });
 
+test("buildDeliveryCaption appends bot, channel and website details", () => {
+  const caption = deliveryService.buildDeliveryCaption("فایل آماده شد");
+
+  assert.equal(
+    caption,
+    "فایل آماده شد\\n\\n🤖 ربات: @zekagpt_bot\\n📢 کانال: @zeka_media\\n🌐 سایت: https://zeka-media.onrender.com"
+  );
+});
+
+test("buildDeliveryCaption keeps Telegram caption within 1024 characters", () => {
+  const caption = deliveryService.buildDeliveryCaption("الف".repeat(1500));
+
+  assert.ok(caption.length <= 1024);
+  assert.ok(caption.includes("@zekagpt_bot"));
+  assert.ok(caption.includes("@zeka_media"));
+  assert.ok(caption.includes("https://zeka-media.onrender.com"));
+});
+
 test("getBot rejects access before bot initialization", () => {
   assert.throws(
     () => deliveryService.getBot(),
