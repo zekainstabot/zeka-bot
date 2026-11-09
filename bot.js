@@ -29,6 +29,7 @@ const {
 } = require("./repositories/zeka-media.repository");
 
 const { createBasicHandler } = require("./handlers/basic.handler");
+const { createWebLoginHandler } = require("./handlers/web-login.handler");
 const { userBlockMiddleware } = require("./middleware/user-block.middleware");
 const { createAccountHandler } = require("./handlers/account.handler");
 const { createGamesHandler } = require("./handlers/games.handler");
@@ -146,6 +147,8 @@ function createBot() {
     bot,
     mainMenu,
   });
+
+  createWebLoginHandler({ bot });
 
   createAccountHandler({
     bot,
