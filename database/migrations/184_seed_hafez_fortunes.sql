@@ -38,30 +38,25 @@ Reading: Do not look outside yourself for every answer. Some of the strength and
 تعبیر: راهی که آغاز کرده‌ای ممکن است دشواری‌هایی داشته باشد. با نیت روشن، صبر و پرهیز از شتاب، قدم بعدی را انتخاب کن.','Love Requires Patience','O cupbearer, pass the cup around; love seemed easy at first, but many troubles followed.
 
 Reading: The path you have begun may bring challenges. Keep your intention clear, be patient, and avoid rushed decisions.'),
-('فرصت امروز','وقت را غنیمت دان آن قدر که بتوانی
-حاصل از حیات ای جان این دم است تا دانی
+('فرصت دیدار','فرصت شمار صحبت کز این دو راهه منزل
+چون بگذریم دیگر نتوان به هم رسیدن
 
-تعبیر: فرصت مناسب را با تعلل از دست نده، اما برای رسیدن به خواسته‌ات برنامه و تلاش واقعی لازم است.','Value the Present','Make the most of time while you can; life’s harvest, dear soul, is this very moment.
+تعبیر: زمان و فرصت‌های ارزشمند را جدی بگیر. اگر گفت‌وگویی مهم یا کاری ناتمام داری، با احترام و در زمان مناسب برای آن قدم بردار.','Value the Chance to Connect','Treasure the chance to speak, for at this crossroads of our journey,
+once we pass, we may never meet again.
 
-Reading: Do not lose a good opportunity through hesitation. Pair your hopes with a practical plan and steady effort.'),
-('وفاداری دوطرفه','مرا عهدیست با جانان که تا جان در بدن دارم
+Reading: Take meaningful opportunities seriously. If an important conversation or task remains unfinished, approach it respectfully and at the right time.'),
+('وفاداری و صداقت','مرا عهدیست با جانان که تا جان در بدن دارم
 هواداران کویش را چو جان خویشتن دارم
 
-تعبیر: در یک رابطه یا همکاری، وفاداری و صداقت ارزشمند است؛ با این حال، تعهد باید دوطرفه و همراه با احترام باشد.','Mutual Loyalty','I have made a promise to my beloved for as long as life remains; I cherish those who follow that path as my own soul.
+تعبیر: در یک رابطه یا همکاری، وفاداری و صداقت ارزشمند است؛ با این حال، تعهد باید دوطرفه و همراه با احترام باشد.','Loyalty and Honesty','I have made a promise to my beloved for as long as life remains; I cherish those who follow that path as my own soul.
 
 Reading: Loyalty and honesty matter in a relationship or partnership, but commitment should be mutual and respectful.'),
-('پایداری','دلا بسوز که سوز تو کارها بکند
+('پایداری و امید','دلا بسوز که سوز تو کارها بکند
 نیاز نیم‌شبی دفع صد بلا بکند
 
-تعبیر: خواسته‌ات را جدی دنبال کن، اما آرامش خود را به نتیجه‌ای نامعلوم گره نزن. پایداری همراه با خرد بهتر از نگرانی مداوم است.','Steadfastness','O heart, let your sincere longing move you to action; a midnight prayer may turn away many troubles.
+تعبیر: خواسته‌ات را جدی دنبال کن، اما آرامش خود را به نتیجه‌ای نامعلوم گره نزن. پایداری همراه با خرد بهتر از نگرانی مداوم است.','Steadfastness and Hope','O heart, let your sincere longing move you to action; a midnight prayer may turn away many troubles.
 
 Reading: Pursue what matters to you, but do not tie your peace to an uncertain outcome. Steadiness guided by wisdom is better than constant worry.'),
-('صبر و پیروزی','صبر و ظفر هر دو دوستان قدیم‌اند
-بر اثر صبر نوبت ظفر آید
-
-تعبیر: برای رسیدن به نتیجه عجله نکن. پیشرفت ممکن است آهسته باشد، اما استمرار و انتخاب درست احتمال موفقیت را بیشتر می‌کند.','Patience and Success','Patience and victory have long been companions; in time, patience gives victory its turn.
-
-Reading: Do not rush the outcome. Progress may be slow, but consistency and sound choices improve the chance of success.'),
 ('رهایی از قضاوت','عیب رندان مکن ای زاهد پاکیزه‌سرشت
 که گناه دگران بر تو نخواهند نوشت
 
@@ -72,24 +67,32 @@ Reading: Do not rush the outcome. Progress may be slow, but consistency and soun
 Each person eventually reaps what they have sown.
 
 Reading: Avoid hasty judgment of others and yourself. Take responsibility for your choices and focus on improving your own path.'),
-('حرکت به سوی هدف','به راه بادیه رفتن به از نشستن باطل
-که گر مراد نیابم به قدر وسع بکوشم
+('پایان سختی‌ها','گر چه منزل بس خطرناک است و مقصد بس بعید
+هیچ راهی نیست کان را نیست پایان غم مخور
 
-تعبیر: حرکت کردن و تجربه آموختن بهتر از ماندن در تردید است. هدف را واقع‌بینانه انتخاب کن و به اندازه توانت برای آن تلاش کن.','Move Toward Your Goal','To travel the desert road is better than idle sitting; even if I do not reach my aim, I will strive as far as I can.
+تعبیر: دشواری مسیر به معنی ناممکن بودن مقصد نیست. قدم‌ها را کوچک کن، از تجربه دیگران کمک بگیر و ادامه بده.','Every Road Has an End','Though the road is dangerous and the destination far away, no road is without an end; do not grieve.
 
-Reading: Moving forward and learning is better than remaining in doubt. Choose a realistic goal and work toward it within your means.'),
+Reading: A difficult path is not necessarily impossible. Break it into smaller steps, seek sound advice, and keep going.'),
+('عشق و آزادگی','فاش می‌گویم و از گفته خود دلشادم
+بنده عشقم و از هر دو جهان آزادم
+
+تعبیر: به چیزی که واقعاً برایت ارزش دارد وفادار بمان. انتخاب آگاهانه و رها شدن از توقع‌های بی‌اساس، آرامش بیشتری می‌آورد.','Love and Freedom','I speak openly, and I am glad of what I say:
+I am a servant of love, free from both worlds.
+
+Reading: Stay true to what genuinely matters to you. Thoughtful choices and freedom from needless expectations can bring greater peace.'),
 ('تمرکز و آرامش','خوشا دلی که مدام از پی نظر نرود
 به هر درش که بخوانند بی‌خبر نرود
 
 تعبیر: دنبال کردن هر پیشنهاد و هر مسیر، تمرکزت را کم می‌کند. اولویت اصلی‌ات را مشخص کن و با آرامش به همان مسیر وفادار بمان.','Focus and Calm','Blessed is the heart that does not chase every passing sight, nor rushes blindly to every door where it is called.
 
 Reading: Chasing every suggestion can weaken your focus. Set your main priority and follow it with a calm mind.'),
-('پایان سختی‌ها','گر چه منزل بس خطرناک است و مقصد بس بعید
-هیچ راهی نیست کان را نیست پایان
+('دوش وقت سحر','دوش وقت سحر از غصه نجاتم دادند
+واندر آن ظلمت شب آب حیاتم دادند
 
-تعبیر: دشواری مسیر به معنی ناممکن بودن مقصد نیست. قدم‌ها را کوچک کن، از تجربه دیگران کمک بگیر و ادامه بده.','Every Road Has an End','Though the road is dangerous and the destination far away, no road is without an end.
+تعبیر: پس از دوره‌ای از ابهام، فرصت تازه‌ای برای روشن شدن موضوع پیدا می‌شود. با ذهنی آرام نشانه‌ها و واقعیت‌ها را بررسی کن.','A Dawn of Relief','Last night, at dawn, they freed me from sorrow;
+In the darkness of night, they gave me the water of life.
 
-Reading: A difficult path is not necessarily an impossible one. Break it into smaller steps, seek sound advice, and keep going.')
+Reading: After a period of uncertainty, a new chance for clarity may appear. Examine the facts with a calm mind.')
 )
 INSERT INTO fortunes (category_id, title, content, title_en, content_en, status)
 SELECT c.id, h.title_fa, h.content_fa, h.title_en, h.content_en, 'ACTIVE'
