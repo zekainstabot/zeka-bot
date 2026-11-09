@@ -61,6 +61,20 @@ function createHarness({
       };
     },
 
+    async downloadYouTube() {
+      calls.push("download");
+
+      if (downloadError) throw downloadError;
+
+      return {
+        success: true,
+        filePath: "/tmp/youtube-video.mp4",
+        contentType: "VIDEO",
+        caption: "YouTube test caption",
+        finalCost: reservedCost,
+      };
+    },
+
     async sendFileToUser() {
       calls.push("send");
 
@@ -422,4 +436,20 @@ test("worker preserves a file successfully queued for review", async () => {
     calls.includes("delete:/tmp/review-video.mp4"),
     false
   );
+});
+
+
+test("job worker routes YouTube jobs through the YouTube downloader", async () => {
+  const { processJob, calls } = createHarness();
+  const result = await processJob({
+    ...validJob,
+    platform: "youtube",
+    normalized_url: "https://www.youtube.com/watch?v=abcdefghijk",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.delivered, true);
+  assert.ok(calls.includes("download"));
+  assert.ok(calls.includes("job:completed:101:2"));
+  assert.ok(calls.includes("file:delete:/tmp/youtube-video.mp4"));
 });
