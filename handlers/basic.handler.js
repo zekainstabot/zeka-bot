@@ -21,6 +21,13 @@ function createBasicHandler({
           ctx.from
         );
 
+      try {
+        const { registerReferral } = require("../services/engagement.service");
+        await registerReferral(user, ctx.startPayload);
+      } catch (referralError) {
+        console.error("Referral registration failed:", referralError?.message || referralError);
+      }
+
       let role = "user";
 
       try {
