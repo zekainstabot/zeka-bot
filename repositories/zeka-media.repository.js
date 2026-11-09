@@ -2,7 +2,9 @@ const {
   getClient,
 } = require("../database/client");
 
-const db = getClient();
+function getDb() {
+  return getClient();
+}
 
 const ALLOWED_STATUSES = [
   "PENDING",
@@ -21,7 +23,7 @@ async function createPending({
   contentType,
   originalUrl = null,
 }) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       INSERT INTO zeka_media_queue (
         job_id,
@@ -47,7 +49,7 @@ async function createPending({
 }
 
 async function findById(id) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       SELECT *
       FROM zeka_media_queue
@@ -61,7 +63,7 @@ async function findById(id) {
 }
 
 async function findByJobId(jobId) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       SELECT *
       FROM zeka_media_queue
@@ -78,7 +80,7 @@ async function listPending(limit = 20, offset = 0) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
   const safeOffset = Math.max(0, Number(offset) || 0);
 
-  const result = await db.query(
+  const result = await getDb().query(
     `
       SELECT *
       FROM zeka_media_queue
@@ -99,7 +101,7 @@ async function countByStatus(status) {
     throw new Error(`Invalid Zeka Media status: ${status}`);
   }
 
-  const result = await db.query(
+  const result = await getDb().query(
     `
       SELECT COUNT(*)::INTEGER AS total
       FROM zeka_media_queue
@@ -112,7 +114,7 @@ async function countByStatus(status) {
 }
 
 async function getStatusCounts() {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       SELECT status, COUNT(*)::INTEGER AS total
       FROM zeka_media_queue
@@ -141,7 +143,7 @@ async function listByStatus(status, limit = 20, offset = 0) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 20, 100));
   const safeOffset = Math.max(0, Number(offset) || 0);
 
-  const result = await db.query(
+  const result = await getDb().query(
     `
       SELECT *
       FROM zeka_media_queue
@@ -157,7 +159,7 @@ async function listByStatus(status, limit = 20, offset = 0) {
 }
 
 async function claimForPublishing(id, reviewerTelegramId) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
@@ -182,7 +184,7 @@ async function claimForPublishing(id, reviewerTelegramId) {
 }
 
 async function reject(id, reviewerTelegramId) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
@@ -207,7 +209,7 @@ async function reject(id, reviewerTelegramId) {
 }
 
 async function markPublished(id, messageId) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
@@ -226,7 +228,7 @@ async function markPublished(id, messageId) {
 }
 
 async function markFailed(id) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
@@ -243,7 +245,7 @@ async function markFailed(id) {
 }
 
 async function markPublishUnknown(id) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
@@ -265,7 +267,7 @@ async function recoverStalePublishing(minutes = 10) {
     Math.min(Number(minutes) || 10, 1440)
   );
 
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
@@ -282,7 +284,7 @@ async function recoverStalePublishing(minutes = 10) {
 }
 
 async function restoreToPending(id) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
@@ -302,7 +304,7 @@ async function restoreToPending(id) {
 }
 
 async function expirePending() {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
@@ -323,7 +325,7 @@ async function listExpiredFilesForCleanup(limit = 100) {
     Math.min(Number(limit) || 100, 500)
   );
 
-  const result = await db.query(
+  const result = await getDb().query(
     `
       SELECT *
       FROM zeka_media_queue
@@ -340,7 +342,7 @@ async function listExpiredFilesForCleanup(limit = 100) {
 }
 
 async function markFileDeleted(id) {
-  const result = await db.query(
+  const result = await getDb().query(
     `
       UPDATE zeka_media_queue
       SET
