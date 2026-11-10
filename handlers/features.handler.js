@@ -40,6 +40,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         ["📢 مدیریت انتشار محتوا"],
         ["🎡 گردونه شانس", "🧠 مسابقه"],
         ["🔮 فال"],
+        ["📆 تقویم روز"],
         ["🔙 بازگشت"],
       ],
       resize_keyboard: true,
@@ -578,6 +579,47 @@ function createFeaturesHandler({ bot, mainMenu }) {
     );
   });
 
+  bot.hears("📆 تقویم روز", async (ctx) => {
+    clearState(ctx);
+
+    const now = new Date();
+    const timeZone = "Asia/Tehran";
+    const formatCalendarDate = (calendar) =>
+      new Intl.DateTimeFormat(
+        `fa-IR-u-ca-${calendar}-nu-latn`,
+        {
+          timeZone,
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }
+      ).format(now);
+
+    let solarDate;
+    let gregorianDate;
+    let lunarDate;
+
+    try {
+      solarDate = formatCalendarDate("persian");
+      gregorianDate = formatCalendarDate("gregory");
+      lunarDate = formatCalendarDate("islamic-umalqura");
+    } catch (error) {
+      console.error("Daily calendar formatting failed:", error?.message || error);
+      await ctx.reply("❌ دریافت تاریخ‌ها ممکن نشد. دوباره تلاش کن.", featuresMenu);
+      return;
+    }
+
+    await ctx.reply(
+      "📆 تقویم امروز\n\n" +
+        `🇮🇷 شمسی: ${solarDate}\n` +
+        `🌍 میلادی: ${gregorianDate}\n` +
+        `🌙 قمری: ${lunarDate}\n\n` +
+        "🕒 منطقه زمانی: تهران",
+      featuresMenu
+    );
+  });
+
   bot.hears("📢 مدیریت انتشار محتوا", async (ctx) => {
     clearState(ctx);
 
@@ -917,6 +959,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         "⭐ زکا پرو",
         "🎮 مینی‌گیم‌ها",
         "🛠 امکانات ویژه",
+        "📆 تقویم روز",
         "🔮 فال",
         "📜 فال حافظ",
         "🎡 گردونه شانس",
