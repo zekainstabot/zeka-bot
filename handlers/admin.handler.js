@@ -618,12 +618,9 @@ function createAdminHandler(bot) {
   createAdminReportsHandler(bot);
   createAdminSupportHandler(bot);
 
-  for (const button of UNIMPLEMENTED_BUTTONS) {
-    bot.hears(
-      button,
-      handleUnavailableAdminSection
-    );
-  }
+  // No fallback registration here: all admin sections are routed
+  // by their dedicated handlers. Keeping an undefined fallback list
+  // prevented the entire bot from starting.
 }
 
 module.exports = {
