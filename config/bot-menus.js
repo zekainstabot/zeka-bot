@@ -11,7 +11,6 @@ const mainMenu = Markup.keyboard([
   .oneTime(false);
 
 const downloadMenu = Markup.keyboard([
-  ["🎵 فقط صدا", "🎬 دانلود ویدئو"],
   ["🔙 بازگشت"],
 ]).resize().persistent();
 const accountMenu = Markup.keyboard([
