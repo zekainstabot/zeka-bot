@@ -617,6 +617,19 @@ function removeCorrectMarker(value) {
     .trim();
 }
 
+function normalizeDigits(value) {
+  return String(value || "").replace(/[۰-۹٠-٩]/g, (digit) => {
+    const persian = "۰۱۲۳۴۵۶۷۸۹";
+    const arabic = "٠١٢٣٤٥٦٧٨٩";
+    const persianIndex = persian.indexOf(digit);
+
+    if (persianIndex >= 0) return String(persianIndex);
+
+    const arabicIndex = arabic.indexOf(digit);
+    return arabicIndex >= 0 ? String(arabicIndex) : digit;
+  });
+}
+
 function normalizeCorrectOptionIndex(value) {
   if (
     value === null ||
@@ -667,7 +680,7 @@ function parseQuestionBlocks(html) {
 
   for (const line of lines) {
     const questionMatch = line.match(
-      /^\s*(\d{1,4})[.)]\s*(.+)$/
+      /^\s*([0-9۰-۹٠-٩]{1,4})[.)]\s*(.+)$/
     );
 
     if (questionMatch) {
@@ -680,7 +693,7 @@ function parseQuestionBlocks(html) {
 
       current = {
         sourceNumber: Number(
-          questionMatch[1]
+          normalizeDigits(questionMatch[1])
         ),
         question: questionMatch[2].trim(),
         options: [],
@@ -694,7 +707,7 @@ function parseQuestionBlocks(html) {
     }
 
     const optionMatch = line.match(
-      /^\s*([الفبجد]|[A-Da-d])[\s.)\-:：]+\s*(.+)$/u
+      /^\s*(الف|ب|ج|د|[A-Da-d])[\s.)\-:：]+\s*(.+)$/u
     );
 
     if (optionMatch) {
