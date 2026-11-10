@@ -26,6 +26,7 @@ WHERE language_code = 'fa'
     OR question_text ILIKE '%شکلات%سگ%'
     OR question_text ILIKE '%کلسیم شیر%'
     OR question_text ILIKE '%اولین عامل کوری%'
+    OR question_text ILIKE '%نوروز%'
     OR question_text ILIKE '%تعداد گروه‌های خونی%'
     OR question_text ILIKE '%تخت جمشید%بزرگ‌ترین%'
   );
