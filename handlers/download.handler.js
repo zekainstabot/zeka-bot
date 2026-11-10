@@ -274,7 +274,7 @@ function createDownloadHandler({
     await ctx.reply("🏠 منوی اصلی", mainMenu);
   });
 
-  bot.action(/^download_audio_again:(\\d+)$/, async (ctx) => {
+  bot.action(/^download_audio_again:(\d+)$/, async (ctx) => {
     try {
       await ctx.answerCbQuery("درخواست استخراج صدا ثبت شد.");
 
