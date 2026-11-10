@@ -10,7 +10,10 @@ const mainMenu = Markup.keyboard([
   .resize()
   .oneTime(false);
 
-const downloadMenu = Markup.keyboard([["🔙 بازگشت"]]).resize();
+const downloadMenu = Markup.keyboard([
+  ["🎵 فقط صدا", "🎬 دانلود ویدئو"],
+  ["🔙 بازگشت"],
+]).resize().persistent();
 const accountMenu = Markup.keyboard([
   ["📊 اعتبار من", "🏆 سطح و XP"],
   ["🌐 زبان", "👤 اطلاعات حساب"],
