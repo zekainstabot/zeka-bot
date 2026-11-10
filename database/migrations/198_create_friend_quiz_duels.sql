@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS friend_quiz_rooms (
   mode VARCHAR(12) NOT NULL CHECK (mode IN ('DM', 'GROUP')),
   creator_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   group_chat_id BIGINT,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '1 day'),
   status VARCHAR(16) NOT NULL DEFAULT 'WAITING'
     CHECK (status IN ('WAITING', 'ACTIVE', 'COMPLETED', 'CANCELLED')),
   language_code VARCHAR(2) NOT NULL DEFAULT 'fa'
