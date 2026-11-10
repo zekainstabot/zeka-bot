@@ -59,6 +59,7 @@ function createAccountHandler({
           `👤 نام: ${account.displayName || "ثبت نشده"}\n` +
           `🆔 شناسه: ${account.telegramUserId}\n\n` +
           `💳 اعتبار: ${account.credit}\n` +
+          `📕 بدهی: ${account.debt || 0} اعتبار\n` +
           `🏆 سطح: ${account.level}\n` +
           `✨ XP: ${account.xp}\n` +
           `🔥 روزهای فعال متوالی: ${account.streakDays}\n\n` +
@@ -88,7 +89,8 @@ function createAccountHandler({
           `👥 اعتبار دعوت: ${credits.referral || 0}\n` +
           `💳 اعتبار خریداری‌شده: ${credits.purchased || 0}\n` +
           `➕ سایر اعتبارها: ${credits.other || 0}\n\n` +
-          `💰 مجموع اعتبار: ${account.credit}\n\n` +
+          `💰 مجموع اعتبار: ${account.credit}\n` +
+          `📕 بدهی فعال: ${account.debt || 0} اعتبار\n\n` +
           "ℹ️ مصرف اعتبار طبق اولویت سیستم زکا انجام می‌شود.",
         accountMenu
       );
