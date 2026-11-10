@@ -14,6 +14,7 @@ function createHarness({
   consumeError = null,
   completeError = null,
   queueError = null,
+  audioOnly = false,
 } = {}) {
   const calls = [];
 
@@ -39,7 +40,7 @@ function createHarness({
       return {
         success: true,
         filePath: "/tmp/job-video.mp4",
-        contentType: "video",
+        contentType: audioOnly ? "AUDIO" : "VIDEO",
         caption: "Test caption",
         finalCost: reservedCost,
       };
@@ -361,6 +362,18 @@ test("download failure releases reserved credit and marks job failed", async () 
 
   assert.equal(calls.includes("send"), false);
   assert.equal(calls.includes("credit:consume:101"), false);
+});
+
+test("audio-only downloads are delivered as audio and excluded from Zeka Media review", async () => {
+  const { processJob, calls } = createHarness({ audioOnly: true });
+
+  const result = await processJob(validJob);
+
+  assert.equal(result.success, true);
+  assert.equal(result.delivered, true);
+  assert.ok(calls.includes("send"));
+  assert.equal(calls.includes("media:enqueue"), false);
+  assert.ok(calls.includes("file:delete:/tmp/job-video.mp4"));
 });
 
 test("worker deletes downloaded file after normal completion", async () => {
