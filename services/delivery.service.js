@@ -321,6 +321,7 @@ async function sendFileToUser({
   filePath,
   caption = "",
   contentType = "video",
+  replyMarkup = null,
 }) {
   const destinationChatId = telegramChatId || telegramUserId;
 
@@ -367,6 +368,7 @@ async function sendFileToUser({
         filePath,
         caption: buildDeliveryCaption(caption),
         contentType,
+        replyMarkup,
       });
 
       console.log(
