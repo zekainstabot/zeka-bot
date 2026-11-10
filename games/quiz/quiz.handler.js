@@ -459,7 +459,8 @@ await deleteQuizMessage(
   await bot.telegram.sendMessage(
     telegramId,
     "⏰ زمان این سؤال تمام شد.\n\n" +
-      "❌ پاسخی ثبت نشد.\n\n" +
+      "❌ پاسخی ثبت نشد.\n" +
+      `💳 ${Math.abs(Number(timeoutResult.reward?.credit || 0)).toFixed(2)} اعتبار کسر شد.\n\n` +
       "➡️ سؤال بعدی در حال آماده‌سازی است..."
   );
 
@@ -1138,7 +1139,7 @@ await deleteQuizMessage(
         } else {
           message =
             "❌ اشتباه بود.\n\n" +
-            "💳 ۰٫۲۵ اعتبار کسر شد.\n" +
+            `💳 ${Math.abs(Number(result.reward?.credit || 0)).toFixed(2)} اعتبار کسر شد.\n` +
             "✨ XP دریافت نکردی.";
         }
 
