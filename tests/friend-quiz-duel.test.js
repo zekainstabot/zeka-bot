@@ -19,6 +19,13 @@ test("friend quiz migration creates isolated duel tables and debt references", (
   assert.match(sql, /expires_at TIMESTAMPTZ/i);
 });
 
+test("friend quiz handler can be loaded and exposes lifecycle cleanup", () => {
+  const handler = require("../games/friend-quiz/friend-quiz.handler");
+  assert.equal(typeof handler.createFriendQuizHandler, "function");
+  assert.equal(typeof handler.handleStartPayload, "function");
+  assert.equal(typeof handler.cleanupFriendQuizTimers, "function");
+});
+
 test("friend quiz service keeps duel rewards separate from regular quiz rewards", () => {
   const service = require("../games/friend-quiz/friend-quiz.service");
 
