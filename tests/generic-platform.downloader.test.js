@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { downloadPlatformMedia } = require("../services/generic-platform.downloader");
+const { downloadPlatformMedia, detectContentType } = require("../services/generic-platform.downloader");
 
 test("generic downloader rejects unsupported platform", async () => {
   await assert.rejects(
@@ -21,4 +21,8 @@ test("generic downloader rejects non-HTTPS URL", async () => {
     () => downloadPlatformMedia({ platform: "vimeo", url: "http://vimeo.com/123", jobId: "test" }),
     /Unsupported vimeo URL/
   );
+});
+
+test("generic downloader recognizes MP3 output", () => {
+  assert.equal(detectContentType("/tmp/zeka-audio.mp3"), "AUDIO");
 });
