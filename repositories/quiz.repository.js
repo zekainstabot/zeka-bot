@@ -8,6 +8,8 @@ async function getRandomQuestion(
   {
     languageCode = "fa",
     excludedIds = [],
+    preferredDifficulty = null,
+    excludedCategories = [],
   } = {},
   client = null
 ) {
@@ -23,13 +25,13 @@ async function getRandomQuestion(
         )
     : [];
 
-  const values = [languageCode];
-
+  const safeExcludedCategories = Array.isArray(excludedCategories) ? excludedCategories.map(String).filter(Boolean) : [];
+  const values = [languageCode, preferredDifficulty, safeExcludedCategories];
   let exclusionSql = "";
 
   if (safeExcludedIds.length > 0) {
     const placeholders = safeExcludedIds.map(
-      (_, index) => `$${index + 2}`
+      (_, index) => `${index + 4}`
     );
 
     exclusionSql = `
@@ -57,7 +59,9 @@ async function getRandomQuestion(
       WHERE status = 'ACTIVE'
         AND language_code = $1
         ${exclusionSql}
-      ORDER BY RANDOM()
+      ORDER BY CASE WHEN $2::VARCHAR IS NOT NULL AND difficulty = $2 THEN 0 ELSE 1 END,
+        CASE WHEN category = ANY($3::VARCHAR[]) THEN 1 ELSE 0 END,
+        RANDOM()
       LIMIT 1
     `,
     values
@@ -69,6 +73,8 @@ async function getRandomQuestion(
 async function getRandomQuestionAnyLanguage(
   {
     excludedIds = [],
+    preferredDifficulty = null,
+    excludedCategories = [],
   } = {},
   client = null
 ) {
@@ -84,12 +90,13 @@ async function getRandomQuestionAnyLanguage(
         )
     : [];
 
-  const values = [];
+  const safeExcludedCategories = Array.isArray(excludedCategories) ? excludedCategories.map(String).filter(Boolean) : [];
+  const values = [preferredDifficulty, safeExcludedCategories];
   let exclusionSql = "";
 
   if (safeExcludedIds.length > 0) {
     const placeholders = safeExcludedIds.map(
-      (_, index) => `$${index + 1}`
+      (_, index) => `${index + 3}`
     );
 
     exclusionSql = `
@@ -116,7 +123,9 @@ async function getRandomQuestionAnyLanguage(
       FROM quiz_questions
       WHERE status = 'ACTIVE'
         ${exclusionSql}
-      ORDER BY RANDOM()
+      ORDER BY CASE WHEN $1::VARCHAR IS NOT NULL AND difficulty = $1 THEN 0 ELSE 1 END,
+        CASE WHEN category = ANY($2::VARCHAR[]) THEN 1 ELSE 0 END,
+        RANDOM()
       LIMIT 1
     `,
     values
