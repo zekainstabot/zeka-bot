@@ -10,7 +10,10 @@ const {
 } = require("./admin-quiz/state");
 
 const adminQuizService = require("../services/admin-quiz.service");
-const { importFromUrl } = require("../services/admin-quiz-import.service");
+const {
+  importFromUrl,
+  normalizeCorrectOptionIndex,
+} = require("../services/admin-quiz-import.service");
 const { startDirectEditQuestion } = require("./admin-quiz/question-editor");
 const { createReportsHandler } = require("./admin-quiz/reports.handler");
 const { quizAdminMenu } = require("./admin-quiz/menu");
@@ -1383,15 +1386,13 @@ async function handleImportQuestionsText(ctx, next) {
           return false;
         }
 
-        const correctOption = Number(
+        const correctOption = normalizeCorrectOptionIndex(
           question.correctOption
         );
 
         return (
           question.question.trim().length > 0 &&
-          Number.isInteger(correctOption) &&
-          correctOption >= 0 &&
-          correctOption <= 3
+          correctOption !== null
         );
       });
 
