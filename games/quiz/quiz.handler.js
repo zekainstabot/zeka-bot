@@ -498,6 +498,18 @@ function createQuizHandler({
   bot.hears(
     "🧠 مسابقه",
     async (ctx) => {
+      await ctx.reply(
+        "🧠 بخش مسابقه\\n\\nنوع مسابقه را انتخاب کن:",
+        Markup.inlineKeyboard([
+          [Markup.button.callback("🧠 مسابقه معمولی", "quiz_start_standard")],
+          [Markup.button.callback("👥 بازی با دوست", "fq:menu")],
+        ])
+      );
+    }
+  );
+
+  bot.action("quiz_start_standard", async (ctx) => {
+      await ctx.answerCbQuery();
       try {
         const telegramUserId =
           ctx.from?.id;
