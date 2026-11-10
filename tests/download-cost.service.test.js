@@ -6,6 +6,7 @@ test("download costs use the approved platform pricing", () => {
   const cases = [
     ["instagram", "REEL", 2],
     ["instagram", "POST", 1],
+    ["instagram", "AUDIO", 1],
     ["youtube", "OTHER", 3],
     ["youtube", "AUDIO", 2],
     ["tiktok", "OTHER", 2],
