@@ -1,4 +1,7 @@
 const adminService = require("./admin.service");
+const {
+  normalizeCorrectOptionIndex,
+} = require("./admin-quiz-import.service");
 
 const adminQuizRepository = require(
   "../repositories/admin-quiz.repository"
@@ -185,7 +188,7 @@ async function importQuestions({
       ? question.options
       : [];
 
-    const correctIndex = Number(
+    const correctIndex = normalizeCorrectOptionIndex(
       question.correctOption
     );
 
@@ -201,9 +204,7 @@ async function importQuestions({
       !questionText ||
       normalizedOptions.length !== 4 ||
       normalizedOptions.some((option) => !option) ||
-      !Number.isInteger(correctIndex) ||
-      correctIndex < 0 ||
-      correctIndex > 3
+      correctIndex === null
     ) {
       invalid++;
       continue;
