@@ -68,6 +68,10 @@ const {
   createQuizHandler,
   cleanupQuizTimers,
 } = require("./games/quiz/quiz.handler");
+const {
+  createFriendQuizHandler,
+  cleanupFriendQuizTimers,
+} = require("./games/friend-quiz/friend-quiz.handler");
 
 const { recoverJobs } = require("./services/queue-recovery.service");
 const { recoverDeliveredJobs } = require("./services/delivery-recovery.service");
@@ -139,6 +143,8 @@ function createBot() {
     gamesMenu,
   });
 
+  createFriendQuizHandler({ bot, gamesMenu });
+
   createAdminHandler(bot);
   createSuperAdminHandler(bot);
   createZekaMediaHandler(bot);
@@ -202,6 +208,7 @@ function createBot() {
     stopZekaMediaExpirationService();
 
     cleanupQuizTimers();
+    cleanupFriendQuizTimers();
 
     if (bot) {
       await bot.stop("shutdown");
