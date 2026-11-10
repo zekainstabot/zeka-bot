@@ -173,24 +173,26 @@ async function sendQuizFinishedMessage(
   );
 
   const rewardCredit = Number(
-    result.reward?.credit || 0
+    result.creditReward ?? result.result?.creditReward ?? 0
   );
 
   const rewardXp = Number(
-    result.reward?.xp || 0
+    result.xpReward ?? result.result?.xpReward ?? 0
   );
+
+  const correctAnswers = Number(result.correctAnswers ?? result.result?.correctAnswers ?? correct);
+  const unansweredAnswers = Number(result.unansweredAnswers ?? result.result?.unansweredAnswers ?? 0);
+  const wrongAnswers = Number(result.wrongAnswers ?? result.result?.wrongAnswers ?? Math.max(0, total - correctAnswers - unansweredAnswers));
 
   await bot.telegram.sendMessage(
     telegramUserId,
     `🏁 مسابقه تمام شد!\n\n` +
-      `✅ پاسخ درست: ${correct}\n` +
-      `❌ پاسخ غلط: ${Math.max(
-        0,
-        total - correct
-      )}\n` +
+      `✅ پاسخ درست: ${correctAnswers}\n` +
+      `❌ پاسخ غلط: ${wrongAnswers}\n` +
+      `⏰ بدون پاسخ: ${unansweredAnswers}\n` +
       `📊 مجموع سؤال‌ها: ${total}\n\n` +
-      `🎁 پاداش اعتبار: +${rewardCredit}\n` +
-      `✨ پاداش XP: +${rewardXp}`,
+      `💳 تغییر خالص اعتبار: ${rewardCredit >= 0 ? "+" : ""}${rewardCredit.toFixed(2)}\n` +
+      `✨ مجموع XP کسب‌شده: +${rewardXp}`,
     Markup.inlineKeyboard([
       [
         Markup.button.callback(
@@ -1131,16 +1133,13 @@ await deleteQuizMessage(
         if (result.correct) {
           message =
             "✅ درست بود!\n\n" +
-            `💳 +${Number(
-              result.reward?.credit || 0
-            )} اعتبار\n` +
-            `✨ +${Number(
-              result.reward?.xp || 0
-            )} XP`;
+            "💳 +۱ اعتبار\n" +
+            "✨ +۱ XP";
         } else {
           message =
             "❌ اشتباه بود.\n\n" +
-            "🎁 برای این سؤال پاداشی دریافت نکردی.";
+            "💳 ۰٫۲۵ اعتبار کسر شد.\n" +
+            "✨ XP دریافت نکردی.";
         }
 
         const resultMessage =
