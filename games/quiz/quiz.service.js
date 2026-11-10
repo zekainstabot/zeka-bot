@@ -20,6 +20,15 @@ const DEFAULT_DAILY_CREDIT_CAP = 5;
 // اگر مسابقه بیشتر از این مدت بدون فعالیت بماند، گیرکرده محسوب می‌شود.
 const STALE_QUIZ_MINUTES = 30;
 
+function normalizeQuizLanguageCode(languageCode) {
+  const normalized = String(languageCode || "fa")
+    .trim()
+    .toLowerCase()
+    .split(/[-_]/)[0];
+
+  return normalized === "en" ? "en" : "fa";
+}
+
 function normalizeOption(option) {
   if (option === null || option === undefined) {
     return null;
@@ -168,6 +177,8 @@ async function startQuiz({
   if (!userId) {
     throw new Error("User ID is required");
   }
+
+  languageCode = normalizeQuizLanguageCode(languageCode);
 
   await cleanupStaleQuizForUser(userId);
 
@@ -400,6 +411,8 @@ async function prepareNextQuestion(
   sessionId,
   languageCode = "fa"
 ) {
+  languageCode = normalizeQuizLanguageCode(languageCode);
+
   const session =
     await gameService.getGameSession(
       sessionId
@@ -473,15 +486,6 @@ async function prepareNextQuestion(
       preferredDifficulty,
       excludedCategories: usedCategories,
     });
-
-  if (!question) {
-    question =
-      await quizRepository.getRandomQuestionAnyLanguage({
-        excludedIds: usedQuestionIds,
-        preferredDifficulty,
-        excludedCategories: usedCategories,
-      });
-  }
 
   if (!question) {
     throw new Error(
@@ -1488,6 +1492,8 @@ async function cancelQuiz(
 
 module.exports = {
   QUIZ_GAME_KEY,
+
+  normalizeQuizLanguageCode,
 
   getQuizConfig,
 
