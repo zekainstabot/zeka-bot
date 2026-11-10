@@ -97,6 +97,13 @@ const SUPPORTED_MEDIA_EXTENSIONS = [
   ".mov",
   ".webm",
   ".mkv",
+  ".mp3",
+  ".m4a",
+  ".aac",
+  ".opus",
+  ".ogg",
+  ".wav",
+  ".flac",
   ".jpg",
   ".jpeg",
   ".png",
@@ -286,6 +293,10 @@ function getDownloadFormat(contentType) {
   const normalizedType =
     normalizeContentType(contentType);
 
+  if (normalizedType === "AUDIO") {
+    return "bestaudio/best";
+  }
+
   if (
     normalizedType === "REEL" ||
     normalizedType === "STORY" ||
@@ -318,6 +329,10 @@ function detectFileContentType(filePath) {
     ].includes(ext)
   ) {
     return "PHOTO";
+  }
+
+  if ([".mp3", ".m4a", ".aac", ".opus", ".ogg", ".wav", ".flac"].includes(ext)) {
+    return "AUDIO";
   }
 
   if (
@@ -1028,6 +1043,7 @@ try {
     return makeResult(files[0], instagramCaption);
   }
 
+  if (normalizedContentType !== "AUDIO") {
   try {
     const galleryResult = await tryGalleryDl();
 
@@ -1066,6 +1082,7 @@ try {
       error?.message || String(error)
     );
   }
+  }
 
   console.log(
     "Instagram cookie fallback is starting as the final method."
@@ -1089,6 +1106,12 @@ try {
       options: {
         output: outputTemplate,
         format,
+        ...(normalizedContentType === "AUDIO" ? {
+          extractAudio: true,
+          audioFormat: "mp3",
+          audioQuality: "0",
+          ffmpegLocation: require("ffmpeg-static"),
+        } : {}),
         noPlaylist: true,
         noSimulate: true,
         verbose: true,
