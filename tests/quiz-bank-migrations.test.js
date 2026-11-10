@@ -30,7 +30,7 @@ test("Persian quiz bank normalization covers all 65 built-in questions", () => {
 
   const rows = [
     ...sql.matchAll(
-      /^\s*\('(?:[^']|'')*', '(?:geography|history|science|sports|literature|art|religion|culture|technology|general)', '(EASY|MEDIUM|HARD)'\),?$/gm
+      /^\s*\('(?:[^']|'')*',\s*'(?:geography|history|science|sports|literature|art|religion|culture|technology|general)',\s*'(EASY|MEDIUM|HARD)'\),?$/gm
     ),
   ];
 
@@ -48,7 +48,7 @@ test("English quiz migration contains a matching 65-question bank", () => {
 
   const rows = [
     ...sql.matchAll(
-      /^\s*\('(?:geography|history|science|sports|literature|art|religion|culture|technology|general)', '(EASY|MEDIUM|HARD)', '(?:[^']|'')*', '(?:[^']|'')*', '(?:[^']|'')*', '(?:[^']|'')*', '(?:[^']|'')*', '([ABCD])', '(?:[^']|'')*'\),?$/gm
+      /^\s*\('(?:geography|history|science|sports|literature|art|religion|culture|technology|general)',\s*'(EASY|MEDIUM|HARD)',\s*'(?:[^']|'')*',\s*'(?:[^']|'')*',\s*'(?:[^']|'')*',\s*'(?:[^']|'')*',\s*'(?:[^']|'')*',\s*'([ABCD])',\s*'(?:[^']|'')*'\),?$/gm
     ),
   ];
 
