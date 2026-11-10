@@ -1162,21 +1162,39 @@ const resultTimer = setTimeout(async () => {
     String(result.sessionId)
   );
 
-  await deleteQuizMessage(
-    bot,
-    telegramUserId,
-    resultMessage.message_id
-  );
+  try {
+    await deleteQuizMessage(
+      bot,
+      telegramUserId,
+      resultMessage.message_id
+    );
 
-  sendNextQuizQuestion(
-    bot,
-    result.sessionId
-  ).catch((error) => {
+    console.log(
+      `Preparing next quiz question for session ${result.sessionId}; answered round ${result.nextRound - 1}`
+    );
+
+    await sendNextQuizQuestion(
+      bot,
+      result.sessionId
+    );
+  } catch (error) {
     console.error(
-      "Auto next quiz question failed:",
+      `Auto next quiz question failed for session ${result.sessionId}:`,
       error
     );
-  });
+
+    try {
+      await bot.telegram.sendMessage(
+        telegramUserId,
+        "⚠️ ارسال سؤال بعدی با مشکل روبه‌رو شد. دکمه «سؤال بعدی» را بزن تا مسابقه ادامه پیدا کند."
+      );
+    } catch (notifyError) {
+      console.error(
+        "Quiz next-question error notification failed:",
+        notifyError
+      );
+    }
+  }
 }, 3000);
 
 quizResultTimers.set(
