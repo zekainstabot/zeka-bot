@@ -453,19 +453,33 @@ async function prepareNextQuestion(
     };
   }
 
+  const difficultyCycle = [
+    "EASY",
+    "MEDIUM",
+    "HARD",
+  ];
+
+  const preferredDifficulty =
+    difficultyCycle[(nextRound - 1) % difficultyCycle.length];
+
+  const usedCategories = Array.isArray(metadata.usedCategories)
+    ? metadata.usedCategories
+    : [];
+
   let question =
     await quizRepository.getRandomQuestion({
       languageCode,
-
-      excludedIds:
-        usedQuestionIds,
+      excludedIds: usedQuestionIds,
+      preferredDifficulty,
+      excludedCategories: usedCategories,
     });
 
   if (!question) {
     question =
       await quizRepository.getRandomQuestionAnyLanguage({
-        excludedIds:
-          usedQuestionIds,
+        excludedIds: usedQuestionIds,
+        preferredDifficulty,
+        excludedCategories: usedCategories,
       });
   }
 
@@ -510,6 +524,13 @@ async function prepareNextQuestion(
     usedQuestionIds: [
       ...usedQuestionIds,
       Number(question.id),
+    ],
+
+    usedCategories: [
+      ...usedCategories,
+      ...(question.category && !usedCategories.includes(question.category)
+        ? [question.category]
+        : []),
     ],
 
     processing:
