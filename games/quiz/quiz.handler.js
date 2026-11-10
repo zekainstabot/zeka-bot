@@ -402,85 +402,57 @@ await registerPoll(
       poll.poll.id
     );
 
-            if (
-              !timeoutResult ||
-              !timeoutResult.handled
-            ) {
-              return;
-            }
+  if (!timeoutResult || !timeoutResult.handled) {
+    return;
+  }
 
-            await deleteQuizMessage(
-  bot,
-  pollChatId,
-  pollMessageId
-);
+  // Remove the expired poll and its report message independently of
+  // the notification/next-question flow.
+  await deleteQuizMessage(bot, pollChatId, pollMessageId);
+  await deleteQuizMessage(bot, pollChatId, pollReportMessageId);
 
-await deleteQuizMessage(
-  bot,
-  pollChatId,
-  pollReportMessageId
-);
+  if (timeoutResult.finished) {
+    try {
+      const finishedSession = await gameService.getGameSession(sessionId);
+      await sendQuizFinishedMessage(bot, sessionId, {
+        ...timeoutResult,
+        userId: finishedSession?.user_id,
+      });
+    } catch (error) {
+      console.error("Quiz final timeout message failed:", error);
+    }
+    return;
+  }
 
-            const currentSession =
-              await gameService.getGameSession(
-                sessionId
-              );
+  // A Telegram notification failure must never leave the quiz stuck.
+  try {
+    const currentSession = await gameService.getGameSession(sessionId);
+    const telegramId = await getTelegramUserIdByUserId(currentSession?.user_id);
 
-            if (!currentSession) {
-              return;
-            }
-
-            const telegramId =
-              await getTelegramUserIdByUserId(
-                currentSession.user_id
-              );
-
-            if (!telegramId) {
-              return;
-            }
-
-            if (
-              timeoutResult.finished
-            ) {
-              await sendQuizFinishedMessage(
-                bot,
-                sessionId,
-                {
-                  ...timeoutResult,
-                  userId:
-                    currentSession.user_id,
-                }
-              );
-
-              return;
-            }
-
-            const timeoutMessage =
-  await bot.telegram.sendMessage(
-    telegramId,
-    "⏰ زمان این سؤال تمام شد.\n\n" +
-      "❌ پاسخی ثبت نشد.\n" +
-      `💳 ${Math.abs(Number(timeoutResult.reward?.credit || 0)).toFixed(2)} اعتبار کسر شد.\n\n` +
-      "➡️ سؤال بعدی در حال آماده‌سازی است..."
-  );
-
-setTimeout(async () => {
-  await deleteQuizMessage(
-    bot,
-    telegramId,
-    timeoutMessage.message_id
-  );
-
-  sendNextQuizQuestion(
-    bot,
-    sessionId
-  ).catch((error) => {
+    if (telegramId) {
+      await bot.telegram.sendMessage(
+        telegramId,
+        "⏰ زمان این سؤال تمام شد.\\n\\n" +
+          "❌ پاسخی ثبت نشد.\\n" +
+          `💳 ${Math.abs(Number(timeoutResult.reward?.credit || 0)).toFixed(2)} اعتبار کسر شد.\\n\\n` +
+          "➡️ سؤال بعدی در حال آماده‌سازی است..."
+      );
+    }
+  } catch (notificationError) {
     console.error(
-      "Auto next quiz question after timeout failed:",
-      error
+      "Quiz timeout notification failed; continuing to next question:",
+      notificationError
     );
-  });
-}, 3000);
+  }
+
+  setTimeout(() => {
+    sendNextQuizQuestion(bot, sessionId).catch((error) => {
+      console.error(
+        `Auto next quiz question after timeout failed for session ${sessionId}:`,
+        error
+      );
+    });
+  }, 1000);
           } catch (error) {
             console.error(
               "Quiz timeout failed:",
