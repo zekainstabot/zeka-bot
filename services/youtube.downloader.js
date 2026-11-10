@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const ytdlp = require("yt-dlp-exec");
+const ffmpegPath = require("ffmpeg-static");
 
 const DOWNLOAD_ROOT = path.join(os.tmpdir(), "zeka-youtube");
 const ALLOWED_HOSTS = new Set([
@@ -16,6 +17,7 @@ const ALLOWED_HOSTS = new Set([
 function getContentType(filePath) {
   const extension = path.extname(filePath).toLowerCase();
   if ([".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(extension)) return "PHOTO";
+  if ([".mp3", ".m4a", ".aac", ".opus", ".ogg", ".wav", ".flac"].includes(extension)) return "AUDIO";
   if ([".mp4", ".mov", ".webm", ".mkv"].includes(extension)) return "VIDEO";
   return "UNKNOWN";
 }
@@ -40,12 +42,17 @@ function readCaption(directory) {
   return "";
 }
 
-function buildYtDlpOptions(output) {
+function buildYtDlpOptions(output, audioOnly = false) {
   return {
     verbose: true,
     output,
-    format: "best[ext=mp4]/best",
-    mergeOutputFormat: "mp4",
+    format: audioOnly ? "bestaudio/best" : "best[ext=mp4]/best",
+    ...(audioOnly ? {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: "0",
+      ffmpegLocation: ffmpegPath,
+    } : { mergeOutputFormat: "mp4" }),
     noPlaylist: true,
     restrictFilenames: true,
     writeInfoJson: true,
@@ -57,7 +64,7 @@ function buildYtDlpOptions(output) {
   };
 }
 
-async function downloadYouTubeMedia({ url, jobId }) {
+async function downloadYouTubeMedia({ url, jobId, audioOnly = false }) {
   if (!url || !jobId) throw new Error("YouTube URL and job ID are required");
 
   let parsed;
@@ -77,7 +84,7 @@ async function downloadYouTubeMedia({ url, jobId }) {
   const output = path.join(directory, "%(id)s.%(ext)s");
 
   try {
-    await ytdlp(parsed.toString(), buildYtDlpOptions(output), {
+    await ytdlp(parsed.toString(), buildYtDlpOptions(output, audioOnly), {
       timeout: 15 * 60 * 1000,
       maxBuffer: 10 * 1024 * 1024,
       windowsHide: true,
@@ -98,7 +105,7 @@ async function downloadYouTubeMedia({ url, jobId }) {
     .map((name) => path.join(directory, name))
     .filter((file) => {
       try {
-        return fs.statSync(file).isFile() && ["VIDEO", "PHOTO"].includes(getContentType(file));
+        return fs.statSync(file).isFile() && ["VIDEO", "PHOTO", "AUDIO"].includes(getContentType(file));
       } catch {
         return false;
       }
@@ -114,7 +121,7 @@ async function downloadYouTubeMedia({ url, jobId }) {
     success: true,
     filePath,
     fileSize: fs.statSync(filePath).size,
-    contentType: getContentType(filePath),
+    contentType: audioOnly ? "AUDIO" : getContentType(filePath),
     sourceUrl: parsed.toString(),
     caption: readCaption(directory),
     finalCost: null,
