@@ -3,6 +3,8 @@ const assert = require("node:assert/strict");
 
 const {
   downloadInstagramMedia,
+  detectFileContentType,
+  getDownloadFormat,
 } = require("../services/instagram.downloader");
 
 test("instagram downloader exposes the expected API", () => {
@@ -38,4 +40,12 @@ test("downloadInstagramMedia rejects both missing URL and job id", async () => {
       downloadInstagramMedia({}),
     /Instagram URL is required/
   );
+});
+
+test("Instagram audio-only mode selects an audio stream", () => {
+  assert.equal(getDownloadFormat("AUDIO"), "bestaudio/best");
+});
+
+test("Instagram downloader recognizes MP3 output", () => {
+  assert.equal(detectFileContentType("/tmp/zeka-audio.mp3"), "AUDIO");
 });
