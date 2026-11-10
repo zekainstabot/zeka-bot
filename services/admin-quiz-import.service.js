@@ -617,6 +617,22 @@ function removeCorrectMarker(value) {
     .trim();
 }
 
+function normalizeCorrectOptionIndex(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && !value.trim())
+  ) {
+    return null;
+  }
+
+  const index = Number(value);
+
+  return Number.isInteger(index) && index >= 0 && index <= 3
+    ? index
+    : null;
+}
+
 function parseQuestionBlocks(html) {
   const text = String(html || "")
     .replace(
@@ -771,6 +787,7 @@ async function importFromUrl(url) {
 module.exports = {
   importFromUrl,
   parseQuestionBlocks,
+  normalizeCorrectOptionIndex,
   cleanText,
   validateUrl,
   isBlockedAddress,
