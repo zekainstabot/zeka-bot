@@ -17,6 +17,8 @@ const DEFAULT_QUESTION_COUNT = 10;
 const CORRECT_ANSWER_CREDIT = 1;
 const INCORRECT_ANSWER_PENALTY = 0.25;
 const CORRECT_ANSWER_XP = 1;
+const DEFAULT_REWARD_CREDIT = CORRECT_ANSWER_CREDIT;
+const DEFAULT_REWARD_XP = CORRECT_ANSWER_XP;
 const DEFAULT_DAILY_CREDIT_CAP = 5;
 
 // اگر مسابقه بیشتر از این مدت بدون فعالیت بماند، گیرکرده محسوب می‌شود.
