@@ -26,6 +26,10 @@ function detectFileContentType(filePath) {
     return "PHOTO";
   }
 
+  if ([".mp3", ".m4a", ".aac", ".opus", ".ogg", ".wav", ".flac"].includes(extension)) {
+    return "AUDIO";
+  }
+
   if ([".mp4", ".mov", ".webm", ".mkv"].includes(extension)) {
     return "VIDEO";
   }
