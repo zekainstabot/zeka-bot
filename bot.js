@@ -201,7 +201,7 @@ function createBot() {
     stopDeliveryRecoveryScheduler();
     stopZekaMediaExpirationService();
 
-    cleanupQuizTimers();
+    cleanupQuizTimers();\n    cleanupFriendQuizTimers();
 
     if (bot) {
       await bot.stop("shutdown");
