@@ -10,6 +10,7 @@ const PLATFORM_COSTS = {
     POST: 1,
     PROFILE: 1,
     OTHER: 1,
+    AUDIO: 1,
   },
   youtube: { VIDEO: 3, AUDIO: 2, OTHER: 3 },
   tiktok: { PHOTO: 1, VIDEO: 2, AUDIO: 2, OTHER: 2 },
