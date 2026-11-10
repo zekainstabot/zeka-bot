@@ -954,9 +954,6 @@ async function processAnswer({
       }
     }
 
-    const config =
-      await getQuizConfig();
-
     let reward = {
       credit: 0,
       xp: 0,
@@ -992,7 +989,7 @@ async function processAnswer({
           responseTimeMs,
 
           creditReward:
-            isCorrect ? CORRECT_ANSWER_CREDIT : -INCORRECT_ANSWER_PENALTY,
+            isCorrect ? CORRECT_ANSWER_CREDIT : 0,
 
           xpReward:
             reward.xp,
@@ -1050,6 +1047,10 @@ async function processAnswer({
         client
       );
       reward.xp = 0;
+      await client.query(
+        "UPDATE game_answers SET credit_reward = $2 WHERE id = $1",
+        [answer.id, reward.credit]
+      );
     }
 
     const oldScore =
@@ -1135,10 +1136,12 @@ pollSentAt:
     };
 
     if (finished) {
-      await creditService.consumeGameCreditInTransaction(
-        session.id,
-        client
-      );
+      if (Number(session.reserved_cost || 0) > 0) {
+        await creditService.consumeGameCreditInTransaction(
+          session.id,
+          client
+        );
+      }
 
       await gameRepository.updateSession(
         session.id,
