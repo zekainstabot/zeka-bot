@@ -193,7 +193,7 @@ function createFriendQuizHandler({ bot, gamesMenu }) {
     );
   });
 
-  bot.action(/^fq:cancel:(\\d+)$/, async (ctx) => {
+  bot.action(/^fq:cancel:(\d+)$/, async (ctx) => {
     try {
       const user = await userRepository.findByTelegramId(String(ctx.from.id));
       if (!user) {
