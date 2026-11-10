@@ -76,8 +76,9 @@ function createHarness({
       };
     },
 
-    async sendFileToUser() {
+    async sendFileToUser(payload) {
       calls.push("send");
+      calls.push({ type: "delivery-payload", payload });
 
       if (sendError) {
         throw sendError;
@@ -362,6 +363,24 @@ test("download failure releases reserved credit and marks job failed", async () 
 
   assert.equal(calls.includes("send"), false);
   assert.equal(calls.includes("credit:consume:101"), false);
+});
+
+test("video delivery includes an inline button for audio-only extraction", async () => {
+  const { processJob, calls } = createHarness();
+
+  await processJob(validJob);
+
+  const deliveryCall = calls.find(
+    (call) => call && call.type === "delivery-payload"
+  );
+
+  assert.deepEqual(
+    deliveryCall?.payload?.replyMarkup?.inline_keyboard?.[0]?.[0],
+    {
+      text: "🎵 استخراج فقط صدا",
+      callback_data: "download_audio_again:101",
+    }
+  );
 });
 
 test("audio-only downloads are delivered as audio and excluded from Zeka Media review", async () => {
