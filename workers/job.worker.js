@@ -166,6 +166,7 @@ function createJobWorker(overrides = {}) {
         creditConsumed = true;
       }
 
+      if (result.contentType !== "AUDIO") {
       try {
         const queueItem = await deps.enqueueForReview({
           jobId: job.id,
@@ -217,6 +218,7 @@ function createJobWorker(overrides = {}) {
             lookupError
           );
         }
+      }
       }
 
       await deps.markCompleted(job.id, {
