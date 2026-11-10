@@ -27,6 +27,7 @@ async function downloadTikTok(job) {
   const result = await downloadTikTokMedia({
     url,
     jobId: job.job_id || job.id,
+    audioOnly: String(job.content_type || "").toUpperCase() === "AUDIO",
   });
 
   if (!result?.success) {
