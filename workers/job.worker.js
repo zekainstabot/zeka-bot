@@ -140,6 +140,17 @@ function createJobWorker(overrides = {}) {
         filePath: result.filePath,
         caption,
         contentType: result.contentType,
+        replyMarkup:
+          String(result.contentType || "").toUpperCase() === "VIDEO"
+            ? {
+                inline_keyboard: [[
+                  {
+                    text: "🎵 استخراج فقط صدا",
+                    callback_data: `download_audio_again:${job.id}`,
+                  },
+                ]],
+              }
+            : null,
       });
 
       const telegramMessageId =
