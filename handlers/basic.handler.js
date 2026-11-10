@@ -21,11 +21,13 @@ function createBasicHandler({
           ctx.from
         );
 
-      try {
-        const { registerReferral } = require("../services/engagement.service");
-        await registerReferral(user, ctx.startPayload);
-      } catch (referralError) {
-        console.error("Referral registration failed:", referralError?.message || referralError);
+      if (!String(ctx.startPayload || "").startsWith("fq_")) {
+        try {
+          const { registerReferral } = require("../services/engagement.service");
+          await registerReferral(user, ctx.startPayload);
+        } catch (referralError) {
+          console.error("Referral registration failed:", referralError?.message || referralError);
+        }
       }
 
       let role = "user";
@@ -70,6 +72,12 @@ function createBasicHandler({
           "Start set user commands failed:",
           error
         );
+      }
+
+      if (String(ctx.startPayload || "").startsWith("fq_")) {
+        const { handleStartPayload } = require("../games/friend-quiz/friend-quiz.handler");
+        await handleStartPayload(ctx, user, ctx.startPayload);
+        return;
       }
 
       const name =
