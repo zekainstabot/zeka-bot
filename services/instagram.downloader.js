@@ -973,6 +973,12 @@ try {
   const downloadOptions = {
     output: outputTemplate,
     format,
+    ...(normalizedContentType === "AUDIO" ? {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: "0",
+      ffmpegLocation: require("ffmpeg-static"),
+    } : {}),
     noPlaylist: true,
     noSimulate: true,
     verbose: true,
