@@ -224,5 +224,6 @@ async function downloadTikTokMedia({ url, jobId, audioOnly = false }) {
 }
 
 module.exports = {
-  downloadTikTokMedia
+  downloadTikTokMedia,
+  detectFileContentType,
 };
