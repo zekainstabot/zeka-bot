@@ -109,4 +109,4 @@ async function downloadPlatformMedia({ platform, url, jobId, audioOnly = false }
   };
 }
 
-module.exports = { downloadPlatformMedia };
+module.exports = { downloadPlatformMedia, detectContentType };
