@@ -1185,4 +1185,5 @@ module.exports = {
   downloadInstagramMedia,
   extractInstagramShortcode,
   detectFileContentType,
+  getDownloadFormat,
 };
