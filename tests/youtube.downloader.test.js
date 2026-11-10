@@ -38,6 +38,17 @@ test("YouTube downloader builds options for the installed yt-dlp executable", ()
   assert.equal(typeof options.extractorArgs, "string");
 });
 
+test("YouTube downloader builds MP3 extraction options", () => {
+  const options = buildYtDlpOptions("/tmp/zeka-youtube/audio/%(id)s.%(ext)s", true);
+
+  assert.equal(options.format, "bestaudio/best");
+  assert.equal(options.extractAudio, true);
+  assert.equal(options.audioFormat, "mp3");
+  assert.equal(options.audioQuality, "0");
+  assert.ok(options.ffmpegLocation);
+  assert.equal(options.mergeOutputFormat, undefined);
+});
+
 test("YouTube downloader requires URL and job ID", async () => {
   await assert.rejects(
     () => downloadYouTubeMedia({ url: "", jobId: "youtube-test" }),
