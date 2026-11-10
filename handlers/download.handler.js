@@ -30,7 +30,6 @@ function createDownloadHandler({
   function enableDownloadMode(userId) {
     downloadStates.set(String(userId), {
       createdAt: Date.now(),
-      audioOnly: false,
     });
   }
 
@@ -262,29 +261,9 @@ function createDownloadHandler({
 
     await ctx.reply(
       "📥 حالت دانلود فعال شد.\n\n" +
-        "نوع فایل را از دکمه‌های زیر انتخاب کن؛ سپس لینک را بفرست.\n" +
-        "🎵 فقط صدا: دریافت صدای ویدئو به‌صورت MP3\n" +
-        "🎬 دانلود ویدئو: دریافت فایل اصلی\n\n" +
+        "لینک ویدئو یا پست موردنظرت را بفرست تا فایل اصلی را دریافت کنم.\n\n" +
         "مثال:\n" +
         "https://www.instagram.com/...",
-      downloadMenu
-    );
-  });
-
-  bot.hears("🎵 فقط صدا", async (ctx) => {
-    if (!isDownloadMode(ctx.from.id)) enableDownloadMode(ctx.from.id);
-    downloadStates.get(String(ctx.from.id)).audioOnly = true;
-    await ctx.reply(
-      "🎵 حالت فقط صدا فعال شد.\n\nلینک ویدئو یا پست را بفرست تا صدایش را به MP3 تبدیل کنم.",
-      downloadMenu
-    );
-  });
-
-  bot.hears("🎬 دانلود ویدئو", async (ctx) => {
-    if (!isDownloadMode(ctx.from.id)) enableDownloadMode(ctx.from.id);
-    downloadStates.get(String(ctx.from.id)).audioOnly = false;
-    await ctx.reply(
-      "🎬 حالت دانلود ویدئو فعال شد.\n\nلینک موردنظرت را بفرست.",
       downloadMenu
     );
   });
@@ -493,8 +472,6 @@ function createDownloadHandler({
 
     const menuButtons = [
       "📥 دانلود",
-      "🎵 فقط صدا",
-      "🎬 دانلود ویدئو",
       "👤 حساب من",
       "🎁 هدایا",
       "⭐ زکا پرو",
@@ -568,8 +545,7 @@ function createDownloadHandler({
         user.id
       );
 
-      const audioOnly = Boolean(downloadStates.get(userId)?.audioOnly);
-      const requestedContentType = audioOnly ? "AUDIO" : parsed.contentType;
+      const requestedContentType = parsed.contentType;
 
       const result = await createDownloadRequest({
         userId: user.id,
@@ -592,7 +568,7 @@ function createDownloadHandler({
       const remainingCredit = await getBalance(user.id);
 
       const creditMessage = consumesCredit
-        ? `${audioOnly ? "🎵 استخراج صدا" : "📥 دانلود فایل"}\n` +
+        ? "📥 دانلود فایل\n" +
           `💳 هزینه دانلود: ${downloadCost} اعتبار\n` +
           `💰 مانده اعتبار: ${remainingCredit} اعتبار`
         : "⭐ زکا پرو: دانلود بدون کسر اعتبار";
