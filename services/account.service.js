@@ -24,6 +24,11 @@ async function getAccountSummary(user) {
   });
 
   const credit = await getBalance(user.id);
+  const debtResult = await getClient().query(
+    "SELECT COALESCE(SUM(amount_due - amount_paid), 0) AS debt FROM debts WHERE user_id = $1 AND status = 'ACTIVE'",
+    [user.id]
+  );
+  const debt = Number(debtResult.rows[0]?.debt || 0);
 
   const credits = {
     rollover: 0,
@@ -70,6 +75,7 @@ async function getAccountSummary(user) {
     displayName: user.display_name || null,
     language: user.language || "fa",
     credit: Number(credit || 0),
+    debt: Number(debt.toFixed(2)),
     credits: {
       rollover: Number(credits.rollover.toFixed(2)),
       daily: Number(credits.daily.toFixed(2)),
