@@ -87,6 +87,25 @@ VALUES
   ('fa','general','HARD','مجموع زاویه‌های داخلی یک شش‌ضلعی ساده چند درجه است؟','۵۴۰','۶۰۰','۷۲۰','۹۰۰','C','مجموع زاویه‌های داخلی n ضلعی برابر (n−2)×۱۸۰ است؛ برای شش‌ضلعی ۷۲۰ درجه می‌شود.','ACTIVE','CURATED')
 ON CONFLICT DO NOTHING;
 
+WITH ranked_after_seed AS (
+  SELECT id,
+         ROW_NUMBER() OVER (
+           PARTITION BY language_code,
+             LOWER(REGEXP_REPLACE(BTRIM(question_text), '[[:space:][:punct:]]+', '', 'g'))
+           ORDER BY
+             CASE WHEN source_type = 'CURATED' THEN 0 ELSE 1 END,
+             id
+         ) AS duplicate_rank
+  FROM quiz_questions
+  WHERE status = 'ACTIVE'
+)
+UPDATE quiz_questions q
+SET status = 'INACTIVE',
+    updated_at = NOW()
+FROM ranked_after_seed r
+WHERE q.id = r.id
+  AND r.duplicate_rank > 1;
+
 UPDATE quiz_questions q
 SET category_id = c.id
 FROM quiz_categories c
