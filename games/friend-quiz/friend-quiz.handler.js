@@ -34,19 +34,12 @@ async function sendRound(bot, roomId) {
   if (!room || room.status !== "ACTIVE") return;
   const snapshot = room.question_snapshot || {};
   const text =
-    `🤝 مسابقه دوستانه | سؤال ${room.current_round} از ${room.total_rounds}\n\n` +
-    `${snapshot.questionText}\n\n⏱ مهلت پاسخ: ${service.ROUND_SECONDS} ثانیه`;
+    `🤝 مسابقه دوستانه | سؤال ${room.current_round} از ${room.total_rounds}\\n\\n` +
+    `${snapshot.questionText}\\n\\n⏱ مهلت پاسخ: ${service.ROUND_SECONDS} ثانیه`;
   const keyboard = getAnswerKeyboard(room.id, room.current_round, snapshot.options || []);
 
-  if (room.mode === "GROUP") {
-    await bot.telegram.sendMessage(room.group_chat_id, text, keyboard);
-  } else {
-    const ids = await getPlayerTelegramIds(room);
-    for (const telegramId of ids) {
-      await bot.telegram.sendMessage(telegramId, text, keyboard);
-    }
-  }
-
+  // Start the deadline before delivery so a Telegram send failure cannot
+  // leave a duel permanently stuck on the same round.
   clearRoundTimer(room.id);
   const timer = setTimeout(async () => {
     roundTimers.delete(String(room.id));
@@ -60,6 +53,23 @@ async function sendRound(bot, roomId) {
     }
   }, service.ROUND_SECONDS * 1000);
   roundTimers.set(String(room.id), timer);
+
+  if (room.mode === "GROUP") {
+    try {
+      await bot.telegram.sendMessage(room.group_chat_id, text, keyboard);
+    } catch (error) {
+      console.error("Friend quiz group question delivery failed:", error);
+    }
+  } else {
+    const ids = await getPlayerTelegramIds(room);
+    for (const telegramId of ids) {
+      try {
+        await bot.telegram.sendMessage(telegramId, text, keyboard);
+      } catch (error) {
+        console.error(`Friend quiz question delivery failed for ${telegramId}:`, error);
+      }
+    }
+  }
 }
 
 async function sendRoomResult(bot, room) {
