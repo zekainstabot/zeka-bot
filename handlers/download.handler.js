@@ -295,6 +295,76 @@ function createDownloadHandler({
     await ctx.reply("🏠 منوی اصلی", mainMenu);
   });
 
+  bot.action(/^download_audio_again:(\\d+)$/, async (ctx) => {
+    try {
+      await ctx.answerCbQuery("درخواست استخراج صدا ثبت شد.");
+
+      const jobId = Number(ctx.match?.[1]);
+      if (!Number.isSafeInteger(jobId) || jobId <= 0) {
+        await ctx.reply("❌ اطلاعات فایل معتبر نیست.");
+        return;
+      }
+
+      const user = await getOrCreateUser(ctx.from);
+      const sourceJob = await jobRepository.findById(jobId);
+
+      if (
+        !sourceJob ||
+        String(sourceJob.user_id) !== String(user.id) ||
+        sourceJob.status !== "COMPLETED" ||
+        String(sourceJob.content_type || "").toUpperCase() === "AUDIO" ||
+        !sourceJob.original_url
+      ) {
+        await ctx.reply("❌ این فایل برای استخراج صدا در دسترس نیست.");
+        return;
+      }
+
+      const result = await createDownloadRequest({
+        userId: user.id,
+        platform: sourceJob.platform,
+        originalUrl: sourceJob.original_url,
+        normalizedUrl: sourceJob.normalized_url || sourceJob.original_url,
+        contentType: "AUDIO",
+      });
+
+      try {
+        await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
+      } catch (editError) {
+        console.warn("Could not remove audio extraction button:", editError?.message || editError);
+      }
+
+      const statusMessage = await ctx.reply(
+        "🎵 درخواست استخراج صدا ثبت شد.\n\n" +
+          "⚙️ در حال آماده‌سازی فایل MP3...\n\n" +
+          "⏱ زمان: 00:00",
+        statusKeyboard(result.job.id)
+      );
+
+      watchJob({
+        ctx,
+        jobId: result.job.id,
+        messageId: statusMessage.message_id,
+        userId: user.id,
+      }).catch((error) => {
+        console.error("Failed to watch audio extraction:", error?.message || error);
+      });
+    } catch (error) {
+      console.error("Audio extraction callback failed:", error?.message || error);
+
+      if (error?.code === "DUPLICATE_ACTIVE_REQUEST") {
+        await ctx.reply("⏳ درخواست دانلود یا استخراج این لینک هنوز در حال پردازش است.");
+        return;
+      }
+
+      if (error?.code === "PLATFORM_DISABLED") {
+        await ctx.reply("⚠️ دانلود از این پلتفرم در حال حاضر غیرفعال است.");
+        return;
+      }
+
+      await ctx.reply("❌ ثبت درخواست استخراج صدا انجام نشد. لطفاً دوباره تلاش کن.");
+    }
+  });
+
   bot.action(/^download_report:(.+)$/, async (ctx) => {
     try {
       await ctx.answerCbQuery();
