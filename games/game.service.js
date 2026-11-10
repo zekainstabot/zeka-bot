@@ -66,7 +66,7 @@ async function startGame({
 
   if (
     !Number.isFinite(entryCost) ||
-    entryCost <= 0
+    entryCost < 0
   ) {
     if (gameType) {
       entryCost = Number(
@@ -96,11 +96,13 @@ async function startGame({
     });
 
   try {
-    await creditService.reserveGameCredit({
-      userId,
-      amount: entryCost,
-      gameSessionId: session.id,
-    });
+    if (entryCost > 0) {
+      await creditService.reserveGameCredit({
+        userId,
+        amount: entryCost,
+        gameSessionId: session.id,
+      });
+    }
 
     const activeSession =
       await gameRepository.updateSession(
@@ -199,10 +201,12 @@ async function completeGame(
       );
     }
 
-    await creditService.consumeGameCreditInTransaction(
-      session.id,
-      client
-    );
+    if (Number(session.reserved_cost || 0) > 0) {
+      await creditService.consumeGameCreditInTransaction(
+        session.id,
+        client
+      );
+    }
 
     if (gameReward) {
       await rewardService.grantRewardInTransaction({
@@ -293,10 +297,12 @@ async function cancelGame(
       );
     }
 
-    await creditService.releaseGameCreditInTransaction(
-      session.id,
-      client
-    );
+    if (Number(session.reserved_cost || 0) > 0) {
+      await creditService.releaseGameCreditInTransaction(
+        session.id,
+        client
+      );
+    }
 
     const metadata = {
       ...(session.metadata || {}),
