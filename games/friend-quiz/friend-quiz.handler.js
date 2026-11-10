@@ -168,7 +168,9 @@ function createFriendQuizHandler({ bot, gamesMenu }) {
         "\n\nوقتی دوستت وارد ربات شود، مسابقه خودکار شروع می‌شود.\n" +
         "❓ تعداد سؤال‌ها: ۵\n⏱ زمان هر سؤال: ۲۰ ثانیه\n\n" +
         "🏆 برنده: +۵ اعتبار | بازنده: −۳ اعتبار",
-        gamesMenu
+        Markup.inlineKeyboard([
+          [Markup.button.callback("❌ لغو دعوت", `fq:cancel:${room.id}`)],
+        ])
       );
     } catch (error) {
       console.error("Friend quiz DM room creation failed:", error);
@@ -191,6 +193,26 @@ function createFriendQuizHandler({ bot, gamesMenu }) {
     );
   });
 
+  bot.action(/^fq:cancel:(\\d+)$/, async (ctx) => {
+    try {
+      const user = await userRepository.findByTelegramId(String(ctx.from.id));
+      if (!user) {
+        await ctx.answerCbQuery("کاربر پیدا نشد.", { show_alert: true });
+        return;
+      }
+      const cancelled = await service.cancelRoom(Number(ctx.match[1]), user.id);
+      if (!cancelled) {
+        await ctx.answerCbQuery("این دعوت قابل لغو نیست یا قبلاً شروع شده.", { show_alert: true });
+        return;
+      }
+      await ctx.answerCbQuery("دعوت لغو شد.");
+      await ctx.editMessageText("❌ دعوت مسابقه لغو شد.");
+    } catch (error) {
+      console.error("Friend quiz cancellation failed:", error);
+      await ctx.answerCbQuery("لغو دعوت انجام نشد.", { show_alert: true }).catch(() => {});
+    }
+  });
+
   bot.command("zekaquiz", async (ctx) => {
     if (!ctx.chat || !["group", "supergroup"].includes(ctx.chat.type)) {
       await ctx.reply("این دستور را داخل گروه تلگرام اجرا کن.");
@@ -210,6 +232,7 @@ function createFriendQuizHandler({ bot, gamesMenu }) {
         "برای پیوستن بازیکن دوم، دکمه زیر را بزنید.",
         Markup.inlineKeyboard([
           [Markup.button.callback("🎮 پیوستن به مسابقه", `fq:join:${room.invite_code}`)],
+          [Markup.button.callback("❌ لغو دعوت", `fq:cancel:${room.id}`)],
         ])
       );
     } catch (error) {
