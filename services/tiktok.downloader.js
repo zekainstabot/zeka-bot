@@ -5,6 +5,7 @@ const { execFile } = require("child_process");
 const { promisify } = require("util");
 const execFileAsync = promisify(execFile);
 const ytdlp = require("yt-dlp-exec");
+const ffmpegPath = require("ffmpeg-static");
 
 const DOWNLOAD_ROOT = path.join(os.tmpdir(), "zeka-tiktok");
 
@@ -113,7 +114,7 @@ async function optimizeMp4ForStreaming(filePath) {
   }
 }
 
-async function downloadTikTokMedia({ url, jobId }) {
+async function downloadTikTokMedia({ url, jobId, audioOnly = false }) {
   if (!url || !jobId) {
     throw new Error("TikTok URL and job ID are required");
   }
@@ -151,9 +152,16 @@ async function downloadTikTokMedia({ url, jobId }) {
 
   await ytdlp(normalizedUrl, {
     output: outputTemplate,
-    format: "best[ext=mp4]/best",
-    mergeOutputFormat: "mp4",
-    remuxVideo: "mp4",
+    format: audioOnly ? "bestaudio/best" : "best[ext=mp4]/best",
+    ...(audioOnly ? {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: "0",
+      ffmpegLocation: ffmpegPath,
+    } : {
+      mergeOutputFormat: "mp4",
+      remuxVideo: "mp4",
+    }),
     noPlaylist: true,
     noWarnings: true,
     restrictFilenames: true,
@@ -170,7 +178,7 @@ async function downloadTikTokMedia({ url, jobId }) {
       }
     })
     .filter((filePath) =>
-      ["VIDEO", "PHOTO"].includes(detectFileContentType(filePath))
+      ["VIDEO", "PHOTO", "AUDIO"].includes(detectFileContentType(filePath))
     );
 
   if (!files.length) {
@@ -181,11 +189,11 @@ async function downloadTikTokMedia({ url, jobId }) {
 
   let filePath = files[0];
 
-  if (detectFileContentType(filePath) === "VIDEO") {
+  if (!audioOnly && detectFileContentType(filePath) === "VIDEO") {
     filePath = await optimizeMp4ForStreaming(filePath);
   }
 
-  const contentType = detectFileContentType(filePath);
+  const contentType = audioOnly ? "AUDIO" : detectFileContentType(filePath);
   const caption = readCaption(jobDirectory);
 
   console.log(
