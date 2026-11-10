@@ -20,6 +20,7 @@ async function createRoom({ userId, mode = "DM", groupChatId = null, languageCod
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`friend-quiz-user:${userId}`]);
     const existing = await client.query(
       `SELECT r.id FROM friend_quiz_rooms r
        JOIN friend_quiz_players p ON p.room_id = r.id
@@ -85,6 +86,7 @@ async function joinRoom({ code, userId }) {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`friend-quiz-user:${userId}`]);
     const roomResult = await client.query(
       "SELECT * FROM friend_quiz_rooms WHERE invite_code = $1 FOR UPDATE",
       [String(code || "").trim().toUpperCase()]
@@ -97,7 +99,7 @@ async function joinRoom({ code, userId }) {
     const active = await client.query(
       `SELECT 1 FROM friend_quiz_players p
        JOIN friend_quiz_rooms r ON r.id = p.room_id
-       WHERE p.user_id = $1 AND r.status IN ('WAITING', 'ACTIVE') LIMIT 1`,
+       WHERE p.user_id = $1 AND (r.status = 'ACTIVE' OR (r.status = 'WAITING' AND r.expires_at > NOW())) LIMIT 1`,
       [userId]
     );
     if (active.rows.length) throw new Error("FRIEND_QUIZ_ALREADY_ACTIVE");
