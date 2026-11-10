@@ -7,14 +7,16 @@ const gameRepository = require("../../repositories/game.repository");
 const quizRepository = require("../../repositories/quiz.repository");
 
 const creditService = require("../../services/credit.service");
+const creditRepository = require("../../repositories/credit.repository");
 const rewardService = require("../../services/reward.service");
 
 const QUIZ_GAME_KEY = "quiz_general";
 
 const DEFAULT_TIME_LIMIT = 20;
 const DEFAULT_QUESTION_COUNT = 10;
-const DEFAULT_REWARD_CREDIT = 0.5;
-const DEFAULT_REWARD_XP = 1;
+const CORRECT_ANSWER_CREDIT = 1;
+const INCORRECT_ANSWER_PENALTY = 0.25;
+const CORRECT_ANSWER_XP = 1;
 const DEFAULT_DAILY_CREDIT_CAP = 5;
 
 // اگر مسابقه بیشتر از این مدت بدون فعالیت بماند، گیرکرده محسوب می‌شود.
@@ -211,7 +213,7 @@ async function startQuiz({
       gameKey:
         QUIZ_GAME_KEY,
 
-      cost,
+      cost: 0,
 
       totalRounds:
         config.questionCount,
@@ -729,73 +731,36 @@ async function findActiveQuizByUser(
   );
 }
 
-async function getDailyQuizCreditReward(
-  userId,
-  dailyCreditCap,
-  client
-) {
-  const userResult =
-    await client.query(
-      `
-        SELECT id
-        FROM users
-        WHERE id = $1
-        FOR UPDATE
-      `,
-      [userId]
-    );
+async function deductQuizPenaltyInTransaction(userId, amount, sessionId, answerId, client) {
+  const accounts = await creditRepository.findAvailablePackages(userId, client);
+  let remaining = Number(amount);
+  let deducted = 0;
 
-  if (!userResult.rows[0]) {
-    throw new Error(
-      "User not found"
-    );
+  for (const account of accounts) {
+    if (remaining <= 0) break;
+    const available = Number(account.remaining_amount || 0);
+    if (available <= 0) continue;
+
+    const take = Math.min(available, remaining);
+    const after = available - take;
+    await creditRepository.updateRemaining(account.id, after, client);
+    await creditRepository.createLedgerEntry({
+      userId,
+      creditAccountId: account.id,
+      entryType: "CONSUME",
+      amount: -take,
+      balanceBefore: available,
+      balanceAfter: after,
+      referenceType: "GAME_ANSWER",
+      referenceId: answerId || sessionId,
+      description: "Quiz incorrect or unanswered penalty",
+    }, client);
+
+    deducted += take;
+    remaining -= take;
   }
 
-  const result =
-    await client.query(
-      `
-        SELECT
-          COALESCE(
-            SUM(credit_amount),
-            0
-          ) AS total
-        FROM rewards
-        WHERE user_id = $1
-          AND reward_type = 'QUIZ_CORRECT'
-          AND source_type = 'GAME_ANSWER'
-          AND created_at >= (
-            DATE_TRUNC(
-              'day',
-              NOW() AT TIME ZONE 'Asia/Tehran'
-            )
-            AT TIME ZONE 'Asia/Tehran'
-          )
-          AND created_at < (
-            (
-              DATE_TRUNC(
-                'day',
-                NOW() AT TIME ZONE 'Asia/Tehran'
-              ) + INTERVAL '1 day'
-            )
-            AT TIME ZONE 'Asia/Tehran'
-          )
-      `,
-      [userId]
-    );
-
-  const used =
-    Number(
-      result.rows[0]?.total || 0
-    );
-
-  const remaining =
-    Math.max(
-      0,
-      Number(dailyCreditCap) -
-        used
-    );
-
-  return remaining;
+  return Number(deducted.toFixed(2));
 }
 
 async function processAnswer({
@@ -998,29 +963,9 @@ async function processAnswer({
     };
 
     if (isCorrect) {
-      const remainingDailyCredit =
-        await getDailyQuizCreditReward(
-          session.user_id,
-          config.dailyCreditCap,
-          client
-        );
-
-      const actualCreditReward =
-        Math.min(
-          Number(
-            config.reward.credit || 0
-          ),
-          remainingDailyCredit
-        );
-
       reward = {
-        credit:
-          actualCreditReward,
-
-        xp:
-          Number(
-            config.reward.xp || 0
-          ),
+        credit: CORRECT_ANSWER_CREDIT,
+        xp: CORRECT_ANSWER_XP,
       };
     }
 
@@ -1047,7 +992,7 @@ async function processAnswer({
           responseTimeMs,
 
           creditReward:
-            reward.credit,
+            isCorrect ? CORRECT_ANSWER_CREDIT : -INCORRECT_ANSWER_PENALTY,
 
           xpReward:
             reward.xp,
@@ -1081,45 +1026,30 @@ async function processAnswer({
     }
 
     if (isCorrect) {
-      await rewardService.grantRewardInTransaction(
-        {
-          userId:
-            session.user_id,
-
-          rewardType:
-            "QUIZ_CORRECT",
-
-          sourceType:
-            "GAME_ANSWER",
-
-          sourceId:
-            answer.id,
-
-          creditAmount:
-            reward.credit,
-
-          xpAmount:
-            reward.xp,
-
-          metadata: {
-            game:
-              QUIZ_GAME_KEY,
-
-            sessionId:
-              session.id,
-
-            questionId:
-              question.id,
-
-            round,
-
-            dailyCreditCap:
-              config.dailyCreditCap,
-          },
-
-          client,
-        }
+      await rewardService.grantRewardInTransaction({
+        userId: session.user_id,
+        rewardType: "QUIZ_CORRECT",
+        sourceType: "GAME_ANSWER",
+        sourceId: answer.id,
+        creditAmount: CORRECT_ANSWER_CREDIT,
+        xpAmount: CORRECT_ANSWER_XP,
+        metadata: {
+          game: QUIZ_GAME_KEY,
+          sessionId: session.id,
+          questionId: question.id,
+          round,
+        },
+        client,
+      });
+    } else {
+      reward.credit = -await deductQuizPenaltyInTransaction(
+        session.user_id,
+        INCORRECT_ANSWER_PENALTY,
+        session.id,
+        answer.id,
+        client
       );
+      reward.xp = 0;
     }
 
     const oldScore =
@@ -1137,21 +1067,18 @@ async function processAnswer({
         player.xp_earned || 0
       );
 
-    const newScore =
-      oldScore +
-      (isCorrect ? 1 : 0);
+    const newScore = oldScore + (isCorrect ? 1 : 0);
+    const newCreditReward = Number(
+      (oldCreditReward + Number(reward.credit || 0)).toFixed(2)
+    );
+    const newXp = oldXp + Number(reward.xp || 0);
 
-    const newCreditReward =
-      oldCreditReward +
-      Number(
-        reward.credit || 0
-      );
-
-    const newXp =
-      oldXp +
-      Number(
-        reward.xp || 0
-      );
+    const previousCorrect = Number(metadata.correctAnswers || 0);
+    const previousWrong = Number(metadata.wrongAnswers || 0);
+    const previousUnanswered = Number(metadata.unansweredAnswers || 0);
+    const correctAnswers = previousCorrect + (isCorrect ? 1 : 0);
+    const unansweredAnswers = previousUnanswered + (timedOut ? 1 : 0);
+    const wrongAnswers = previousWrong + (!isCorrect && !timedOut ? 1 : 0);
 
     await quizRepository.updatePlayerStats(
       player.id,
@@ -1200,11 +1127,11 @@ pollReportMessageId:
 pollSentAt:
   null,
 
-      processing:
-        false,
-
-      lastActivityAt:
-        new Date().toISOString(),
+      processing: false,
+      correctAnswers,
+      wrongAnswers,
+      unansweredAnswers,
+      lastActivityAt: new Date().toISOString(),
     };
 
     if (finished) {
@@ -1228,11 +1155,11 @@ pollSentAt:
 
             totalRounds,
 
-            creditReward:
-              newCreditReward,
-
-            xpReward:
-              newXp,
+            creditReward: newCreditReward,
+            xpReward: newXp,
+            correctAnswers,
+            wrongAnswers,
+            unansweredAnswers,
           },
 
           metadata:
@@ -1280,10 +1207,13 @@ pollSentAt:
 
       finished,
 
-      score:
-        newScore,
-
+      score: newScore,
       totalRounds,
+      creditReward: newCreditReward,
+      xpReward: newXp,
+      correctAnswers,
+      wrongAnswers,
+      unansweredAnswers,
 
       nextRound:
         finished
