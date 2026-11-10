@@ -430,13 +430,23 @@ await registerPoll(
     const telegramId = await getTelegramUserIdByUserId(currentSession?.user_id);
 
     if (telegramId) {
-      await bot.telegram.sendMessage(
+      const timeoutNotice = await bot.telegram.sendMessage(
         telegramId,
-        "⏰ زمان این سؤال تمام شد.\\n\\n" +
-          "❌ پاسخی ثبت نشد.\\n" +
-          `💳 ${Math.abs(Number(timeoutResult.reward?.credit || 0)).toFixed(2)} اعتبار کسر شد.\\n\\n` +
-          "➡️ سؤال بعدی در حال آماده‌سازی است..."
+        "⏰ مهلت پاسخ‌گویی به پایان رسید.\\n" +
+          "❌ این سؤال بدون پاسخ ثبت شد.\\n" +
+          `💳 ${Math.abs(Number(timeoutResult.reward?.credit || 0)).toLocaleString("fa-IR")} اعتبار کسر شد.`
       );
+
+      // Keep the notice brief, then remove it automatically.
+      setTimeout(() => {
+        deleteQuizMessage(
+          bot,
+          telegramId,
+          timeoutNotice.message_id
+        ).catch((error) => {
+          console.error("Quiz timeout notice deletion failed:", error);
+        });
+      }, 4000);
     }
   } catch (notificationError) {
     console.error(
