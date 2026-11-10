@@ -31,7 +31,7 @@ async function getRandomQuestion(
 
   if (safeExcludedIds.length > 0) {
     const placeholders = safeExcludedIds.map(
-      (_, index) => `${index + 4}`
+      (_, index) => `$${index + 4}`
     );
 
     exclusionSql = `
@@ -96,7 +96,7 @@ async function getRandomQuestionAnyLanguage(
 
   if (safeExcludedIds.length > 0) {
     const placeholders = safeExcludedIds.map(
-      (_, index) => `${index + 3}`
+      (_, index) => `$${index + 3}`
     );
 
     exclusionSql = `
