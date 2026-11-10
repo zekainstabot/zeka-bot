@@ -18,7 +18,6 @@ const accountMenu = Markup.keyboard([
 ]).resize().persistent();
 const gamesMenu = Markup.keyboard([
   ["🎡 گردونه شانس", "🧠 مسابقه"],
-  ["👥 بازی با دوست"],
   ["❌ لغو مسابقه", "🔙 بازگشت"],
 ]).resize().persistent();
 const fortuneMenu = Markup.keyboard([
