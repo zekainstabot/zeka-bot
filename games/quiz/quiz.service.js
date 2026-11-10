@@ -452,7 +452,9 @@ async function prepareNextQuestion(
 
   const nextRound =
     Number(
-      session.current_round || 0
+      metadata.currentRound ??
+        session.current_round ??
+        0
     ) + 1;
 
   const totalRounds =
@@ -1179,6 +1181,9 @@ pollSentAt:
       await gameRepository.updateSession(
         session.id,
         {
+          current_round:
+            round,
+
           metadata:
             nextMetadata,
         },
