@@ -550,8 +550,9 @@ function createQuizHandler({
           return;
         }
 
+        // Use the language saved in the bot account, not Telegram client language.
         const languageCode =
-          ctx.from?.language_code ||
+          ctx.state?.language ||
           "fa";
 
         const result =
