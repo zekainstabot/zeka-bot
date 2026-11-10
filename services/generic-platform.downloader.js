@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const ytdlp = require("yt-dlp-exec");
+const ffmpegPath = require("ffmpeg-static");
 
 const ROOT = path.join(os.tmpdir(), "zeka-platforms");
 
@@ -46,7 +47,7 @@ function readCaption(directory) {
   return "";
 }
 
-async function downloadPlatformMedia({ platform, url, jobId }) {
+async function downloadPlatformMedia({ platform, url, jobId, audioOnly = false }) {
   if (!platform || !url || !jobId) throw new Error("Platform, URL and job ID are required");
   const allowedHosts = HOSTS[platform];
   if (!allowedHosts) throw new Error(`Unsupported platform: ${platform}`);
@@ -68,8 +69,13 @@ async function downloadPlatformMedia({ platform, url, jobId }) {
 
   await ytdlp(parsed.toString(), {
     output,
-    format: platform === "soundcloud" ? "bestaudio/best" : "best[ext=mp4]/best",
-    mergeOutputFormat: "mp4",
+    format: audioOnly || platform === "soundcloud" ? "bestaudio/best" : "best[ext=mp4]/best",
+    ...(audioOnly ? {
+      extractAudio: true,
+      audioFormat: "mp3",
+      audioQuality: "0",
+      ffmpegLocation: ffmpegPath,
+    } : { mergeOutputFormat: "mp4" }),
     noPlaylist: true,
     noWarnings: true,
     restrictFilenames: true,
@@ -97,7 +103,7 @@ async function downloadPlatformMedia({ platform, url, jobId }) {
     success: true,
     filePath,
     fileSize: fs.statSync(filePath).size,
-    contentType: detectContentType(filePath),
+    contentType: audioOnly ? "AUDIO" : detectContentType(filePath),
     sourceUrl: parsed.toString(),
     caption: readCaption(directory),
   };
