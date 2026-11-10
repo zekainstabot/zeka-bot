@@ -147,6 +147,20 @@ async function handleStartPayload(ctx, user, payload) {
 }
 
 function createFriendQuizHandler({ bot, gamesMenu }) {
+  bot.action("fq:menu", async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.reply(
+      "🤝 بازی دوستانه\\n\\n" +
+      "یک حالت را انتخاب کن:\\n\\n" +
+      "👤 پی‌وی: لینک دعوت اختصاصی می‌گیری و دوستت با ورود به ربات به مسابقه ملحق می‌شود.\\n" +
+      "👥 گروه: ربات را به گروه اضافه کن و دستور /zekaquiz را در گروه بفرست.",
+      Markup.inlineKeyboard([
+        [Markup.button.callback("👤 ساخت لینک دعوت پی‌وی", "fq:create:dm")],
+        [Markup.button.callback("👥 راهنمای بازی گروهی", "fq:group:help")],
+      ])
+    );
+  });
+
   bot.hears("👥 بازی با دوست", async (ctx) => {
     await ctx.reply(
       "🤝 بازی دوستانه\n\n" +
