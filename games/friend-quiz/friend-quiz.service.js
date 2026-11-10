@@ -23,7 +23,7 @@ async function createRoom({ userId, mode = "DM", groupChatId = null, languageCod
     const existing = await client.query(
       `SELECT r.id FROM friend_quiz_rooms r
        JOIN friend_quiz_players p ON p.room_id = r.id
-       WHERE p.user_id = $1 AND r.status IN ('WAITING', 'ACTIVE')
+       WHERE p.user_id = $1 AND (r.status = 'ACTIVE' OR (r.status = 'WAITING' AND r.expires_at > NOW()))
        LIMIT 1 FOR UPDATE OF r`,
       [userId]
     );
@@ -32,8 +32,8 @@ async function createRoom({ userId, mode = "DM", groupChatId = null, languageCod
     const inviteCode = createInviteCode();
     const roomResult = await client.query(
       `INSERT INTO friend_quiz_rooms
-       (invite_code, mode, creator_user_id, group_chat_id, language_code, total_rounds)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+       (invite_code, mode, creator_user_id, group_chat_id, language_code, total_rounds, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '1 day') RETURNING *`,
       [inviteCode, mode, userId, groupChatId, languageCode === "en" ? "en" : "fa", TOTAL_ROUNDS]
     );
     const room = roomResult.rows[0];
@@ -92,6 +92,7 @@ async function joinRoom({ code, userId }) {
     const room = roomResult.rows[0];
     if (!room) throw new Error("FRIEND_QUIZ_NOT_FOUND");
     if (room.status !== "WAITING") throw new Error("FRIEND_QUIZ_NOT_WAITING");
+    if (room.expires_at && new Date(room.expires_at).getTime() <= Date.now()) throw new Error("FRIEND_QUIZ_EXPIRED");
     if (String(room.creator_user_id) === String(userId)) throw new Error("FRIEND_QUIZ_SELF_JOIN");
     const active = await client.query(
       `SELECT 1 FROM friend_quiz_players p
@@ -132,9 +133,13 @@ async function startRound(roomId) {
     excludedIds,
   });
   if (!question) throw new Error("NO_QUIZ_QUESTIONS");
-  const options = [question.option_a, question.option_b, question.option_c, question.option_d]
-    .filter((value) => value !== null && value !== undefined && String(value).trim() !== "")
-    .map((value, index) => ({ original: ["A", "B", "C", "D"][index], text: String(value) }));
+  const options = [
+    { original: "A", text: question.option_a },
+    { original: "B", text: question.option_b },
+    { original: "C", text: question.option_c },
+    { original: "D", text: question.option_d },
+  ].filter((option) => option.text !== null && option.text !== undefined && String(option.text).trim() !== "")
+    .map((option) => ({ ...option, text: String(option.text) }));
   for (let i = options.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [options[i], options[j]] = [options[j], options[i]];
@@ -190,6 +195,10 @@ async function submitAnswer({ roomId, userId, round, optionIndex }) {
       return { accepted: false, reason: "ALREADY_ANSWERED" };
     }
     const snapshot = room.question_snapshot || {};
+    if (!Number.isInteger(Number(optionIndex)) || Number(optionIndex) < 0 || Number(optionIndex) >= (snapshot.options || []).length) {
+      await client.query("ROLLBACK");
+      return { accepted: false, reason: "INVALID_OPTION" };
+    }
     const correct = Number(optionIndex) === Number(snapshot.correctIndex);
     await client.query(
       `INSERT INTO friend_quiz_answers
