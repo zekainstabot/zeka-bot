@@ -128,7 +128,7 @@ function buildSearchVariants({ title = "", artist = "", query = "" }) {
 }
 
 async function searchDeezerMetadata(terms) {
-  const variants = buildSearchVariants(terms);
+  const variants = buildSearchVariants(terms).slice(0, 3);
   for (const term of variants) {
     try {
       const url = new URL("https://api.deezer.com/search");
@@ -157,8 +157,8 @@ let appleSearchQueue = Promise.resolve();
 let appleLastRequestAt = 0;
 
 async function searchAppleMetadata(terms) {
-  const variants = buildSearchVariants(terms);
-  for (const term of variants.slice(0, 2)) {
+  const variants = buildSearchVariants(terms).slice(0, 2);
+  for (const term of variants) {
     const cacheKey = term.toLocaleLowerCase();
     const cached = appleSearchCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.matches;
@@ -595,7 +595,7 @@ async function searchFullTrack({ title = "", artist = "", query = "" }) {
   // Use Mokhtalef Music as an additional discovery index, then look for the
   // discovered title again only in sources with verifiable download permission.
   try {
-    const discovered = await searchMokhtalefMusic(originalTerms);
+    const discovered = await withinSearchDeadline(() => searchMokhtalefMusic(originalTerms), deadlineAt);
     if (discovered?.title) {
       const discoveredTerms = {
         title: discovered.title,
@@ -653,10 +653,10 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
 
   // Metadata catalogs identify likely title/artist pairs; they are never used as
   // audio download sources. Full MP3 delivery still requires a licensed provider.
-  const [deezerMatches, appleMatches] = await Promise.all([
+  const [deezerMatches, appleMatches] = await withinSearchDeadline(() => Promise.all([
     searchDeezerMetadata(originalTerms),
     searchAppleMetadata(originalTerms),
-  ]);
+  ]), deadlineAt);
   const metadataMatches = [...deezerMatches, ...appleMatches]
     .sort((a, b) => b.score - a.score);
   for (const match of metadataMatches.slice(0, 2)) {
