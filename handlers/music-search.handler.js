@@ -5,6 +5,7 @@ const TIMEOUT = 10 * 60 * 1000;
 function createMusicSearchHandler({ bot }) {
   const sessions = new Map();
   const { deductFeatureCredit, refundFeatureCredit } = require("../services/feature-credit.service");
+  const { getOrCreateUser } = require("../services/user.service");
 
   const ask = async (ctx) => {
     sessions.set(String(ctx.from.id), Date.now());
@@ -75,6 +76,7 @@ function createMusicSearchHandler({ bot }) {
     await ctx.reply("🔎 در حال جست‌وجوی آهنگ...");
 
     let featureCharge = null;
+    let featureUserId = null;
     try {
       let lyricMatch = null;
 
@@ -115,7 +117,9 @@ function createMusicSearchHandler({ bot }) {
         return;
       }
 
-      featureCharge = await deductFeatureCredit({ userId: ctx.from.id, feature: "music_search" });
+      const user = await getOrCreateUser(ctx.from);
+      featureUserId = user.id;
+      featureCharge = await deductFeatureCredit({ userId: featureUserId, feature: "music_search" });
 
       const title = item.trackName || "آهنگ";
       const artist = item.artistName || "هنرمند نامشخص";
@@ -161,7 +165,7 @@ function createMusicSearchHandler({ bot }) {
     } catch (error) {
       if (featureCharge && !featureCharge.isPro) {
         try {
-          await refundFeatureCredit({ userId: ctx.from.id, feature: "music_search", charge: featureCharge });
+          await refundFeatureCredit({ userId: featureUserId, feature: "music_search", charge: featureCharge });
         } catch (refundError) {
           console.error("Music search credit refund failed:", refundError.message);
         }
