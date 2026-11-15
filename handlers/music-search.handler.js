@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const { sendFileToChatOnce } = require("../services/delivery.service");
 const { deductFeatureCredit, refundFeatureCredit } = require("../services/feature-credit.service");
 const { getOrCreateUser } = require("../services/user.service");
-const { searchAndDownloadFullTrack } = require("../services/music-source.service");
+const { searchAndDownloadFullTrack, scoreTrack, normalizeSearchText } = require("../services/music-source.service");
 
 const TIMEOUT = 10 *  60 * 1000;
 
@@ -88,19 +88,42 @@ function createMusicSearchHandler({ bot }) {
       let matchedTitle = "";
       let matchedArtist = "";
 
-      // متن ترانه ابتدا به نام آهنگ و خواننده تبدیل می‌شود.
+      // متن ترانه را با چند شکل نوشتاری جست‌وجو می‌کنیم و بهترین تطبیق را می‌گیریم.
       if (query.split(/\s+/).length >= 3) {
-        try {
-          const lyricsUrl = new URL("https://lrclib.net/api/search");
-          lyricsUrl.searchParams.set("q", query);
-          const matches = await getJson(lyricsUrl);
-          const match = Array.isArray(matches) ? matches[0] : null;
-          if (match) {
-            matchedTitle = String(match.trackName || "").trim();
-            matchedArtist = String(match.artistName || "").trim();
+        const lyricQueries = [...new Set([
+          query,
+          query.replace(/[،؛؟!,.؟]+/g, " ").replace(/\s+/g, " ").trim(),
+          normalizeSearchText(query),
+        ].filter(value => value && value.length >= 3))].slice(0, 3);
+        const lyricCandidates = [];
+        for (const lyricQuery of lyricQueries) {
+          try {
+            const lyricsUrl = new URL("https://lrclib.net/api/search");
+            lyricsUrl.searchParams.set("q", lyricQuery);
+            const matches = await getJson(lyricsUrl);
+            if (Array.isArray(matches)) lyricCandidates.push(...matches);
+            if (lyricCandidates.length >= 30) break;
+          } catch (error) {
+            console.warn("Lyrics identification failed:", error.message);
           }
-        } catch (error) {
-          console.warn("Lyrics identification failed:", error.message);
+        }
+        const uniqueCandidates = [...new Map(lyricCandidates.map(item => [
+          String(item.id || (item.trackName + "|" + item.artistName)),
+          item,
+        ])).values()];
+        uniqueCandidates.sort((a, b) =>
+          scoreTrack(
+            { title: b.trackName, artist: b.artistName },
+            "", "", query
+          ) - scoreTrack(
+            { title: a.trackName, artist: a.artistName },
+            "", "", query
+          )
+        );
+        const match = uniqueCandidates[0];
+        if (match) {
+          matchedTitle = String(match.trackName || "").trim();
+          matchedArtist = String(match.artistName || "").trim();
         }
       }
 
