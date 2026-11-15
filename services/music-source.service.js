@@ -210,38 +210,62 @@ async function searchMokhtalefMusic({ title, artist, query }) {
   if (!response.ok) throw new Error("MOKHTALEF_HTTP_" + response.status);
   const html = await response.text();
   const candidates = [];
-  const anchorPattern = /<a\b([^>]*href="([^"]+)"[^>]*)>([\s\S]*?)<\/a>/gi;
+  const anchorPattern = /<a\\b([^>]*href="([^"]+)"[^>]*)>([\\s\\S]*?)<\\/a>/gi;
   let match;
   while ((match = anchorPattern.exec(html)) !== null) {
     let href;
     try { href = new URL(decodeHtml(match[2]), "https://mokhtalefmusic.com/"); } catch { continue; }
     if (href.hostname !== "mokhtalefmusic.com" || href.pathname === "/" || href.pathname.startsWith("/wp-")) continue;
-    if (!/(?:آهنگ|music|song|download)/i.test(decodeURIComponent(href.pathname))) continue;
-    const titleMatch = (match[1] || "").match(/\btitle="([^"]+)"/i);
+    const titleMatch = (match[1] || "").match(/\\btitle="([^"]+)"/i);
     const name = stripHtml(titleMatch ? titleMatch[1] : match[3]);
     if (!name || name.length < 4 || /ادامه مطلب|صفحه بعدی/i.test(name)) continue;
-    candidates.push({ name, url: href.toString(), score: scoreTrack({ title: name, artist: "" }, title || query, artist) });
+    candidates.push({ name, score: scoreTrack({ title: name, artist: "" }, title || query, artist) });
   }
   candidates.sort((a, b) => b.score - a.score);
   if (!candidates.length) return null;
-  return { title: candidates[0].name, artist: artist || "مختلف موزیک", source: "مختلف موزیک", pageUrl: candidates[0].url, linkOnly: true };
+  // This site is used only to discover a likely title. Its page/download URLs
+  // are never sent to users or downloaded without a verifiable redistribution license.
+  return { title: candidates[0].name, artist: artist || "", source: "مختلف موزیک" };
 }
 
 async function searchFullTrack({ title = "", artist = "", query = "" }) {
+  const searchProviders = async (terms) => {
+    try {
+      const jamendo = await searchJamendo(terms);
+      if (jamendo) return jamendo;
+    } catch (error) {
+      console.warn("Jamendo search failed:", error.message);
+    }
+    try {
+      const archive = await searchInternetArchive(terms);
+      if (archive) return archive;
+    } catch (error) {
+      console.warn("Internet Archive search failed:", error.message);
+    }
+    return null;
+  };
+
+  const originalTerms = { title, artist, query };
+  const originalResult = await searchProviders(originalTerms);
+  if (originalResult) return originalResult;
+
+  // Use Mokhtalef Music as an additional discovery index, then look for the
+  // discovered title again only in sources with verifiable download permission.
   try {
-    const jamendo = await searchJamendo({ title, artist, query });
-    if (jamendo) return jamendo;
+    const discovered = await searchMokhtalefMusic(originalTerms);
+    if (discovered?.title) {
+      const discoveredTerms = {
+        title: discovered.title,
+        artist: discovered.artist || artist,
+        query: discovered.title,
+      };
+      const discoveredResult = await searchProviders(discoveredTerms);
+      if (discoveredResult) return discoveredResult;
+    }
   } catch (error) {
-    console.warn("Jamendo search failed:", error.message);
+    console.warn("Mokhtalef Music search failed:", error.message);
   }
-  try {
-    const archive = await searchInternetArchive({ title, artist, query });
-    if (archive) return archive;
-  } catch (error) {
-    console.warn("Internet Archive search failed:", error.message);
-  }
-  try { return await searchMokhtalefMusic({ title, artist, query }); }
-  catch (error) { console.warn("Mokhtalef Music search failed:", error.message); return null; }
+  return null;
 }
 
 async function downloadFullTrack(track, destination) {
