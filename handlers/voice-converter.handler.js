@@ -3,11 +3,10 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const https = require("https");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 const { pipeline } = require("stream/promises");
-const { Transform } = require("stream");
+const { Transform, Readable } = require("stream");
 const { Markup } = require("telegraf");
 const ffmpegPath = require("ffmpeg-static");
 
@@ -69,61 +68,57 @@ async function downloadTelegramFile(ctx, fileId, destination, expectedSize) {
     throw new Error("INPUT_TOO_LARGE");
   }
 
-  const fileLink = await ctx.telegram.getFileLink(fileId);
-  const url = new URL(String(fileLink));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
 
-  await new Promise((resolve, reject) => {
-    const request = https.get(url, (response) => {
-      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-        response.resume();
-        https.get(response.headers.location, (redirected) => {
-          if (redirected.statusCode !== 200) {
-            redirected.resume();
-            reject(new Error("TELEGRAM_FILE_DOWNLOAD_FAILED"));
-            return;
-          }
-          let received = 0;
-          const limiter = new Transform({
-            transform(chunk, encoding, callback) {
-              received += chunk.length;
-              if (received > MAX_INPUT_BYTES) {
-                callback(new Error("INPUT_TOO_LARGE"));
-                return;
-              }
-              callback(null, chunk);
-            },
-          });
-          pipeline(redirected, limiter, fs.createWriteStream(destination))
-            .then(resolve)
-            .catch(reject);
-        }).on("error", reject);
-        return;
-      }
-
-      if (response.statusCode !== 200) {
-        response.resume();
-        reject(new Error("TELEGRAM_FILE_DOWNLOAD_FAILED"));
-        return;
-      }
-
-      let received = 0;
-      const limiter = new Transform({
-        transform(chunk, encoding, callback) {
-          received += chunk.length;
-          if (received > MAX_INPUT_BYTES) {
-            callback(new Error("INPUT_TOO_LARGE"));
-            return;
-          }
-          callback(null, chunk);
-        },
-      });
-      pipeline(response, limiter, fs.createWriteStream(destination))
-        .then(resolve)
-        .catch(reject);
+  try {
+    // Native fetch follows Telegram's CDN redirects automatically.
+    const fileLink = await ctx.telegram.getFileLink(fileId);
+    const response = await fetch(String(fileLink), {
+      method: "GET",
+      redirect: "follow",
+      signal: controller.signal,
     });
-    request.setTimeout(120000, () => request.destroy(new Error("DOWNLOAD_TIMEOUT")));
-    request.on("error", reject);
-  });
+
+    if (!response.ok || !response.body) {
+      throw new Error(`TELEGRAM_FILE_DOWNLOAD_HTTP_${response.status}`);
+    }
+
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > MAX_INPUT_BYTES) {
+      throw new Error("INPUT_TOO_LARGE");
+    }
+
+    let received = 0;
+    const limiter = new Transform({
+      transform(chunk, encoding, callback) {
+        received += chunk.length;
+        if (received > MAX_INPUT_BYTES) {
+          callback(new Error("INPUT_TOO_LARGE"));
+          return;
+        }
+        callback(null, chunk);
+      },
+    });
+
+    await pipeline(
+      Readable.fromWeb(response.body),
+      limiter,
+      fs.createWriteStream(destination),
+      { signal: controller.signal }
+    );
+
+    if (!received) {
+      throw new Error("EMPTY_TELEGRAM_FILE");
+    }
+  } catch (error) {
+    if (controller.signal.aborted || error?.name === "AbortError") {
+      throw new Error("DOWNLOAD_TIMEOUT");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function convertToMp3(inputPath, outputPath) {
