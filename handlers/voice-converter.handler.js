@@ -12,6 +12,7 @@ const { featuresMenu } = require("../config/bot-menus");
 const ffmpegPath = require("ffmpeg-static");
 const { sendFileToChatOnce } = require("../services/delivery.service");
 const { deductFeatureCredit, refundFeatureCredit } = require("../services/feature-credit.service");
+const { getOrCreateUser } = require("../services/user.service");
 
 const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
@@ -214,8 +215,11 @@ function createVoiceConverterHandler({ bot }) {
     }
 
     let featureCharge = null;
+    let featureUserId = null;
     try {
-      featureCharge = await deductFeatureCredit({ userId: ctx.from.id, feature: "voice_to_mp3" });
+      const user = await getOrCreateUser(ctx.from);
+      featureUserId = user.id;
+      featureCharge = await deductFeatureCredit({ userId: featureUserId, feature: "voice_to_mp3" });
     } catch (error) {
       if (error.code === "INSUFFICIENT_CREDIT") {
         await ctx.reply(`❌ اعتبار کافی نداری.\n\nهزینه تبدیل ویس: ${error.cost} اعتبار\nاعتبار فعلی: ${error.balance}\n\nاز بخش «📊 اعتبار من» می‌توانی اعتبارت را افزایش بدهی.`, converterMenu);
@@ -265,7 +269,7 @@ function createVoiceConverterHandler({ bot }) {
     } catch (error) {
       if (featureCharge && !featureCharge.isPro) {
         try {
-          await refundFeatureCredit({ userId: ctx.from.id, feature: "voice_to_mp3", charge: featureCharge });
+          await refundFeatureCredit({ userId: featureUserId, feature: "voice_to_mp3", charge: featureCharge });
         } catch (refundError) {
           console.error("Voice converter credit refund failed:", refundError?.message || refundError);
         }
