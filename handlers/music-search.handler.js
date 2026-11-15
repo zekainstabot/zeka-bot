@@ -16,7 +16,7 @@ function createMusicSearchHandler({ bot }) {
     const data = await getJson(url);
     return Array.isArray(data.results) ? data.results : [];
   }
-  bot.hears("🎵 جست‌وجوی موسیقی", ask);
+  bot.hears(["🎵 جست‌وجوی موسیقی", "🎵 جست‌وجوی آهنگ"], ask);
   bot.on("text", async (ctx, next) => {
     const id = String(ctx.from.id), started = sessions.get(id);
     if (!started) return next();
