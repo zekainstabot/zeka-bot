@@ -207,7 +207,7 @@ function createMusicSearchHandler({ bot }) {
       const mp3Path = path.join(workDir, safeFileName(title) + ".mp3");
 
       await downloadPreview(item.previewUrl, sourcePath);
-      convertPreviewToMp3(sourcePath, mp3Path);
+      await convertPreviewToMp3(sourcePath, mp3Path);
 
       const user = await getOrCreateUser(ctx.from);
       featureUserId = user.id;
