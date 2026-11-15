@@ -64,7 +64,7 @@ function buildYtDlpOptions(output, audioOnly = false) {
   };
 }
 
-async function downloadYouTubeMedia({ url, jobId, audioOnly = false }) {
+async function downloadYouTubeMedia({ url, jobId, audioOnly = false, timeoutMs = 15 * 60 * 1000 }) {
   if (!url || !jobId) throw new Error("YouTube URL and job ID are required");
 
   let parsed;
@@ -85,7 +85,7 @@ async function downloadYouTubeMedia({ url, jobId, audioOnly = false }) {
 
   try {
     await ytdlp(parsed.toString(), buildYtDlpOptions(output, audioOnly), {
-      timeout: 15 * 60 * 1000,
+      timeout: Math.max(1000, Math.min(15 * 60 * 1000, Number(timeoutMs) || 15 * 60 * 1000)),
       maxBuffer: 10 * 1024 * 1024,
       windowsHide: true,
     });
