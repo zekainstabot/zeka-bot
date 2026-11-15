@@ -10,6 +10,15 @@ const mainMenu = Markup.keyboard([
   .resize()
   .oneTime(false);
 
+const featuresMenu = Markup.keyboard([
+  ["🎵 جست‌وجوی آهنگ", "📆 تقویم روز"],
+  ["🎙 تبدیل ویس"],
+  ["📢 مدیریت انتشار محتوا"],
+  ["🎡 گردونه شانس", "🧠 مسابقه"],
+  ["🔮 فال"],
+  ["🔙 بازگشت"],
+]).resize().persistent();
+
 const downloadMenu = Markup.keyboard([
   ["🔙 بازگشت"],
 ]).resize().persistent();
@@ -29,4 +38,4 @@ const fortuneMenu = Markup.keyboard([
   ["🔙 بازگشت"],
 ]).resize().persistent();
 
-module.exports = { mainMenu, downloadMenu, accountMenu, gamesMenu, fortuneMenu };
+module.exports = { mainMenu, downloadMenu, accountMenu, gamesMenu, fortuneMenu, featuresMenu };
