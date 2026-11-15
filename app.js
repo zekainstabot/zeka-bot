@@ -380,10 +380,14 @@ async function start() {
     startZekaMediaExpirationService();
     await bugReportCleanupService.start();
     await setupSuperAdmin();
-    await startBot();
-    startDailyCreditScheduler();
+
+    // The database and HTTP API are ready even if this instance is waiting
+    // for another replica to release the Telegram polling lock.
     startupError = null;
     isReady = true;
+
+    await startBot();
+    startDailyCreditScheduler();
     console.log("Zeka Bot is ready.");
   } catch (error) {
     isReady = false;
