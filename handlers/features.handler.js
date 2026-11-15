@@ -37,11 +37,10 @@ function createFeaturesHandler({ bot, mainMenu }) {
   const featuresMenu = {
     reply_markup: {
       keyboard: [
-        ["🎵 جست‌وجوی موسیقی"],
+        ["🎵 جست‌وجوی آهنگ", "📆 تقویم روز"],
         ["📢 مدیریت انتشار محتوا"],
         ["🎡 گردونه شانس", "🧠 مسابقه"],
         ["🔮 فال"],
-        ["📆 تقویم روز"],
         ["🔙 بازگشت"],
       ],
       resize_keyboard: true,
@@ -973,6 +972,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         "🧩 آزمون و مسابقه",
         "📢 مدیریت انتشار محتوا",
         "🎵 جست‌وجوی موسیقی",
+        "🎵 جست‌وجوی آهنگ",
         "📢 اتصال کانال من",
         "➕ ثبت کانال",
         "📋 کانال‌های من",
