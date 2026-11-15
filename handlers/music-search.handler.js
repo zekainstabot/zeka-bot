@@ -9,7 +9,24 @@ const { deductFeatureCredit, refundFeatureCredit } = require("../services/featur
 const { getOrCreateUser } = require("../services/user.service");
 const { searchAndDownloadFullTrack, scoreTrack, normalizeSearchText } = require("../services/music-source.service");
 
-const TIMEOUT = 10 *  60 * 1000;
+const TIMEOUT = 10 * 60 * 1000;
+const MUSIC_SEARCH_TIMEOUT_MS = 2 * 60 * 1000;
+
+function remainingSearchMs(deadlineAt) {
+  return Math.max(0, deadlineAt - Date.now());
+}
+
+function withinSearchDeadline(task, deadlineAt) {
+  const remaining = remainingSearchMs(deadlineAt);
+  if (remaining <= 0) return Promise.reject(new Error("MUSIC_SEARCH_TIMEOUT"));
+  let timer;
+  return Promise.race([
+    Promise.resolve().then(task),
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error("MUSIC_SEARCH_TIMEOUT")), remaining);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 function safeFileName(value) {
   return String(value || "song")
@@ -85,6 +102,7 @@ function createMusicSearchHandler({ bot }) {
     let workDir = null;
 
     try {
+      const searchDeadlineAt = Date.now() + MUSIC_SEARCH_TIMEOUT_MS;
       let matchedTitle = "";
       let matchedArtist = "";
 
@@ -100,10 +118,11 @@ function createMusicSearchHandler({ bot }) {
           try {
             const lyricsUrl = new URL("https://lrclib.net/api/search");
             lyricsUrl.searchParams.set("q", lyricQuery);
-            const matches = await getJson(lyricsUrl);
+            const matches = await withinSearchDeadline(() => getJson(lyricsUrl), searchDeadlineAt);
             if (Array.isArray(matches)) lyricCandidates.push(...matches);
             if (lyricCandidates.length >= 30) break;
           } catch (error) {
+            if (error.message === "MUSIC_SEARCH_TIMEOUT") throw error;
             console.warn("Lyrics identification failed:", error.message);
           }
         }
@@ -131,11 +150,14 @@ function createMusicSearchHandler({ bot }) {
       fs.mkdirSync(workDir, { recursive: true });
       const mp3Path = path.join(workDir, "music.mp3");
 
+      const remainingMs = remainingSearchMs(searchDeadlineAt);
+      if (remainingMs <= 0) throw new Error("MUSIC_SEARCH_TIMEOUT");
       const track = await searchAndDownloadFullTrack({
         title: matchedTitle,
         artist: matchedArtist,
         query,
         destination: mp3Path,
+        timeoutMs: remainingMs,
       });
 
       if (!track) {
@@ -201,6 +223,8 @@ function createMusicSearchHandler({ bot }) {
         await ctx.reply(
           `❌ اعتبار کافی نداری.\n\nهزینه جست‌وجوی آهنگ: ${error.cost} اعتبار\nاعتبار فعلی: ${error.balance} اعتبار\n\nاز بخش «📊 اعتبار من» می‌توانی اعتبارت را افزایش بدهی.`
         );
+      } else if (error.message === "MUSIC_SEARCH_TIMEOUT") {
+        await ctx.reply("⏱ جست‌وجو بیشتر از ۲ دقیقه طول کشید؛ دوباره با نام دقیق‌تر آهنگ امتحان کن.");
       } else {
         await ctx.reply(
           "❌ دریافت یا ارسال نسخه کامل MP3 ناموفق بود. اگر اعتباری کسر شده باشد، در صورت ناموفق بودن ارسال به حسابت برمی‌گردد."
