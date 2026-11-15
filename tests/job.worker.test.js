@@ -265,7 +265,7 @@ test("credit consumption failure preserves reservation and leaves job in SENDING
   assert.equal(calls.includes("job:failed"), false);
 
   assert.equal(
-    calls.some((call) => call.startsWith("job:completed:")),
+    calls.some((call) => typeof call === "string" && call.startsWith("job:completed:")),
     false
   );
 });
