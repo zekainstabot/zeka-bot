@@ -104,11 +104,6 @@ function createMusicSearchHandler({ bot }) {
         return;
       }
 
-      if (track.linkOnly && track.pageUrl) {
-        await ctx.reply("🎵 " + track.title + "\n📚 منبع: " + track.source + "\n🔗 لینک آهنگ: " + track.pageUrl);
-        sessions.set(id, Date.now());
-        return;
-      }
 
       workDir = path.join(os.tmpdir(), "zeka-music-search", id, crypto.randomBytes(8).toString("hex"));
       fs.mkdirSync(workDir, { recursive: true });
@@ -139,7 +134,6 @@ function createMusicSearchHandler({ bot }) {
           `🎵 ${track.title}`,
           `👤 ${track.artist}`,
           `📚 منبع: ${track.source}`,
-          track.pageUrl ? `🔗 ${track.pageUrl}` : "",
           attribution,
           creditLine,
         ].filter(Boolean).join("\n"),
