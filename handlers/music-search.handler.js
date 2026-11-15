@@ -18,6 +18,18 @@ function safeFileName(value) {
     .slice(0, 70) || "song";
 }
 
+function licenseLabel(track) {
+  if (track.licenseName) {
+    return "CC " + String(track.licenseName).toUpperCase()
+      + (track.licenseVersion ? " " + track.licenseVersion : "");
+  }
+  const licenseUrl = String(track.licenseUrl || "");
+  const match = licenseUrl.match(/creativecommons\\.org\\/licenses\\/([^/]+)\\/([^/?#]+)/i);
+  if (match) return "CC " + match[1].toUpperCase() + " " + match[2];
+  if (/publicdomain\\/(?:zero|mark)/i.test(licenseUrl)) return "Public Domain";
+  return "مجوز مجاز";
+}
+
 function createMusicSearchHandler({ bot }) {
   const sessions = new Map();
 
@@ -124,9 +136,7 @@ function createMusicSearchHandler({ bot }) {
         ? "⭐ زکا پرو: بدون کسر اعتبار"
         : `💳 هزینه: ${featureCharge.cost} اعتبار | 💰 مانده: ${featureCharge.balance} اعتبار`;
 
-      const attribution = track.licenseUrl
-        ? `📜 مجوز: ${track.licenseUrl}`
-        : "📜 مجوز دانلود بررسی شد";
+      const attribution = "📜 مجوز: " + licenseLabel(track);
 
       await sendFileToChatOnce({
         chatId: ctx.chat.id,
