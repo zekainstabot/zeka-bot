@@ -241,14 +241,37 @@ function createVoiceConverterHandler({ bot }) {
 
       const title = safeBaseName(attachment.fileName);
       stage = "telegram_upload";
-      await ctx.replyWithAudio(
-        { source: outputPath, filename: `${title}.mp3` },
-        {
-          title,
-          performer: "Zeka",
-          caption: "✅ تبدیل با موفقیت انجام شد؛ فایل MP3 آماده ذخیره است.",
+      const audioCaption = "✅ تبدیل با موفقیت انجام شد؛ فایل MP3 آماده ذخیره است.";
+      try {
+        await ctx.replyWithAudio(
+          { source: outputPath, filename: `${title}.mp3` },
+          {
+            title,
+            performer: "Zeka",
+            caption: audioCaption,
+          }
+        );
+      } catch (audioUploadError) {
+        console.error("Voice converter sendAudio failed; trying sendDocument:", {
+          userId,
+          message: audioUploadError?.message || String(audioUploadError),
+          code: audioUploadError?.code,
+          response: audioUploadError?.response?.description,
+        });
+
+        try {
+          await ctx.replyWithDocument(
+            { source: outputPath, filename: `${title}.mp3` },
+            { caption: audioCaption }
+          );
+        } catch (documentUploadError) {
+          const combined = new Error(
+            `TELEGRAM_UPLOAD_FAILED: sendAudio=${audioUploadError?.message || audioUploadError}; sendDocument=${documentUploadError?.message || documentUploadError}`
+          );
+          combined.cause = documentUploadError;
+          throw combined;
         }
-      );
+      }
     } catch (error) {
       console.error("Voice to MP3 conversion failed:", {
         userId,
