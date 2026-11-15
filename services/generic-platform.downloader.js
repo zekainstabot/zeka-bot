@@ -47,7 +47,7 @@ function readCaption(directory) {
   return "";
 }
 
-async function downloadPlatformMedia({ platform, url, jobId, audioOnly = false }) {
+async function downloadPlatformMedia({ platform, url, jobId, audioOnly = false, timeoutMs = 15 * 60 * 1000 }) {
   if (!platform || !url || !jobId) throw new Error("Platform, URL and job ID are required");
   const allowedHosts = HOSTS[platform];
   if (!allowedHosts) throw new Error(`Unsupported platform: ${platform}`);
@@ -83,6 +83,10 @@ async function downloadPlatformMedia({ platform, url, jobId, audioOnly = false }
     socketTimeout: 30,
     retries: 2,
     fragmentRetries: 2,
+  }, {
+    timeout: Math.max(1000, Math.min(15 * 60 * 1000, Number(timeoutMs) || 15 * 60 * 1000)),
+    maxBuffer: 10 * 1024 * 1024,
+    windowsHide: true,
   });
 
   const files = fs.readdirSync(directory)
