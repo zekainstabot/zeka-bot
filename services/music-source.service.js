@@ -191,6 +191,42 @@ async function searchInternetArchive({ title, artist, query }) {
   return null;
 }
 
+
+function decodeHtml(value) {
+  return String(value || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0*39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
+}
+function stripHtml(value) {
+  return decodeHtml(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+}
+async function searchMokhtalefMusic({ title, artist, query }) {
+  const term = [artist, title].filter(Boolean).join(" ") || query;
+  if (!term || term.length > 180) return null;
+  const url = new URL("https://mokhtalefmusic.com/");
+  url.searchParams.set("s", term);
+  const response = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; ZekaBot/1.0; music search)" },
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!response.ok) throw new Error("MOKHTALEF_HTTP_" + response.status);
+  const html = await response.text();
+  const candidates = [];
+  const anchorPattern = /<a\b([^>]*href="([^"]+)"[^>]*)>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = anchorPattern.exec(html)) !== null) {
+    let href;
+    try { href = new URL(decodeHtml(match[2]), "https://mokhtalefmusic.com/"); } catch { continue; }
+    if (href.hostname !== "mokhtalefmusic.com" || href.pathname === "/" || href.pathname.startsWith("/wp-")) continue;
+    if (!/(?:آهنگ|music|song|download)/i.test(decodeURIComponent(href.pathname))) continue;
+    const titleMatch = (match[1] || "").match(/\btitle="([^"]+)"/i);
+    const name = stripHtml(titleMatch ? titleMatch[1] : match[3]);
+    if (!name || name.length < 4 || /ادامه مطلب|صفحه بعدی/i.test(name)) continue;
+    candidates.push({ name, url: href.toString(), score: scoreTrack({ title: name, artist: "" }, title || query, artist) });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+  if (!candidates.length) return null;
+  return { title: candidates[0].name, artist: artist || "مختلف موزیک", source: "مختلف موزیک", pageUrl: candidates[0].url, linkOnly: true };
+}
+
 async function searchFullTrack({ title = "", artist = "", query = "" }) {
   try {
     const jamendo = await searchJamendo({ title, artist, query });
@@ -198,7 +234,10 @@ async function searchFullTrack({ title = "", artist = "", query = "" }) {
   } catch (error) {
     console.warn("Jamendo search failed:", error.message);
   }
-  return searchInternetArchive({ title, artist, query });
+  const archive = await searchInternetArchive({ title, artist, query });
+  if (archive) return archive;
+  try { return await searchMokhtalefMusic({ title, artist, query }); }
+  catch (error) { console.warn("Mokhtalef Music search failed:", error.message); return null; }
 }
 
 async function downloadFullTrack(track, destination) {
@@ -269,6 +308,7 @@ async function downloadFullTrack(track, destination) {
 
 module.exports = {
   searchFullTrack,
+  searchMokhtalefMusic,
   downloadFullTrack,
   isAllowedLicense,
   MAX_TRACK_BYTES,
