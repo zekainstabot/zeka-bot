@@ -8,6 +8,7 @@ const { spawn } = require("child_process");
 const { pipeline } = require("stream/promises");
 const { Transform, Readable } = require("stream");
 const { Markup } = require("telegraf");
+const { featuresMenu } = require("../config/bot-menus");
 const ffmpegPath = require("ffmpeg-static");
 const { sendFileToChatOnce } = require("../services/delivery.service");
 
@@ -15,15 +16,6 @@ const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
 const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 const sessions = new Map();
-
-const featuresMenu = Markup.keyboard([
-  ["📢 مدیریت انتشار محتوا"],
-  ["🎡 گردونه شانس", "🧠 مسابقه"],
-  ["🔮 فال"],
-  ["📆 تقویم روز"],
-  ["🎙 تبدیل ویس"],
-  ["🔙 بازگشت"],
-]).resize().persistent();
 
 const converterMenu = Markup.keyboard([
   ["🔙 بازگشت"],
@@ -164,11 +156,6 @@ function convertToMp3(inputPath, outputPath) {
 }
 
 function createVoiceConverterHandler({ bot }) {
-  bot.hears("🛠 امکانات ویژه", async (ctx) => {
-    sessions.delete(String(ctx.from.id));
-    await ctx.reply("🛠 امکانات ویژه\n\nیکی از امکانات را انتخاب کن.", featuresMenu);
-  });
-
   bot.hears("🎙 تبدیل ویس", async (ctx) => {
     sessions.set(String(ctx.from.id), { createdAt: Date.now() });
     await ctx.reply(
@@ -205,6 +192,14 @@ function createVoiceConverterHandler({ bot }) {
       "⭐ زکا پرو",
       "🌐 اتصال به زکا مدیا",
       "💬 ارتباط با پشتیبانی",
+      "🛠 امکانات ویژه",
+      "🎵 جست‌وجوی موسیقی",
+      "🎵 جست‌وجوی آهنگ",
+      "📆 تقویم روز",
+      "📢 مدیریت انتشار محتوا",
+      "🎡 گردونه شانس",
+      "🧠 مسابقه",
+      "🔮 فال",
     ]);
     if (navigationButtons.has(ctx.message?.text)) {
       sessions.delete(userId);
