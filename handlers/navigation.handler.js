@@ -1,12 +1,12 @@
+"use strict";
+
 function createNavigationHandler({
   bot,
   mainMenu,
 }) {
   bot.hears("🔙 بازگشت", async (ctx) => {
-    await ctx.reply(
-      "🏠 منوی اصلی",
-      mainMenu
-    );
+    // The generic back action always returns to the persistent main keyboard.
+    await ctx.reply("🏠 منوی اصلی", mainMenu);
   });
 }
 
