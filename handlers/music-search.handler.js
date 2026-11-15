@@ -24,9 +24,9 @@ function licenseLabel(track) {
       + (track.licenseVersion ? " " + track.licenseVersion : "");
   }
   const licenseUrl = String(track.licenseUrl || "");
-  const match = licenseUrl.match(/creativecommons\\.org\\/licenses\\/([^/]+)\\/([^/?#]+)/i);
+  const match = licenseUrl.match(/creativecommons\.org\/licenses\/([^/]+)\/([^/?#]+)/i);
   if (match) return "CC " + match[1].toUpperCase() + " " + match[2];
-  if (/publicdomain\\/(?:zero|mark)/i.test(licenseUrl)) return "Public Domain";
+  if (/publicdomain\/(?:zero|mark)/i.test(licenseUrl)) return "Public Domain";
   return "مجوز مجاز";
 }
 
