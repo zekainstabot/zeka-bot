@@ -234,8 +234,12 @@ async function searchFullTrack({ title = "", artist = "", query = "" }) {
   } catch (error) {
     console.warn("Jamendo search failed:", error.message);
   }
-  const archive = await searchInternetArchive({ title, artist, query });
-  if (archive) return archive;
+  try {
+    const archive = await searchInternetArchive({ title, artist, query });
+    if (archive) return archive;
+  } catch (error) {
+    console.warn("Internet Archive search failed:", error.message);
+  }
   try { return await searchMokhtalefMusic({ title, artist, query }); }
   catch (error) { console.warn("Mokhtalef Music search failed:", error.message); return null; }
 }
