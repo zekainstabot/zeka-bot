@@ -202,6 +202,19 @@ function createVoiceConverterHandler({ bot }) {
       return;
     }
 
+    const navigationButtons = new Set([
+      "📥 دانلود",
+      "👤 حساب من",
+      "🎁 هدایا",
+      "⭐ زکا پرو",
+      "🌐 اتصال به زکا مدیا",
+      "💬 ارتباط با پشتیبانی",
+    ]);
+    if (navigationButtons.has(ctx.message?.text)) {
+      sessions.delete(userId);
+      return next();
+    }
+
     const attachment = getAudioAttachment(ctx.message);
     if (!attachment) {
       await ctx.reply("لطفاً یک ویس تلگرام یا فایل صوتی بفرست. فایل‌های تصویری و اسناد غیرصوتی پشتیبانی نمی‌شوند.", converterMenu);
