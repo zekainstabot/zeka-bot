@@ -21,7 +21,23 @@ function createMusicSearchHandler({ bot }) {
     const id = String(ctx.from.id), started = sessions.get(id);
     if (!started) return next();
     const q = String(ctx.message.text || "").trim();
-    if (q === "🔙 بازگشت" || q === "🛠 امکانات ویژه") { sessions.delete(id); return next(); }
+    const navigationButtons = new Set([
+      "🔙 بازگشت",
+      "🛠 امکانات ویژه",
+      "📥 دانلود",
+      "👤 حساب من",
+      "🎁 هدایا",
+      "⭐ زکا پرو",
+      "🌐 اتصال به زکا مدیا",
+      "💬 ارتباط با پشتیبانی",
+      "🎙 تبدیل ویس",
+      "📆 تقویم روز",
+      "📢 مدیریت انتشار محتوا",
+      "🎡 گردونه شانس",
+      "🧠 مسابقه",
+      "🔮 فال",
+    ]);
+    if (navigationButtons.has(q)) { sessions.delete(id); return next(); }
     if (Date.now() - started > TIMEOUT) { sessions.delete(id); await ctx.reply("⏱ زمان جست‌وجو تمام شد؛ دوباره از امکانات ویژه وارد شو."); return; }
     if (q.length < 2) { await ctx.reply("نام آهنگ یا بخشی از متن ترانه را بفرست."); return; }
     await ctx.reply("🔎 در حال جست‌وجوی آهنگ...");
