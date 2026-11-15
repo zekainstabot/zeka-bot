@@ -216,6 +216,7 @@ function createVoiceConverterHandler({ bot }) {
       return;
     }
 
+    let stage = "prepare";
     const workDir = path.join(os.tmpdir(), "zeka-voice-converter", userId, crypto.randomBytes(8).toString("hex"));
     const inputPath = path.join(workDir, "input");
     const outputPath = path.join(workDir, "output.mp3");
@@ -224,18 +225,22 @@ function createVoiceConverterHandler({ bot }) {
       fs.mkdirSync(workDir, { recursive: true });
       await ctx.reply("⏳ فایل دریافت شد؛ در حال تبدیل به MP3 هستم...");
 
+      stage = "telegram_metadata";
       const fileInfo = await ctx.telegram.getFile(attachment.fileId);
       if (Number(fileInfo.file_size) > MAX_INPUT_BYTES) {
         throw new Error("INPUT_TOO_LARGE");
       }
 
+      stage = "download";
       await downloadTelegramFile(ctx, attachment.fileId, inputPath, fileInfo.file_size);
+      stage = "convert";
       await convertToMp3(inputPath, outputPath);
 
       const outputSize = fs.statSync(outputPath).size;
       if (outputSize > MAX_OUTPUT_BYTES) throw new Error("OUTPUT_TOO_LARGE");
 
       const title = safeBaseName(attachment.fileName);
+      stage = "telegram_upload";
       await ctx.replyWithAudio(
         { source: outputPath, filename: `${title}.mp3` },
         {
@@ -247,20 +252,28 @@ function createVoiceConverterHandler({ bot }) {
     } catch (error) {
       console.error("Voice to MP3 conversion failed:", {
         userId,
+        stage,
         message: error?.message || String(error),
+        stack: error?.stack,
       });
 
-      let message = "❌ تبدیل فایل انجام نشد. لطفاً فایل دیگری را امتحان کن.";
+      let message = "❌ عملیات ناموفق شد. لطفاً دوباره امتحان کن.";
       if (error.message === "INPUT_TOO_LARGE") {
         message = "❌ حجم فایل ورودی بیشتر از ۲۰ مگابایت است. لطفاً فایل کوچک‌تری بفرست.";
       } else if (error.message === "OUTPUT_TOO_LARGE") {
         message = "❌ حجم فایل MP3 خروجی از محدودیت ارسال تلگرام بیشتر شد.";
       } else if (error.message === "DOWNLOAD_TIMEOUT") {
-        message = "⏱ دریافت فایل از تلگرام بیش از حد طول کشید. دوباره امتحان کن.";
+        message = "⏱ دریافت فایل از تلگرام بیشتر از ۲ دقیقه طول کشید و متوقف شد.";
       } else if (error.message === "CONVERSION_TIMEOUT") {
-        message = "⏱ تبدیل فایل بیش از حد طول کشید. لطفاً فایل کوتاه‌تری بفرست.";
-      } else if (error.message === "FFMPEG_NOT_AVAILABLE") {
-        message = "❌ موتور تبدیل صدا روی سرور در دسترس نیست.";
+        message = "⏱ تبدیل فایل بیشتر از ۳ دقیقه طول کشید و متوقف شد.";
+      } else if (error.message === "FFMPEG_NOT_AVAILABLE" || error.code === "ENOENT") {
+        message = "❌ موتور تبدیل صدا روی سرور نصب یا اجرا نشده است. خطا برای بررسی ثبت شد.";
+      } else if (stage === "telegram_metadata" || stage === "download") {
+        message = "❌ دریافت فایل از تلگرام ناموفق شد. لطفاً ویس را دوباره ارسال کن.";
+      } else if (stage === "convert") {
+        message = "❌ فایل دریافت شد، اما تبدیل آن به MP3 ناموفق بود. ممکن است فرمت فایل پشتیبانی نشود.";
+      } else if (stage === "telegram_upload") {
+        message = "❌ تبدیل انجام شد، اما ارسال فایل MP3 به تلگرام ناموفق بود. کمی بعد دوباره امتحان کن.";
       }
       await ctx.reply(message, converterMenu);
     } finally {
