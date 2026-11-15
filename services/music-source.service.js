@@ -353,10 +353,14 @@ async function searchInternetArchive({ title, artist, query }) {
 
 
 function decodeHtml(value) {
-  return String(value || "").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#0*39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
+  return String(value || "")
+    .replace(/&amp;/g, "&").replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'").replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">").replace(/&nbsp;/g, " ");
 }
 function stripHtml(value) {
-  return decodeHtml(String(value || "").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim();
+  return decodeHtml(String(value || "").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]*>/g, " "))
+    .replace(/\s+/g, " ").trim();
 }
 async function searchMokhtalefMusic({ title, artist, query }) {
   const term = [artist, title].filter(Boolean).join(" ") || query;
@@ -364,31 +368,33 @@ async function searchMokhtalefMusic({ title, artist, query }) {
   const url = new URL("https://mokhtalefmusic.com/");
   url.searchParams.set("s", term);
   const response = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; ZekaBot/1.0; music search)" },
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; ZekaBot/1.0; +https://github.com/zekainstabot/zeka-bot)" },
     signal: AbortSignal.timeout(15000),
   });
   if (!response.ok) throw new Error("MOKHTALEF_HTTP_" + response.status);
   const html = await response.text();
   const candidates = [];
-  const anchorPattern = /<a\b([^>]*href="([^"]+)"[^>]*)>([\s\S]*?)<\/a>/gi;
+  const anchorPattern = /<a\b([^>]*?)\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))([^>]*)>([\s\S]*?)<\/a>/gi;
   let match;
   while ((match = anchorPattern.exec(html)) !== null) {
+    const hrefValue = match[2] || match[3] || match[4] || "";
     let href;
-    try { href = new URL(decodeHtml(match[2]), "https://mokhtalefmusic.com/"); } catch { continue; }
-    if (href.hostname !== "mokhtalefmusic.com" || href.pathname === "/" || href.pathname.startsWith("/wp-")) continue;
-    const titleMatch = (match[1] || "").match(/\btitle="([^"]+)"/i);
-    const name = stripHtml(titleMatch ? titleMatch[1] : match[3]);
-    if (!name || name.length < 4 || /ادامه مطلب|صفحه بعدی/i.test(name)) continue;
+    try { href = new URL(decodeHtml(hrefValue), "https://mokhtalefmusic.com/"); } catch { continue; }
+    const host = href.hostname.toLowerCase().replace(/^www\./, "");
+    if (host !== "mokhtalefmusic.com" || href.pathname === "/" || href.pathname.startsWith("/wp-")) continue;
+    const attrs = (match[1] || "") + " " + (match[5] || "");
+    const titleMatch = attrs.match(/\btitle\s*=\s*(?:"([^"]+)"|'([^']+)')/i);
+    const name = stripHtml(titleMatch ? (titleMatch[1] || titleMatch[2]) : match[6]);
+    if (!name || name.length < 4 || /ادامه مطلب|صفحه بعدی|قبلی/i.test(name)) continue;
     const score = scoreTrack({ title: name, artist: "" }, title, artist, query);
     if (score >= 1) candidates.push({ name, score });
   }
   candidates.sort((a, b) => b.score - a.score);
   if (!candidates.length) return null;
-  // This site is used only to discover a likely title. Its page/download URLs
-  // are never sent to users or downloaded without a verifiable redistribution license.
+  // Discovery only: never fetch or redistribute audio from this site without
+  // a separately verifiable license allowing redistribution.
   return { title: candidates[0].name, artist: artist || "", source: "مختلف موزیک" };
 }
-
 async function searchFullTrack({ title = "", artist = "", query = "" }) {
   const searchProviders = async (terms) => {
     try {
