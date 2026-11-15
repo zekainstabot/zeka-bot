@@ -1,6 +1,11 @@
 "use strict";
 
 const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const ytdlp = require("yt-dlp-exec");
+const { downloadYouTubeMedia } = require("./youtube.downloader");
+const { downloadPlatformMedia } = require("./generic-platform.downloader");
 const { pipeline } = require("stream/promises");
 const { Readable, Transform } = require("stream");
 
@@ -413,6 +418,136 @@ async function searchMokhtalefMusic({ title, artist, query }) {
   // a separately verifiable license allowing redistribution.
   return { title: candidates[0].name, artist: artist || "", source: "مختلف موزیک" };
 }
+
+function parseYtDlpSearchResult(result) {
+  if (result && typeof result === "object") return result;
+  if (typeof result !== "string") return {};
+  try { return JSON.parse(result); } catch {
+    const start = result.indexOf("{");
+    const end = result.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try { return JSON.parse(result.slice(start, end + 1)); } catch {}
+    }
+    return {};
+  }
+}
+
+function normalizeSearchEntry(entry, platform) {
+  if (!entry || typeof entry !== "object") return null;
+  let url = String(entry.webpage_url || entry.original_url || "");
+  if (!url && platform === "youtube" && entry.id) {
+    url = "https://www.youtube.com/watch?v=" + encodeURIComponent(String(entry.id));
+  }
+  if (!url && platform === "soundcloud" && /^https:\/\//i.test(String(entry.url || ""))) {
+    url = String(entry.url);
+  }
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, "");
+    const allowed = platform === "youtube"
+      ? ["youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"].includes(host)
+      : ["soundcloud.com", "m.soundcloud.com", "on.soundcloud.com"].includes(host);
+    if (parsed.protocol !== "https:" || !allowed) return null;
+  } catch { return null; }
+  const title = String(entry.title || entry.fulltitle || "").trim();
+  if (!title) return null;
+  return {
+    title,
+    artist: String(entry.artist || entry.uploader || entry.channel || entry.creator || "").trim(),
+    url,
+    duration: Number(entry.duration || 0),
+    source: platform === "youtube" ? "YouTube" : "SoundCloud",
+  };
+}
+
+async function searchYtDlp(term, platform) {
+  const prefix = platform === "youtube" ? "ytsearch5:" : "scsearch5:";
+  const result = await ytdlp(prefix + term, {
+    dumpSingleJson: true,
+    flatPlaylist: true,
+    skipDownload: true,
+    noWarnings: true,
+    playlistEnd: 5,
+    socketTimeout: 20,
+    retries: 1,
+  }, {
+    timeout: 45000,
+    maxBuffer: 8 * 1024 * 1024,
+    windowsHide: true,
+  });
+  const data = parseYtDlpSearchResult(result);
+  const entries = Array.isArray(data.entries) ? data.entries : [data];
+  return entries.map(entry => normalizeSearchEntry(entry, platform)).filter(Boolean);
+}
+
+async function downloadSearchResult(track, destination) {
+  const jobId = "music-" + process.pid + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
+  const downloaded = track.source === "YouTube"
+    ? await downloadYouTubeMedia({ url: track.url, jobId, audioOnly: true })
+    : await downloadPlatformMedia({ platform: "soundcloud", url: track.url, jobId, audioOnly: true });
+  if (!downloaded || !downloaded.filePath || !fs.existsSync(downloaded.filePath)) {
+    throw new Error("MUSIC_SEARCH_DOWNLOAD_MISSING");
+  }
+  try {
+    await fs.promises.copyFile(downloaded.filePath, destination);
+  } finally {
+    // Both downloaders create a job-specific directory under the OS temp folder.
+    await fs.promises.rm(path.dirname(downloaded.filePath), { recursive: true, force: true }).catch(() => {});
+  }
+  const stat = await fs.promises.stat(destination);
+  if (!stat.size || stat.size > MAX_TRACK_BYTES) {
+    await fs.promises.rm(destination, { force: true }).catch(() => {});
+    throw new Error("MUSIC_SEARCH_FILE_SIZE_INVALID");
+  }
+  const handle = await fs.promises.open(destination, "r");
+  try {
+    const header = Buffer.alloc(3);
+    await handle.read(header, 0, 3, 0);
+    const isMp3 = (header[0] === 0x49 && header[1] === 0x44 && header[2] === 0x33)
+      || (header[0] === 0xff && (header[1] & 0xe0) === 0xe0);
+    if (!isMp3) throw new Error("MUSIC_SEARCH_RESULT_NOT_MP3");
+  } finally {
+    await handle.close();
+  }
+  return {
+    title: track.title,
+    artist: track.artist || "نامشخص",
+    source: track.source,
+    attribution: "فایل صوتی از " + track.source,
+    duration: track.duration,
+  };
+}
+
+async function searchAndDownloadFromPlatforms({ title = "", artist = "", query = "", destination }) {
+  const terms = buildSearchVariants({ title, artist, query }).slice(0, 4);
+  const providers = ["youtube", "soundcloud"];
+  for (const platform of providers) {
+    for (const term of terms) {
+      let candidates = [];
+      try {
+        candidates = await searchYtDlp(term, platform);
+      } catch (error) {
+        console.warn(platform + " music search failed:", error.message);
+        break;
+      }
+      candidates = candidates.map(track => ({
+        ...track,
+        score: scoreTrack(track, title, artist, query || term),
+      })).sort((a, b) => b.score - a.score);
+      for (const candidate of candidates.slice(0, 3)) {
+        if (candidate.score < 2) continue;
+        try {
+          return await downloadSearchResult(candidate, destination);
+        } catch (error) {
+          console.warn(platform + " MP3 download failed; trying next match:", error.message);
+          await fs.promises.rm(destination, { force: true }).catch(() => {});
+        }
+      }
+    }
+  }
+  return null;
+}
+
 async function searchFullTrack({ title = "", artist = "", query = "" }) {
   const searchProviders = async (terms) => {
     try {
@@ -523,6 +658,18 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
     console.warn("Mokhtalef Music discovery failed:", error.message);
   }
 
+  // If the licensed catalogs do not contain the requested track, search YouTube
+  // and SoundCloud and convert the selected result to MP3 using the existing
+  // hardened downloaders. Only one best match is downloaded and sent.
+  try {
+    const platformTrack = await searchAndDownloadFromPlatforms({
+      title, artist, query, destination,
+    });
+    if (platformTrack) return platformTrack;
+  } catch (error) {
+    console.warn("Platform music search failed:", error.message);
+  }
+
   // Search broad title variants in each permitted full-track catalog.
   for (const variant of buildSearchVariants(originalTerms).slice(0, 5)) {
     track = await attempt({ title: variant, artist, query: variant });
@@ -605,6 +752,8 @@ async function downloadFullTrack(track, destination) {
 module.exports = {
   searchFullTrack,
   searchAndDownloadFullTrack,
+  searchAndDownloadFromPlatforms,
+  searchYtDlp,
   searchMokhtalefMusic,
   searchDeezerMetadata,
   searchAppleMetadata,
