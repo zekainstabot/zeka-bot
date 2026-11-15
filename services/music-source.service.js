@@ -658,6 +658,12 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
     console.warn("Mokhtalef Music discovery failed:", error.message);
   }
 
+  // Search broad title variants in each permitted full-track catalog.
+  for (const variant of buildSearchVariants(originalTerms).slice(0, 5)) {
+    track = await attempt({ title: variant, artist, query: variant });
+    if (track) return track;
+  }
+
   // If the licensed catalogs do not contain the requested track, search YouTube
   // and SoundCloud and convert the selected result to MP3 using the existing
   // hardened downloaders. Only one best match is downloaded and sent.
@@ -670,11 +676,6 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
     console.warn("Platform music search failed:", error.message);
   }
 
-  // Search broad title variants in each permitted full-track catalog.
-  for (const variant of buildSearchVariants(originalTerms).slice(0, 5)) {
-    track = await attempt({ title: variant, artist, query: variant });
-    if (track) return track;
-  }
   return null;
 }
 
@@ -754,6 +755,7 @@ module.exports = {
   searchAndDownloadFullTrack,
   searchAndDownloadFromPlatforms,
   searchYtDlp,
+  normalizeSearchEntry,
   searchMokhtalefMusic,
   searchDeezerMetadata,
   searchAppleMetadata,
