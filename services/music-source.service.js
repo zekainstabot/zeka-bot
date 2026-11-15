@@ -37,7 +37,17 @@ function safeSolrPhrase(value) {
 function allowedDownloadHost(hostname, source) {
   const host = String(hostname || "").toLowerCase();
   if (source === "jamendo") return host === "jamendo.com" || host.endsWith(".jamendo.com");
-  return host === "archive.org" || host.endsWith(".archive.org");
+  if (source === "archive") return host === "archive.org" || host.endsWith(".archive.org");
+  if (source === "openverse") {
+    return host === "upload.wikimedia.org"
+      || host === "wikimedia.org" || host.endsWith(".wikimedia.org")
+      || host === "archive.org" || host.endsWith(".archive.org")
+      || host === "jamendo.com" || host.endsWith(".jamendo.com")
+      || host === "ccmixter.org" || host.endsWith(".ccmixter.org")
+      || host === "freesound.org" || host.endsWith(".freesound.org")
+      || host === "musopen.org" || host.endsWith(".musopen.org");
+  }
+  return false;
 }
 
 async function fetchJson(url, source) {
@@ -120,6 +130,60 @@ function buildArchiveQueries({ title, artist, query }) {
     searches.push(`mediatype:audio AND (title:"${safeQuery}" OR description:"${safeQuery}")`);
   }
   return [...new Set(searches)];
+}
+
+function isAllowedOpenverseLicense(track) {
+  const license = String(track.license || "").toLowerCase();
+  const version = String(track.license_version || "").toLowerCase();
+  const permitted = new Set(["cc0", "pdm", "by", "by-sa", "by-nd"]);
+  if (!permitted.has(license)) return false;
+  if (license === "cc0" || license === "pdm") return true;
+  return ["3.0", "4.0"].includes(version);
+}
+
+async function searchOpenverse({ title, artist, query }) {
+  const searches = [...new Set([
+    [artist, title].filter(Boolean).join(" "),
+    title,
+    query,
+  ].map(value => String(value || "").trim()).filter(Boolean))];
+
+  for (const term of searches) {
+    const url = new URL("https://api.openverse.org/v1/audio/");
+    url.searchParams.set("q", term.slice(0, 200));
+    url.searchParams.set("category", "music");
+    url.searchParams.set("license_type", "commercial");
+    url.searchParams.set("extension", "mp3");
+    url.searchParams.set("page_size", "20");
+    url.searchParams.set("page", "1");
+
+    const data = await fetchJson(url, "OPENVERSE");
+    const results = Array.isArray(data.results) ? data.results : [];
+    const candidates = results
+      .filter(item => item && item.url && String(item.filetype || "").toLowerCase() === "mp3")
+      .filter(item => Number(item.filesize || 0) === 0 || Number(item.filesize) <= MAX_TRACK_BYTES)
+      .filter(isAllowedOpenverseLicense)
+      .map(item => ({
+        title: asText(item.title) || title || term,
+        artist: asText(item.creator) || artist || "هنرمند نامشخص",
+        downloadUrl: item.url,
+        licenseUrl: item.license_url || "",
+        licenseName: item.license || "",
+        licenseVersion: item.license_version || "",
+        attribution: item.attribution || "",
+        source: "Openverse",
+        pageUrl: item.foreign_landing_url || "",
+        duration: Number(item.duration || 0) / 1000,
+      }))
+      .filter(item => {
+        const score = scoreTrack(item, title || term, artist);
+        return score >= 3 || String(item.title).toLocaleLowerCase().includes(term.toLocaleLowerCase());
+      })
+      .sort((a, b) => scoreTrack(b, title || term, artist) - scoreTrack(a, title || term, artist));
+
+    if (candidates.length) return candidates[0];
+  }
+  return null;
 }
 
 async function searchInternetArchive({ title, artist, query }) {
@@ -237,6 +301,12 @@ async function searchFullTrack({ title = "", artist = "", query = "" }) {
       console.warn("Jamendo search failed:", error.message);
     }
     try {
+      const openverse = await searchOpenverse(terms);
+      if (openverse) return openverse;
+    } catch (error) {
+      console.warn("Openverse search failed:", error.message);
+    }
+    try {
       const archive = await searchInternetArchive(terms);
       if (archive) return archive;
     } catch (error) {
@@ -270,7 +340,12 @@ async function searchFullTrack({ title = "", artist = "", query = "" }) {
 
 async function downloadFullTrack(track, destination) {
   const parsed = new URL(track.downloadUrl);
-  if (parsed.protocol !== "https:" || !allowedDownloadHost(parsed.hostname, track.source === "Jamendo" ? "jamendo" : "archive")) {
+  const sourceKey = track.source === "Jamendo"
+    ? "jamendo"
+    : track.source === "Openverse"
+      ? "openverse"
+      : "archive";
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password || !allowedDownloadHost(parsed.hostname, sourceKey)) {
     throw new Error("UNTRUSTED_MUSIC_DOWNLOAD_URL");
   }
 
@@ -285,7 +360,7 @@ async function downloadFullTrack(track, destination) {
     if (!response.ok || !response.body) throw new Error("MUSIC_DOWNLOAD_HTTP_" + response.status);
 
     const finalUrl = new URL(response.url);
-    if (finalUrl.protocol !== "https:" || !allowedDownloadHost(finalUrl.hostname, track.source === "Jamendo" ? "jamendo" : "archive")) {
+    if (finalUrl.protocol !== "https:" || finalUrl.username || finalUrl.password || !allowedDownloadHost(finalUrl.hostname, sourceKey)) {
       throw new Error("UNTRUSTED_MUSIC_REDIRECT");
     }
 
