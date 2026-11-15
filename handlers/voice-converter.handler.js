@@ -11,6 +11,7 @@ const { Markup } = require("telegraf");
 const { featuresMenu } = require("../config/bot-menus");
 const ffmpegPath = require("ffmpeg-static");
 const { sendFileToChatOnce } = require("../services/delivery.service");
+const { deductFeatureCredit, refundFeatureCredit } = require("../services/feature-credit.service");
 
 const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
@@ -212,6 +213,17 @@ function createVoiceConverterHandler({ bot }) {
       return;
     }
 
+    let featureCharge = null;
+    try {
+      featureCharge = await deductFeatureCredit({ userId: ctx.from.id, feature: "voice_to_mp3" });
+    } catch (error) {
+      if (error.code === "INSUFFICIENT_CREDIT") {
+        await ctx.reply(`❌ اعتبار کافی نداری.\n\nهزینه تبدیل ویس: ${error.cost} اعتبار\nاعتبار فعلی: ${error.balance}\n\nاز بخش «📊 اعتبار من» می‌توانی اعتبارت را افزایش بدهی.`, converterMenu);
+        return;
+      }
+      throw error;
+    }
+
     let stage = "prepare";
     const workDir = path.join(os.tmpdir(), "zeka-voice-converter", userId, crypto.randomBytes(8).toString("hex"));
     const inputPath = path.join(workDir, "input");
@@ -237,7 +249,10 @@ function createVoiceConverterHandler({ bot }) {
 
       const title = safeBaseName(attachment.fileName);
       stage = "telegram_upload";
-      const audioCaption = "✅ تبدیل با موفقیت انجام شد؛ فایل MP3 آماده ذخیره است.";
+      const creditLine = featureCharge.isPro
+        ? "\n⭐ زکا پرو: بدون کسر اعتبار"
+        : `\n💳 هزینه تبدیل: ${featureCharge.cost} اعتبار | 💰 مانده: ${featureCharge.balance} اعتبار`;
+      const audioCaption = "✅ تبدیل با موفقیت انجام شد؛ فایل MP3 آماده ذخیره است." + creditLine;
 
       // Use the direct multipart HTTPS uploader shared with downloader delivery.
       // This avoids Telegraf's separate upload transport path.
@@ -248,6 +263,13 @@ function createVoiceConverterHandler({ bot }) {
         contentType: "audio",
       });
     } catch (error) {
+      if (featureCharge && !featureCharge.isPro) {
+        try {
+          await refundFeatureCredit({ userId: ctx.from.id, feature: "voice_to_mp3", charge: featureCharge });
+        } catch (refundError) {
+          console.error("Voice converter credit refund failed:", refundError?.message || refundError);
+        }
+      }
       console.error("Voice to MP3 conversion failed:", {
         userId,
         stage,
