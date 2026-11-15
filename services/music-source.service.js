@@ -134,31 +134,49 @@ async function searchDeezerMetadata(terms) {
   return [];
 }
 
-async function searchMusicBrainzMetadata(terms) {
+const appleSearchCache = new Map();
+let appleSearchQueue = Promise.resolve();
+let appleLastRequestAt = 0;
+
+async function searchAppleMetadata(terms) {
   const variants = buildSearchVariants(terms);
-  for (const term of variants.slice(0, 4)) {
-    try {
-      const url = new URL("https://musicbrainz.org/ws/2/recording/");
-      url.searchParams.set("query", term);
-      url.searchParams.set("fmt", "json");
-      url.searchParams.set("limit", "10");
-      const data = await fetchJson(url, "MUSICBRAINZ");
-      const rows = Array.isArray(data?.recordings) ? data.recordings : [];
-      const ranked = rows.map(item => ({
-        title: String(item.title || "").trim(),
-        artist: (item["artist-credit"] || []).map(part => part.name || part.artist?.name || "").join(" ").trim(),
-        source: "MusicBrainz",
-        score: scoreTrack({ title: item.title, artist: (item["artist-credit"] || []).map(part => part.name || part.artist?.name || "").join(" ") }, terms.title, terms.artist, terms.query || term),
+  for (const term of variants.slice(0, 2)) {
+    const cacheKey = term.toLocaleLowerCase();
+    const cached = appleSearchCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.matches;
+    const task = appleSearchQueue.then(async () => {
+      const waitMs = Math.max(0, 3100 - (Date.now() - appleLastRequestAt));
+      if (waitMs) await new Promise(resolve => setTimeout(resolve, waitMs));
+      appleLastRequestAt = Date.now();
+      const url = new URL("https://itunes.apple.com/search");
+      url.searchParams.set("term", term);
+      url.searchParams.set("media", "music");
+      url.searchParams.set("entity", "song");
+      url.searchParams.set("limit", "20");
+      url.searchParams.set("country", "US");
+      const data = await fetchJson(url, "APPLE_MUSIC_SEARCH");
+      const rows = Array.isArray(data?.results) ? data.results : [];
+      const matches = rows.map(item => ({
+        title: String(item.trackName || "").trim(),
+        artist: String(item.artistName || "").trim(),
+        album: String(item.collectionName || "").trim(),
+        source: "Apple Music",
+        score: scoreTrack({ title: item.trackName, artist: item.artistName }, terms.title, terms.artist, terms.query || term),
       })).filter(item => item.title && item.artist && item.score >= 2)
-        .sort((a, b) => b.score - a.score);
-      if (ranked.length) return ranked.slice(0, 5);
+        .sort((a, b) => b.score - a.score).slice(0, 5);
+      appleSearchCache.set(cacheKey, { matches, expiresAt: Date.now() + 10 * 60 * 1000 });
+      return matches;
+    });
+    appleSearchQueue = task.catch(() => {});
+    try {
+      const matches = await task;
+      if (matches.length) return matches;
     } catch (error) {
-      console.warn("MusicBrainz metadata search failed:", error.message);
+      console.warn("Apple music metadata search failed:", error.message);
     }
   }
   return [];
 }
-
 async function searchJamendo({ title, artist, query }) {
   const clientId = String(process.env.JAMENDO_CLIENT_ID || "").trim();
   if (!clientId) return null;
@@ -480,11 +498,11 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
 
   // Metadata catalogs identify likely title/artist pairs; they are never used as
   // audio download sources. Full MP3 delivery still requires a licensed provider.
-  const [deezerMatches, mbMatches] = await Promise.all([
+  const [deezerMatches, appleMatches] = await Promise.all([
     searchDeezerMetadata(originalTerms),
-    searchMusicBrainzMetadata(originalTerms),
+    searchAppleMetadata(originalTerms),
   ]);
-  const metadataMatches = [...deezerMatches, ...mbMatches]
+  const metadataMatches = [...deezerMatches, ...appleMatches]
     .sort((a, b) => b.score - a.score);
   for (const match of metadataMatches.slice(0, 6)) {
     track = await attempt({ title: match.title, artist: match.artist, query: match.title + " " + match.artist });
@@ -589,7 +607,7 @@ module.exports = {
   searchAndDownloadFullTrack,
   searchMokhtalefMusic,
   searchDeezerMetadata,
-  searchMusicBrainzMetadata,
+  searchAppleMetadata,
   normalizeSearchText,
   scoreTrack,
   downloadFullTrack,
