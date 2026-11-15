@@ -135,9 +135,10 @@ function createMusicSearchHandler({ bot }) {
           `🎵 ${track.title}`,
           `👤 ${track.artist}`,
           `📚 منبع: ${track.source}`,
+          track.pageUrl ? `🔗 ${track.pageUrl}` : "",
           attribution,
           creditLine,
-        ].join("\n"),
+        ].filter(Boolean).join("\n"),
       });
       fileSent = true;
 
