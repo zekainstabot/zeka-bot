@@ -59,16 +59,39 @@ async function fetchJson(url, source) {
   return response.json();
 }
 
-function scoreTrack(track, title, artist) {
-  const wantedTitle = String(title || "").toLocaleLowerCase();
-  const wantedArtist = String(artist || "").toLocaleLowerCase();
-  const gotTitle = String(track.title || "").toLocaleLowerCase();
-  const gotArtist = String(track.artist || "").toLocaleLowerCase();
+function normalizeSearchText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, "")
+    .replace(/[\\p{P}\\p{S}]+/gu, " ")
+    .replace(/\\s+/g, " ")
+    .trim();
+}
+
+function scoreTrack(track, title, artist, query = "") {
+  const wantedTitle = normalizeSearchText(title);
+  const wantedArtist = normalizeSearchText(artist);
+  const wantedQuery = normalizeSearchText([artist, title].filter(Boolean).join(" ") || query);
+  const gotTitle = normalizeSearchText(track.title);
+  const gotArtist = normalizeSearchText(track.artist);
+  const gotCombined = (gotTitle + " " + gotArtist).trim();
   let score = 0;
-  if (wantedTitle && gotTitle === wantedTitle) score += 5;
-  else if (wantedTitle && (gotTitle.includes(wantedTitle) || wantedTitle.includes(gotTitle))) score += 3;
-  if (wantedArtist && gotArtist === wantedArtist) score += 4;
-  else if (wantedArtist && (gotArtist.includes(wantedArtist) || wantedArtist.includes(gotArtist))) score += 2;
+
+  if (wantedTitle && gotTitle === wantedTitle) score += 8;
+  else if (wantedTitle && (gotTitle.includes(wantedTitle) || wantedTitle.includes(gotTitle))) score += 5;
+
+  if (wantedArtist && gotArtist === wantedArtist) score += 6;
+  else if (wantedArtist && (gotArtist.includes(wantedArtist) || wantedArtist.includes(gotArtist))) score += 3;
+
+  if (wantedQuery && gotCombined.includes(wantedQuery)) score += 5;
+  if (wantedQuery) {
+    const tokens = [...new Set(wantedQuery.split(" ").filter(token => token.length > 1))];
+    if (tokens.length) {
+      const matched = tokens.filter(token => gotCombined.includes(token)).length;
+      score += Math.round((matched / tokens.length) * 4);
+    }
+  }
   return score;
 }
 
@@ -107,7 +130,8 @@ async function searchJamendo({ title, artist, query }) {
         duration: Number(item.duration || 0),
       }))
       .filter(item => isAllowedLicense(item.licenseUrl))
-      .sort((a, b) => scoreTrack(b, title, artist) - scoreTrack(a, title, artist));
+      .filter(item => scoreTrack(item, title, artist, query) >= 2)
+      .sort((a, b) => scoreTrack(b, title, artist, query) - scoreTrack(a, title, artist, query));
 
     if (allowed.length) return allowed[0];
   }
@@ -184,10 +208,10 @@ async function searchOpenverse({ title, artist, query }) {
         duration: Number(item.duration || 0) / 1000,
       }))
       .filter(item => {
-        const score = scoreTrack(item, title || term, artist);
+        const score = scoreTrack(item, title, artist, term);
         return score >= 3 || String(item.title).toLocaleLowerCase().includes(term.toLocaleLowerCase());
       })
-      .sort((a, b) => scoreTrack(b, title || term, artist) - scoreTrack(a, title || term, artist));
+      .sort((a, b) => scoreTrack(b, title, artist, term) - scoreTrack(a, title, artist, term));
 
     if (candidates.length) return candidates[0];
   }
@@ -291,7 +315,8 @@ async function searchMokhtalefMusic({ title, artist, query }) {
     const titleMatch = (match[1] || "").match(/\btitle="([^"]+)"/i);
     const name = stripHtml(titleMatch ? titleMatch[1] : match[3]);
     if (!name || name.length < 4 || /ادامه مطلب|صفحه بعدی/i.test(name)) continue;
-    candidates.push({ name, score: scoreTrack({ title: name, artist: "" }, title || query, artist) });
+    const score = scoreTrack({ title: name, artist: "" }, title, artist, query);
+    if (score >= 1) candidates.push({ name, score });
   }
   candidates.sort((a, b) => b.score - a.score);
   if (!candidates.length) return null;
