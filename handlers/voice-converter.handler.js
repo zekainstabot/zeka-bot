@@ -244,7 +244,7 @@ function createVoiceConverterHandler({ bot }) {
       const audioCaption = "✅ تبدیل با موفقیت انجام شد؛ فایل MP3 آماده ذخیره است.";
       try {
         await ctx.replyWithAudio(
-          { source: outputPath, filename: `${title}.mp3` },
+          { source: fs.createReadStream(outputPath), filename: `${title}.mp3` },
           {
             title,
             performer: "Zeka",
@@ -261,7 +261,7 @@ function createVoiceConverterHandler({ bot }) {
 
         try {
           await ctx.replyWithDocument(
-            { source: outputPath, filename: `${title}.mp3` },
+            { source: fs.createReadStream(outputPath), filename: `${title}.mp3` },
             { caption: audioCaption }
           );
         } catch (documentUploadError) {
