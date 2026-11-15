@@ -210,13 +210,13 @@ async function searchMokhtalefMusic({ title, artist, query }) {
   if (!response.ok) throw new Error("MOKHTALEF_HTTP_" + response.status);
   const html = await response.text();
   const candidates = [];
-  const anchorPattern = /<a\\b([^>]*href="([^"]+)"[^>]*)>([\\s\\S]*?)<\\/a>/gi;
+  const anchorPattern = /<a\b([^>]*href="([^"]+)"[^>]*)>([\s\S]*?)<\/a>/gi;
   let match;
   while ((match = anchorPattern.exec(html)) !== null) {
     let href;
     try { href = new URL(decodeHtml(match[2]), "https://mokhtalefmusic.com/"); } catch { continue; }
     if (href.hostname !== "mokhtalefmusic.com" || href.pathname === "/" || href.pathname.startsWith("/wp-")) continue;
-    const titleMatch = (match[1] || "").match(/\\btitle="([^"]+)"/i);
+    const titleMatch = (match[1] || "").match(/\btitle="([^"]+)"/i);
     const name = stripHtml(titleMatch ? titleMatch[1] : match[3]);
     if (!name || name.length < 4 || /ادامه مطلب|صفحه بعدی/i.test(name)) continue;
     candidates.push({ name, score: scoreTrack({ title: name, artist: "" }, title || query, artist) });
