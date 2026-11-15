@@ -4,6 +4,7 @@ const TIMEOUT = 10 * 60 * 1000;
 
 function createMusicSearchHandler({ bot }) {
   const sessions = new Map();
+  const { deductFeatureCredit, refundFeatureCredit } = require("../services/feature-credit.service");
 
   const ask = async (ctx) => {
     sessions.set(String(ctx.from.id), Date.now());
@@ -73,6 +74,7 @@ function createMusicSearchHandler({ bot }) {
 
     await ctx.reply("🔎 در حال جست‌وجوی آهنگ...");
 
+    let featureCharge = null;
     try {
       let lyricMatch = null;
 
@@ -113,6 +115,8 @@ function createMusicSearchHandler({ bot }) {
         return;
       }
 
+      featureCharge = await deductFeatureCredit({ userId: ctx.from.id, feature: "music_search" });
+
       const title = item.trackName || "آهنگ";
       const artist = item.artistName || "هنرمند نامشخص";
       const keyboard = [];
@@ -125,9 +129,12 @@ function createMusicSearchHandler({ bot }) {
         url: "https://open.spotify.com/search/" + encodeURIComponent(title + " " + artist),
       }]);
 
+      const creditLine = featureCharge.isPro
+        ? "\n\n⭐ زکا پرو: بدون کسر اعتبار"
+        : `\n\n💳 هزینه جست‌وجو: ${featureCharge.cost} اعتبار\n💰 مانده: ${featureCharge.balance} اعتبار`;
       const caption =
         "🎵 " + title + "\n👤 " + artist +
-        (item.collectionName ? "\n💿 " + item.collectionName : "");
+        (item.collectionName ? "\n💿 " + item.collectionName : "") + creditLine;
 
       if (item.previewUrl) {
         try {
@@ -152,8 +159,19 @@ function createMusicSearchHandler({ bot }) {
       await ctx.reply("برای جست‌وجوی بعدی، عبارت دیگری بفرست یا «🔙 بازگشت» را بزن.");
       sessions.set(id, Date.now());
     } catch (error) {
+      if (featureCharge && !featureCharge.isPro) {
+        try {
+          await refundFeatureCredit({ userId: ctx.from.id, feature: "music_search", charge: featureCharge });
+        } catch (refundError) {
+          console.error("Music search credit refund failed:", refundError.message);
+        }
+      }
       console.error("Music search failed:", error.message);
-      await ctx.reply("❌ جست‌وجوی موسیقی فعلاً انجام نشد. کمی بعد دوباره امتحان کن.");
+      if (error.code === "INSUFFICIENT_CREDIT") {
+        await ctx.reply(`❌ اعتبار کافی نداری.\n\nهزینه جست‌وجوی آهنگ: ${error.cost} اعتبار\nاعتبار فعلی: ${error.balance}\n\nاز بخش «📊 اعتبار من» می‌توانی اعتبارت را افزایش بدهی.`);
+      } else {
+        await ctx.reply("❌ جست‌وجوی موسیقی فعلاً انجام نشد. کمی بعد دوباره امتحان کن.");
+      }
       sessions.set(id, Date.now());
     }
   });
