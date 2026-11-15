@@ -11,9 +11,9 @@ const {
 
 const config = require("./config/app");
 
-const { close } = require("./database/client");
+const { close, getClient } = require("./database/client");
 
-const { register, shutdown } = require("./core/shutdown");
+const { register, shutdown, isShuttingDown } = require("./core/shutdown");
 
 const { setBot: setDeliveryBot } = require("./services/delivery.service");
 const { setBot: setReportBot } = require("./services/report.service");
@@ -83,6 +83,61 @@ const { createFortuneHandler } = require("./handlers/fortune.handler");
 const { createSupportHandler } = require("./handlers/support.handler");
 
 let bot = null;
+let telegramPollingLockClient = null;
+
+// A PostgreSQL session-level advisory lock prevents two Render instances
+// (including overlapping deploys) from polling Telegram with the same token.
+const TELEGRAM_POLLING_LOCK_ID = 781234567;
+
+async function acquireTelegramPollingLock() {
+  const db = getClient();
+
+  while (!isShuttingDown()) {
+    const client = await db.connect();
+
+    try {
+      const result = await client.query(
+        "SELECT pg_try_advisory_lock($1) AS locked",
+        [TELEGRAM_POLLING_LOCK_ID]
+      );
+
+      if (result.rows[0]?.locked === true) {
+        telegramPollingLockClient = client;
+        console.log("Telegram polling lock acquired. This instance is the active bot worker.");
+        return;
+      }
+
+      client.release();
+      console.warn("Another instance currently owns the Telegram polling lock. Waiting...");
+    } catch (error) {
+      client.release();
+      throw error;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
+
+  throw new Error("Shutdown requested before Telegram polling lock was acquired.");
+}
+
+async function releaseTelegramPollingLock() {
+  const client = telegramPollingLockClient;
+  telegramPollingLockClient = null;
+
+  if (!client) return;
+
+  try {
+    await client.query(
+      "SELECT pg_advisory_unlock($1)",
+      [TELEGRAM_POLLING_LOCK_ID]
+    );
+    console.log("Telegram polling lock released.");
+  } catch (error) {
+    console.error("Failed to release Telegram polling lock cleanly:", error);
+  } finally {
+    client.release();
+  }
+}
 
 // تنظیم اتصال خروجی به Telegram API
 const telegramAgent = new https.Agent({
@@ -216,11 +271,14 @@ function createBot() {
     cleanupQuizTimers();
     cleanupFriendQuizTimers();
 
-    if (bot) {
-      await bot.stop("shutdown");
+    try {
+      if (bot) {
+        await bot.stop("shutdown");
+      }
+    } finally {
+      await releaseTelegramPollingLock();
+      telegramAgent.destroy();
     }
-
-    telegramAgent.destroy();
   });
 
   register(async () => {
@@ -240,6 +298,10 @@ process.once("SIGTERM", async () => {
 
 async function startBot() {
   const telegramBot = createBot();
+
+  // Acquire the shared database lock before starting any bot-side schedulers
+  // or Telegram polling. A second instance waits without competing for updates.
+  await acquireTelegramPollingLock();
 
   console.log("Recovering stale Zeka Media publishing items...");
 
