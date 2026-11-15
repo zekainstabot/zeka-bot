@@ -7,7 +7,7 @@ const crypto = require("crypto");
 const { sendFileToChatOnce } = require("../services/delivery.service");
 const { deductFeatureCredit, refundFeatureCredit } = require("../services/feature-credit.service");
 const { getOrCreateUser } = require("../services/user.service");
-const { searchFullTrack, downloadFullTrack } = require("../services/music-source.service");
+const { searchAndDownloadFullTrack } = require("../services/music-source.service");
 
 const TIMEOUT = 10 *  60 * 1000;
 
@@ -92,24 +92,26 @@ function createMusicSearchHandler({ bot }) {
         }
       }
 
-      const track = await searchFullTrack({
+      workDir = path.join(os.tmpdir(), "zeka-music-search", id, crypto.randomBytes(8).toString("hex"));
+      fs.mkdirSync(workDir, { recursive: true });
+      const mp3Path = path.join(workDir, "music.mp3");
+
+      const track = await searchAndDownloadFullTrack({
         title: matchedTitle,
         artist: matchedArtist,
         query,
+        destination: mp3Path,
       });
 
       if (!track) {
-        await ctx.reply("❌ پیداش نکردم. یه اسم دیگه یا بخشی از متن آهنگ رو امتحان کن.");
+        await ctx.reply("❌ نسخه کامل MP3 پیدا نشد. یه عبارت دیگه امتحان کن.");
         sessions.set(id, Date.now());
         return;
       }
 
-
-      workDir = path.join(os.tmpdir(), "zeka-music-search", id, crypto.randomBytes(8).toString("hex"));
-      fs.mkdirSync(workDir, { recursive: true });
-      const mp3Path = path.join(workDir, safeFileName(track.title) + ".mp3");
-
-      await downloadFullTrack(track, mp3Path);
+      const finalMp3Path = path.join(workDir, safeFileName(track.title) + ".mp3");
+      if (finalMp3Path !== mp3Path) await fs.promises.rename(mp3Path, finalMp3Path);
+      
 
       const user = await getOrCreateUser(ctx.from);
       featureUserId = user.id;
@@ -128,7 +130,7 @@ function createMusicSearchHandler({ bot }) {
 
       await sendFileToChatOnce({
         chatId: ctx.chat.id,
-        filePath: mp3Path,
+        filePath: finalMp3Path,
         contentType: "audio",
         caption: [
           `🎵 ${track.title}`,
