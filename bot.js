@@ -37,6 +37,7 @@ const { createGiftsHandler } = require("./handlers/gifts.handler");
 const { createProHandler } = require("./handlers/pro.handler");
 const { createFeaturesHandler } = require("./handlers/features.handler");
 const { createVoiceConverterHandler } = require("./handlers/voice-converter.handler");
+const { createMusicSearchHandler } = require("./handlers/music-search.handler");
 const { createHelpHandler } = require("./handlers/help.handler");
 const { createNavigationHandler } = require("./handlers/navigation.handler");
 const { createLanguageMiddleware } = require("./services/language.service");
@@ -183,6 +184,8 @@ function createBot() {
   });
 
   createVoiceConverterHandler({ bot });
+
+  createMusicSearchHandler({ bot });
 
   createFeaturesHandler({
     bot,
