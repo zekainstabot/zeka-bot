@@ -63,9 +63,13 @@ function normalizeSearchText(value) {
   return String(value || "")
     .normalize("NFKC")
     .toLocaleLowerCase()
-    .replace(/[\\u064B-\\u065F\\u0670\\u0640]/g, "")
-    .replace(/[\\p{P}\\p{S}]+/gu, " ")
-    .replace(/\\s+/g, " ")
+    .replace(/[\u064B-\u065F\u0670\u0640]/g, "")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[ۀة]/g, "ه")
+    .replace(/[\u200c\u200d]/g, " ")
+    .replace(/[\p{P}\p{S}]+/gu, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -77,22 +81,82 @@ function scoreTrack(track, title, artist, query = "") {
   const gotArtist = normalizeSearchText(track.artist);
   const gotCombined = (gotTitle + " " + gotArtist).trim();
   let score = 0;
-
-  if (wantedTitle && gotTitle === wantedTitle) score += 8;
-  else if (wantedTitle && (gotTitle.includes(wantedTitle) || wantedTitle.includes(gotTitle))) score += 5;
-
-  if (wantedArtist && gotArtist === wantedArtist) score += 6;
-  else if (wantedArtist && (gotArtist.includes(wantedArtist) || wantedArtist.includes(gotArtist))) score += 3;
-
-  if (wantedQuery && gotCombined.includes(wantedQuery)) score += 5;
-  if (wantedQuery) {
-    const tokens = [...new Set(wantedQuery.split(" ").filter(token => token.length > 1))];
-    if (tokens.length) {
-      const matched = tokens.filter(token => gotCombined.includes(token)).length;
-      score += Math.round((matched / tokens.length) * 4);
-    }
+  if (wantedTitle && gotTitle === wantedTitle) score += 10;
+  else if (wantedTitle && gotTitle && (gotTitle.includes(wantedTitle) || wantedTitle.includes(gotTitle))) score += 6;
+  if (wantedArtist && gotArtist === wantedArtist) score += 8;
+  else if (wantedArtist && gotArtist && (gotArtist.includes(wantedArtist) || wantedArtist.includes(gotArtist))) score += 4;
+  if (wantedQuery && gotCombined === wantedQuery) score += 8;
+  const tokens = [...new Set(wantedQuery.split(/\s+/).filter(token => token.length > 1))];
+  if (tokens.length) {
+    const matched = tokens.filter(token => gotCombined.includes(token)).length;
+    score += Math.round((matched / tokens.length) * 6);
   }
   return score;
+}
+
+function buildSearchVariants({ title = "", artist = "", query = "" }) {
+  const raw = [ [artist, title].filter(Boolean).join(" "), title, query, artist ]
+    .map(value => String(value || "").trim())
+    .filter(value => value.length >= 2);
+  const expanded = [];
+  for (const value of raw) {
+    expanded.push(value);
+    const normalized = normalizeSearchText(value);
+    if (normalized && normalized !== value) expanded.push(normalized);
+    const noBrackets = value.replace(/[([{].*?[)\\]}]/g, " ").replace(/\s+/g, " ").trim();
+    if (noBrackets && noBrackets !== value) expanded.push(noBrackets);
+  }
+  return [...new Set(expanded)].slice(0, 8);
+}
+
+async function searchDeezerMetadata(terms) {
+  const variants = buildSearchVariants(terms);
+  for (const term of variants) {
+    try {
+      const url = new URL("https://api.deezer.com/search");
+      url.searchParams.set("q", term);
+      url.searchParams.set("limit", "12");
+      const data = await fetchJson(url, "DEEZER");
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      const ranked = rows.map(item => ({
+        title: String(item.title || "").trim(),
+        artist: String(item.artist?.name || "").trim(),
+        album: String(item.album?.title || "").trim(),
+        source: "Deezer",
+        score: scoreTrack({ title: item.title, artist: item.artist?.name }, terms.title, terms.artist, terms.query || term),
+      })).filter(item => item.title && item.artist && item.score >= 2)
+        .sort((a, b) => b.score - a.score);
+      if (ranked.length) return ranked.slice(0, 5);
+    } catch (error) {
+      console.warn("Deezer metadata search failed:", error.message);
+    }
+  }
+  return [];
+}
+
+async function searchMusicBrainzMetadata(terms) {
+  const variants = buildSearchVariants(terms);
+  for (const term of variants.slice(0, 4)) {
+    try {
+      const url = new URL("https://musicbrainz.org/ws/2/recording/");
+      url.searchParams.set("query", term);
+      url.searchParams.set("fmt", "json");
+      url.searchParams.set("limit", "10");
+      const data = await fetchJson(url, "MUSICBRAINZ");
+      const rows = Array.isArray(data?.recordings) ? data.recordings : [];
+      const ranked = rows.map(item => ({
+        title: String(item.title || "").trim(),
+        artist: (item["artist-credit"] || []).map(part => part.name || part.artist?.name || "").join(" ").trim(),
+        source: "MusicBrainz",
+        score: scoreTrack({ title: item.title, artist: (item["artist-credit"] || []).map(part => part.name || part.artist?.name || "").join(" ") }, terms.title, terms.artist, terms.query || term),
+      })).filter(item => item.title && item.artist && item.score >= 2)
+        .sort((a, b) => b.score - a.score);
+      if (ranked.length) return ranked.slice(0, 5);
+    } catch (error) {
+      console.warn("MusicBrainz metadata search failed:", error.message);
+    }
+  }
+  return [];
 }
 
 async function searchJamendo({ title, artist, query }) {
@@ -373,24 +437,17 @@ async function searchFullTrack({ title = "", artist = "", query = "" }) {
 
 async function searchAndDownloadFullTrack({ title = "", artist = "", query = "", destination }) {
   if (!destination) throw new Error("MUSIC_DESTINATION_REQUIRED");
-
   const providers = [
     ["Jamendo", searchJamendo],
     ["Openverse", searchOpenverse],
     ["Internet Archive", searchInternetArchive],
   ];
-
   const tryTerms = async (terms) => {
     for (const [name, searchProvider] of providers) {
       let track = null;
-      try {
-        track = await searchProvider(terms);
-      } catch (error) {
-        console.warn(name + " search failed:", error.message);
-        continue;
-      }
+      try { track = await searchProvider(terms); }
+      catch (error) { console.warn(name + " search failed:", error.message); continue; }
       if (!track) continue;
-
       try {
         await fs.promises.rm(destination, { force: true });
         await downloadFullTrack(track, destination);
@@ -404,13 +461,34 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
   };
 
   const originalTerms = { title, artist, query };
-  let track = await tryTerms(originalTerms);
+  const attempted = new Set();
+  const attempt = async (terms) => {
+    const key = normalizeSearchText([terms.artist, terms.title, terms.query].join(" "));
+    if (!key || attempted.has(key)) return null;
+    attempted.add(key);
+    return tryTerms(terms);
+  };
+
+  let track = await attempt(originalTerms);
   if (track) return track;
+
+  // Metadata catalogs identify likely title/artist pairs; they are never used as
+  // audio download sources. Full MP3 delivery still requires a licensed provider.
+  const [deezerMatches, mbMatches] = await Promise.all([
+    searchDeezerMetadata(originalTerms),
+    searchMusicBrainzMetadata(originalTerms),
+  ]);
+  const metadataMatches = [...deezerMatches, ...mbMatches]
+    .sort((a, b) => b.score - a.score);
+  for (const match of metadataMatches.slice(0, 6)) {
+    track = await attempt({ title: match.title, artist: match.artist, query: match.title + " " + match.artist });
+    if (track) return track;
+  }
 
   try {
     const discovered = await searchMokhtalefMusic(originalTerms);
     if (discovered?.title) {
-      track = await tryTerms({
+      track = await attempt({
         title: discovered.title,
         artist: discovered.artist || artist,
         query: discovered.title,
@@ -421,6 +499,11 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
     console.warn("Mokhtalef Music discovery failed:", error.message);
   }
 
+  // Search broad title variants in each permitted full-track catalog.
+  for (const variant of buildSearchVariants(originalTerms).slice(0, 5)) {
+    track = await attempt({ title: variant, artist, query: variant });
+    if (track) return track;
+  }
   return null;
 }
 
