@@ -561,12 +561,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
   bot.hears("🛠 امکانات ویژه", async (ctx) => {
     clearState(ctx);
 
-    // Force Telegram clients to discard a stale reply keyboard before
-    // sending the current features menu (including music search).
-    await ctx.reply("🛠 در حال به‌روزرسانی امکانات ویژه…", {
-      reply_markup: { remove_keyboard: true },
-    });
-
     await ctx.reply(
       "🛠 امکانات ویژه\n\nیکی از امکانات را انتخاب کن.",
       featuresMenu
