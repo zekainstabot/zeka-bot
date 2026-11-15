@@ -17,7 +17,9 @@ const featuresMenu = Markup.keyboard([
   ["🎡 گردونه شانس", "🧠 مسابقه"],
   ["🔮 فال"],
   ["🔙 بازگشت"],
-]).resize().persistent();
+])
+  .resize()
+  .oneTime(false);
 
 const downloadMenu = Markup.keyboard([
   ["🔙 بازگشت"],
