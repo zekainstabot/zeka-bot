@@ -163,6 +163,14 @@ async function searchOpenverse({ title, artist, query }) {
       .filter(item => item && item.url && String(item.filetype || "").toLowerCase() === "mp3")
       .filter(item => Number(item.filesize || 0) === 0 || Number(item.filesize) <= MAX_TRACK_BYTES)
       .filter(isAllowedOpenverseLicense)
+      .filter(item => {
+        try {
+          const mediaUrl = new URL(item.url);
+          return mediaUrl.protocol === "https:" && allowedDownloadHost(mediaUrl.hostname, "openverse");
+        } catch {
+          return false;
+        }
+      })
       .map(item => ({
         title: asText(item.title) || title || term,
         artist: asText(item.creator) || artist || "هنرمند نامشخص",
@@ -338,6 +346,59 @@ async function searchFullTrack({ title = "", artist = "", query = "" }) {
   return null;
 }
 
+async function searchAndDownloadFullTrack({ title = "", artist = "", query = "", destination }) {
+  if (!destination) throw new Error("MUSIC_DESTINATION_REQUIRED");
+
+  const providers = [
+    ["Jamendo", searchJamendo],
+    ["Openverse", searchOpenverse],
+    ["Internet Archive", searchInternetArchive],
+  ];
+
+  const tryTerms = async (terms) => {
+    for (const [name, searchProvider] of providers) {
+      let track = null;
+      try {
+        track = await searchProvider(terms);
+      } catch (error) {
+        console.warn(name + " search failed:", error.message);
+        continue;
+      }
+      if (!track) continue;
+
+      try {
+        await fs.promises.rm(destination, { force: true });
+        await downloadFullTrack(track, destination);
+        return track;
+      } catch (error) {
+        console.warn(name + " MP3 download failed; trying next source:", error.message);
+        await fs.promises.rm(destination, { force: true }).catch(() => {});
+      }
+    }
+    return null;
+  };
+
+  const originalTerms = { title, artist, query };
+  let track = await tryTerms(originalTerms);
+  if (track) return track;
+
+  try {
+    const discovered = await searchMokhtalefMusic(originalTerms);
+    if (discovered?.title) {
+      track = await tryTerms({
+        title: discovered.title,
+        artist: discovered.artist || artist,
+        query: discovered.title,
+      });
+      if (track) return track;
+    }
+  } catch (error) {
+    console.warn("Mokhtalef Music discovery failed:", error.message);
+  }
+
+  return null;
+}
+
 async function downloadFullTrack(track, destination) {
   const parsed = new URL(track.downloadUrl);
   const sourceKey = track.source === "Jamendo"
@@ -411,6 +472,7 @@ async function downloadFullTrack(track, destination) {
 
 module.exports = {
   searchFullTrack,
+  searchAndDownloadFullTrack,
   searchMokhtalefMusic,
   downloadFullTrack,
   isAllowedLicense,
