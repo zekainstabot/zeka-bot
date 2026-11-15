@@ -1,4 +1,6 @@
 
+const { featuresMenu } = require("../config/bot-menus");
+
 function createFeaturesHandler({ bot, mainMenu }) {
   const fs = require("fs");
   const os = require("os");
@@ -33,20 +35,6 @@ function createFeaturesHandler({ bot, mainMenu }) {
 
   const states = new Map();
   const SESSION_TIMEOUT = 10 * 60 * 1000;
-
-  const featuresMenu = {
-    reply_markup: {
-      keyboard: [
-        ["🎵 جست‌وجوی آهنگ", "📆 تقویم روز"],
-        ["📢 مدیریت انتشار محتوا"],
-        ["🎡 گردونه شانس", "🧠 مسابقه"],
-        ["🔮 فال"],
-        ["🔙 بازگشت"],
-      ],
-      resize_keyboard: true,
-      persistent: true,
-    },
-  };
 
   const publishingMenu = {
     reply_markup: {
@@ -963,6 +951,8 @@ function createFeaturesHandler({ bot, mainMenu }) {
         "👤 حساب من",
         "🎁 هدایا",
         "⭐ زکا پرو",
+        "🌐 اتصال به زکا مدیا",
+        "💬 ارتباط با پشتیبانی",
         "🎮 مینی‌گیم‌ها",
         "🛠 امکانات ویژه",
         "📆 تقویم روز",
@@ -973,6 +963,7 @@ function createFeaturesHandler({ bot, mainMenu }) {
         "📢 مدیریت انتشار محتوا",
         "🎵 جست‌وجوی موسیقی",
         "🎵 جست‌وجوی آهنگ",
+        "🎙 تبدیل ویس",
         "📢 اتصال کانال من",
         "➕ ثبت کانال",
         "📋 کانال‌های من",
