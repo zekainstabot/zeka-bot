@@ -9,6 +9,7 @@ const { pipeline } = require("stream/promises");
 const { Transform, Readable } = require("stream");
 const { Markup } = require("telegraf");
 const ffmpegPath = require("ffmpeg-static");
+const { sendFileToChatOnce } = require("../services/delivery.service");
 
 const MAX_INPUT_BYTES = 20 * 1024 * 1024;
 const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
@@ -242,36 +243,15 @@ function createVoiceConverterHandler({ bot }) {
       const title = safeBaseName(attachment.fileName);
       stage = "telegram_upload";
       const audioCaption = "✅ تبدیل با موفقیت انجام شد؛ فایل MP3 آماده ذخیره است.";
-      try {
-        await ctx.replyWithAudio(
-          { source: fs.createReadStream(outputPath), filename: `${title}.mp3` },
-          {
-            title,
-            performer: "Zeka",
-            caption: audioCaption,
-          }
-        );
-      } catch (audioUploadError) {
-        console.error("Voice converter sendAudio failed; trying sendDocument:", {
-          userId,
-          message: audioUploadError?.message || String(audioUploadError),
-          code: audioUploadError?.code,
-          response: audioUploadError?.response?.description,
-        });
 
-        try {
-          await ctx.replyWithDocument(
-            { source: fs.createReadStream(outputPath), filename: `${title}.mp3` },
-            { caption: audioCaption }
-          );
-        } catch (documentUploadError) {
-          const combined = new Error(
-            `TELEGRAM_UPLOAD_FAILED: sendAudio=${audioUploadError?.message || audioUploadError}; sendDocument=${documentUploadError?.message || documentUploadError}`
-          );
-          combined.cause = documentUploadError;
-          throw combined;
-        }
-      }
+      // Use the direct multipart HTTPS uploader shared with downloader delivery.
+      // This avoids Telegraf's separate upload transport path.
+      await sendFileToChatOnce({
+        chatId: ctx.chat.id,
+        filePath: outputPath,
+        caption: audioCaption,
+        contentType: "audio",
+      });
     } catch (error) {
       console.error("Voice to MP3 conversion failed:", {
         userId,
