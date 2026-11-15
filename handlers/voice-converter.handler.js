@@ -296,7 +296,21 @@ function createVoiceConverterHandler({ bot }) {
       } else if (stage === "convert") {
         message = "❌ فایل دریافت شد، اما تبدیل آن به MP3 ناموفق بود. ممکن است فرمت فایل پشتیبانی نشود.";
       } else if (stage === "telegram_upload") {
-        message = "❌ تبدیل انجام شد، اما ارسال فایل MP3 به تلگرام ناموفق بود. کمی بعد دوباره امتحان کن.";
+        const details = [
+          error?.response?.description,
+          error?.description,
+          error?.message,
+        ].filter(Boolean).join(" | ");
+        const errorCode = error?.response?.error_code || error?.code;
+        const safeDetails = String(details || "Unknown Telegram upload error")
+          .replace(/https?:\/\/\S+/gi, "[link]")
+          .replace(/[\r\n\t]+/g, " ")
+          .slice(0, 350);
+        message =
+          "❌ تبدیل انجام شد، اما تلگرام فایل MP3 را نپذیرفت.\n" +
+          (errorCode ? `کد خطا: ${errorCode}\n` : "") +
+          `جزئیات: ${safeDetails}\n\n` +
+          "لطفاً همین پیام خطا را برای پشتیبانی بفرست.";
       }
       await ctx.reply(message, converterMenu);
     } finally {
