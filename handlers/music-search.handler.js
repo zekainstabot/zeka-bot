@@ -159,7 +159,13 @@ function createMusicSearchHandler({ bot }) {
         ? "⭐ زکا پرو: بدون کسر اعتبار"
         : `💳 هزینه: ${featureCharge.cost} اعتبار | 💰 مانده: ${featureCharge.balance} اعتبار`;
 
-      const attribution = "📜 مجوز: " + licenseLabel(track);
+      const attributionText = String(track.attribution || "")
+        .replace(/https?:\/\/\S+/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      const attribution = attributionText
+        ? "📜 " + attributionText.slice(0, 500)
+        : "📜 " + String(track.title || "") + " — " + String(track.artist || "") + " | " + licenseLabel(track);
 
       await sendFileToChatOnce({
         chatId: ctx.chat.id,
