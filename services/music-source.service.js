@@ -10,7 +10,20 @@ const { pipeline } = require("stream/promises");
 const { Readable, Transform } = require("stream");
 
 const MAX_TRACK_BYTES = 48 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 20000;
+const REQUEST_TIMEOUT_MS = 12000;
+const MUSIC_SEARCH_TIMEOUT_MS = 120000;
+
+function remainingSearchMs(deadlineAt) { return Math.max(0, deadlineAt - Date.now()); }
+function assertSearchTime(deadlineAt) { if (remainingSearchMs(deadlineAt) <= 0) throw new Error("MUSIC_SEARCH_TIMEOUT"); }
+function withinSearchDeadline(task, deadlineAt) {
+  const remaining = remainingSearchMs(deadlineAt);
+  if (remaining <= 0) return Promise.reject(new Error("MUSIC_SEARCH_TIMEOUT"));
+  let timer;
+  return Promise.race([Promise.resolve().then(task), new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("MUSIC_SEARCH_TIMEOUT")), remaining);
+    timer.unref?.();
+  })]).finally(() => clearTimeout(timer));
+}
 const ALLOWED_LICENSES = [
   /^https?:\/\/creativecommons\.org\/publicdomain\/zero\/1\.0\/?$/i,
   /^https?:\/\/creativecommons\.org\/licenses\/by(?:-sa|-nd)?\/(?:3\.0|4\.0)\/?$/i,
@@ -460,7 +473,9 @@ function normalizeSearchEntry(entry, platform) {
   };
 }
 
-async function searchYtDlp(term, platform) {
+async function searchYtDlp(term, platform, deadlineAt = Date.now() + MUSIC_SEARCH_TIMEOUT_MS) {
+  assertSearchTime(deadlineAt);
+  const remaining = remainingSearchMs(deadlineAt);
   const prefix = platform === "youtube" ? "ytsearch5:" : "scsearch5:";
   const result = await ytdlp(prefix + term, {
     dumpSingleJson: true,
@@ -468,7 +483,7 @@ async function searchYtDlp(term, platform) {
     skipDownload: true,
     noWarnings: true,
     playlistEnd: 5,
-    socketTimeout: 20,
+    socketTimeout: Math.max(5, Math.min(15, Math.floor(remaining / 1000))),
     retries: 1,
   }, {
     timeout: 45000,
@@ -480,11 +495,12 @@ async function searchYtDlp(term, platform) {
   return entries.map(entry => normalizeSearchEntry(entry, platform)).filter(Boolean);
 }
 
-async function downloadSearchResult(track, destination) {
+async function downloadSearchResult(track, destination, deadlineAt) {
+  assertSearchTime(deadlineAt);
   const jobId = "music-" + process.pid + "-" + Date.now() + "-" + crypto.randomBytes(4).toString("hex");
   const downloaded = track.source === "YouTube"
-    ? await downloadYouTubeMedia({ url: track.url, jobId, audioOnly: true })
-    : await downloadPlatformMedia({ platform: "soundcloud", url: track.url, jobId, audioOnly: true });
+    ? await downloadYouTubeMedia({ url: track.url, jobId, audioOnly: true, timeoutMs: remainingSearchMs(deadlineAt) })
+    : await downloadPlatformMedia({ platform: "soundcloud", url: track.url, jobId, audioOnly: true, timeoutMs: remainingSearchMs(deadlineAt) });
   if (!downloaded || !downloaded.filePath || !fs.existsSync(downloaded.filePath)) {
     throw new Error("MUSIC_SEARCH_DOWNLOAD_MISSING");
   }
@@ -518,14 +534,15 @@ async function downloadSearchResult(track, destination) {
   };
 }
 
-async function searchAndDownloadFromPlatforms({ title = "", artist = "", query = "", destination }) {
-  const terms = buildSearchVariants({ title, artist, query }).slice(0, 4);
+async function searchAndDownloadFromPlatforms({ title = "", artist = "", query = "", destination, deadlineAt = Date.now() + MUSIC_SEARCH_TIMEOUT_MS }) {
+  const terms = buildSearchVariants({ title, artist, query }).slice(0, 2);
   const providers = ["youtube", "soundcloud"];
   for (const platform of providers) {
     for (const term of terms) {
+      assertSearchTime(deadlineAt);
       let candidates = [];
       try {
-        candidates = await searchYtDlp(term, platform);
+        candidates = await withinSearchDeadline(() => searchYtDlp(term, platform, deadlineAt), deadlineAt);
       } catch (error) {
         console.warn(platform + " music search failed:", error.message);
         break;
@@ -537,7 +554,7 @@ async function searchAndDownloadFromPlatforms({ title = "", artist = "", query =
       for (const candidate of candidates.slice(0, 3)) {
         if (candidate.score < 2) continue;
         try {
-          return await downloadSearchResult(candidate, destination);
+          return await withinSearchDeadline(() => downloadSearchResult(candidate, destination, deadlineAt), deadlineAt);
         } catch (error) {
           console.warn(platform + " MP3 download failed; trying next match:", error.message);
           await fs.promises.rm(destination, { force: true }).catch(() => {});
@@ -594,8 +611,9 @@ async function searchFullTrack({ title = "", artist = "", query = "" }) {
   return null;
 }
 
-async function searchAndDownloadFullTrack({ title = "", artist = "", query = "", destination }) {
+async function searchAndDownloadFullTrack({ title = "", artist = "", query = "", destination, timeoutMs = MUSIC_SEARCH_TIMEOUT_MS }) {
   if (!destination) throw new Error("MUSIC_DESTINATION_REQUIRED");
+  const deadlineAt = Date.now() + Math.max(1000, Math.min(MUSIC_SEARCH_TIMEOUT_MS, Number(timeoutMs) || MUSIC_SEARCH_TIMEOUT_MS));
   const providers = [
     ["Jamendo", searchJamendo],
     ["Openverse", searchOpenverse],
@@ -603,13 +621,14 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
   ];
   const tryTerms = async (terms) => {
     for (const [name, searchProvider] of providers) {
+      assertSearchTime(deadlineAt);
       let track = null;
-      try { track = await searchProvider(terms); }
+      try { track = await withinSearchDeadline(() => searchProvider(terms), deadlineAt); }
       catch (error) { console.warn(name + " search failed:", error.message); continue; }
       if (!track) continue;
       try {
         await fs.promises.rm(destination, { force: true });
-        await downloadFullTrack(track, destination);
+        await withinSearchDeadline(() => downloadFullTrack(track, destination), deadlineAt);
         return track;
       } catch (error) {
         console.warn(name + " MP3 download failed; trying next source:", error.message);
@@ -622,6 +641,7 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
   const originalTerms = { title, artist, query };
   const attempted = new Set();
   const attempt = async (terms) => {
+    assertSearchTime(deadlineAt);
     const key = normalizeSearchText([terms.artist, terms.title, terms.query].join(" "));
     if (!key || attempted.has(key)) return null;
     attempted.add(key);
@@ -639,7 +659,8 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
   ]);
   const metadataMatches = [...deezerMatches, ...appleMatches]
     .sort((a, b) => b.score - a.score);
-  for (const match of metadataMatches.slice(0, 6)) {
+  for (const match of metadataMatches.slice(0, 2)) {
+    assertSearchTime(deadlineAt);
     track = await attempt({ title: match.title, artist: match.artist, query: match.title + " " + match.artist });
     if (track) return track;
   }
@@ -659,7 +680,8 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
   }
 
   // Search broad title variants in each permitted full-track catalog.
-  for (const variant of buildSearchVariants(originalTerms).slice(0, 5)) {
+  for (const variant of buildSearchVariants(originalTerms).slice(0, 2)) {
+    assertSearchTime(deadlineAt);
     track = await attempt({ title: variant, artist, query: variant });
     if (track) return track;
   }
@@ -669,7 +691,7 @@ async function searchAndDownloadFullTrack({ title = "", artist = "", query = "",
   // hardened downloaders. Only one best match is downloaded and sent.
   try {
     const platformTrack = await searchAndDownloadFromPlatforms({
-      title, artist, query, destination,
+      title, artist, query, destination, deadlineAt,
     });
     if (platformTrack) return platformTrack;
   } catch (error) {
@@ -754,6 +776,7 @@ module.exports = {
   searchFullTrack,
   searchAndDownloadFullTrack,
   searchAndDownloadFromPlatforms,
+  MUSIC_SEARCH_TIMEOUT_MS,
   searchYtDlp,
   normalizeSearchEntry,
   searchMokhtalefMusic,
