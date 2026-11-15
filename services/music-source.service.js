@@ -66,43 +66,60 @@ async function searchJamendo({ title, artist, query }) {
   const clientId = String(process.env.JAMENDO_CLIENT_ID || "").trim();
   if (!clientId) return null;
 
-  const url = new URL("https://api.jamendo.com/v3.0/tracks/");
-  url.searchParams.set("client_id", clientId);
-  url.searchParams.set("format", "json");
-  url.searchParams.set("limit", "10");
-  url.searchParams.set("type", "single albumtrack");
-  url.searchParams.set("search", [artist, title].filter(Boolean).join(" ") || query);
-  url.searchParams.set("include", "licenses");
-  url.searchParams.set("audiodlformat", "mp32");
+  const searches = [...new Set([
+    [artist, title].filter(Boolean).join(" "),
+    title,
+    artist,
+    query,
+  ].map(value => String(value || "").trim()).filter(Boolean))];
 
-  const data = await fetchJson(url, "JAMENDO");
-  const tracks = Array.isArray(data.results) ? data.results : [];
-  const allowed = tracks
-    .filter(item => item.audiodownload_allowed === true && item.audiodownload)
-    .map(item => ({
-      title: item.name || title || "آهنگ",
-      artist: item.artist_name || artist || "هنرمند نامشخص",
-      downloadUrl: item.audiodownload,
-      licenseUrl: item.license_ccurl || "",
-      source: "Jamendo",
-      pageUrl: item.shareurl || "",
-      duration: Number(item.duration || 0),
-    }))
-    .filter(item => isAllowedLicense(item.licenseUrl))
-    .sort((a, b) => scoreTrack(b, title, artist) - scoreTrack(a, title, artist));
+  for (const search of searches) {
+    const url = new URL("https://api.jamendo.com/v3.0/tracks/");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "25");
+    url.searchParams.set("type", "single albumtrack");
+    url.searchParams.set("search", search);
+    url.searchParams.set("include", "licenses");
+    url.searchParams.set("audiodlformat", "mp32");
 
-  return allowed[0] || null;
+    const data = await fetchJson(url, "JAMENDO");
+    const tracks = Array.isArray(data.results) ? data.results : [];
+    const allowed = tracks
+      .filter(item => item.audiodownload_allowed === true && item.audiodownload)
+      .map(item => ({
+        title: item.name || title || "آهنگ",
+        artist: item.artist_name || artist || "هنرمند نامشخص",
+        downloadUrl: item.audiodownload,
+        licenseUrl: item.license_ccurl || "",
+        source: "Jamendo",
+        pageUrl: item.shareurl || "",
+        duration: Number(item.duration || 0),
+      }))
+      .filter(item => isAllowedLicense(item.licenseUrl))
+      .sort((a, b) => scoreTrack(b, title, artist) - scoreTrack(a, title, artist));
+
+    if (allowed.length) return allowed[0];
+  }
+  return null;
 }
 
 function buildArchiveQueries({ title, artist, query }) {
   const safeTitle = safeSolrPhrase(title || query);
   const safeArtist = safeSolrPhrase(artist);
-  if (!safeTitle) return [];
-  const strict = safeArtist
-    ? `mediatype:audio AND title:"${safeTitle}" AND creator:"${safeArtist}"`
-    : `mediatype:audio AND title:"${safeTitle}"`;
-  const broad = `mediatype:audio AND title:"${safeTitle}"`;
-  return strict === broad ? [broad] : [strict, broad];
+  const safeQuery = safeSolrPhrase(query);
+  if (!safeTitle && !safeQuery) return [];
+
+  const searches = [];
+  if (safeTitle && safeArtist) searches.push(`mediatype:audio AND title:"${safeTitle}" AND creator:"${safeArtist}"`);
+  if (safeTitle) {
+    searches.push(`mediatype:audio AND title:"${safeTitle}"`);
+    searches.push(`mediatype:audio AND (title:"${safeTitle}" OR description:"${safeTitle}")`);
+  }
+  if (safeQuery && safeQuery !== safeTitle) {
+    searches.push(`mediatype:audio AND (title:"${safeQuery}" OR description:"${safeQuery}")`);
+  }
+  return [...new Set(searches)];
 }
 
 async function searchInternetArchive({ title, artist, query }) {
@@ -114,7 +131,7 @@ async function searchInternetArchive({ title, artist, query }) {
     url.searchParams.append("fl[]", "title");
     url.searchParams.append("fl[]", "creator");
     url.searchParams.append("fl[]", "licenseurl");
-    url.searchParams.set("rows", "10");
+    url.searchParams.set("rows", "25");
     url.searchParams.set("page", "1");
     url.searchParams.set("output", "json");
 
